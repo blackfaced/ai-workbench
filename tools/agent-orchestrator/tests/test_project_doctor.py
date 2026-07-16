@@ -89,6 +89,7 @@ def test_doctor_validates_an_approved_non_production_project_without_running_com
             "commands",
             "non_production",
             "provider",
+            "publishing",
             "repository",
             "schema",
             "trusted",

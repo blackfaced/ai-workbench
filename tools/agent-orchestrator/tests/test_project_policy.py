@@ -135,6 +135,96 @@ def test_project_policy_rejects_a_production_image_profile() -> None:
 
 
 @pytest.mark.parametrize(
+    ("candidate", "message"),
+    [
+        (
+            {"approved": False, "remote": "origin", "branch_prefix": "aiwb/"},
+            "explicitly approved",
+        ),
+        (
+            {"approved": True, "remote": "-unsafe", "branch_prefix": "aiwb/"},
+            "safe Git remote",
+        ),
+        (
+            {"approved": True, "remote": "origin", "branch_prefix": "main"},
+            "safe namespace",
+        ),
+    ],
+)
+def test_candidate_publish_policy_requires_explicit_safe_namespace(
+    candidate: dict[str, object],
+    message: str,
+) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        command = [sys.executable, "-m", "pytest", "-q"]
+        workflow = repository / ".ai-workbench" / "workflow.yaml"
+        workflow.parent.mkdir()
+        workflow.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {"argv": command, "approved": True},
+                        },
+                        "skills": {},
+                    },
+                    "publishing": {"candidate": candidate},
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ProjectConfigError, match=message):
+            ProjectPolicy.load(workflow)
+
+
+def test_candidate_publish_policy_rejects_an_unconfigured_remote_before_run() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        _git(repository, "init", "-b", "main")
+        command = [sys.executable, "-m", "pytest", "-q"]
+        workflow = repository / ".ai-workbench" / "workflow.yaml"
+        workflow.parent.mkdir()
+        workflow.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {"argv": command, "approved": True},
+                        },
+                        "skills": {},
+                    },
+                    "publishing": {
+                        "candidate": {
+                            "approved": True,
+                            "remote": "missing",
+                            "branch_prefix": "aiwb/",
+                        }
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        policy = ProjectPolicy.load(workflow)
+        with pytest.raises(ProjectConfigError, match="remote is not configured"):
+            policy.authorize_publish(repository)
+
+
+@pytest.mark.parametrize(
     ("environment", "context", "message"),
     [
         ("production", "dev-context", "production Harness profile"),

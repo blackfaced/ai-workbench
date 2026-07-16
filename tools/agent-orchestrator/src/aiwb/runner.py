@@ -22,11 +22,13 @@ from .harness import HarnessAdapter, HarnessRequest, LocalProcessHarness
 from .image import CommandImageBuilder, ImageBuildRequest
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
 from .project import (
+    CandidatePublishProfile,
     HarnessProfile,
     ImageProfile,
     ProjectConfigError,
     ProjectPolicy,
 )
+from .publish import CandidatePublishError, CandidatePublishRequest, CandidatePublisher
 
 
 class ContractError(ValueError):
@@ -71,6 +73,7 @@ class _Contract:
     legacy_single_todo: bool
     image_profile_name: str
     image_profile: Optional[ImageProfile]
+    candidate_publish: Optional[CandidatePublishProfile]
 
     @property
     def run_id(self) -> str:
@@ -78,7 +81,12 @@ class _Contract:
 
     @property
     def branch(self) -> str:
-        return f"aiwb/{self.goal_id}/integration-{self.contract_hash[:8]}"
+        prefix = (
+            self.candidate_publish.branch_prefix
+            if self.candidate_publish is not None
+            else "aiwb/"
+        )
+        return f"{prefix}{self.goal_id}/integration-{self.contract_hash[:8]}"
 
     def todo_branch(self, todo: _Todo) -> str:
         return f"aiwb/{self.goal_id}/{todo.todo_id}-{self.contract_hash[:8]}"
@@ -149,6 +157,9 @@ class RunReport:
     image_status: str = ""
     image_digest: str = ""
     image_artifacts: Tuple[str, ...] = field(default_factory=tuple)
+    published_remote: str = ""
+    published_ref: str = ""
+    published_commit: str = ""
 
     def to_dict(self) -> Dict[str, object]:
         value = asdict(self)
@@ -207,6 +218,9 @@ class RunReport:
             image_artifacts=tuple(
                 str(item) for item in value.get("image_artifacts", [])
             ),
+            published_remote=str(value.get("published_remote", "")),
+            published_ref=str(value.get("published_ref", "")),
+            published_commit=str(value.get("published_commit", "")),
         )
 
 
@@ -237,6 +251,7 @@ class GoalRunner:
         }
         self._kubernetes_janitor = KubernetesJanitor(self._state_dir)
         self._image_builder = CommandImageBuilder()
+        self._candidate_publisher = CandidatePublisher()
         self._image_poll_interval_seconds = image_poll_interval_seconds
 
     def prepare(self, contract_path: Path) -> RunReport:
@@ -256,7 +271,7 @@ class GoalRunner:
             return self._run_dag(contract, workspace, record)
 
         if record["status"] == "merge_ready":
-            return self._report(record)
+            return self._publish_candidate(contract, workspace, record)
         if record["status"] in {"candidate_verified", "waiting_image"}:
             return self._await_image(contract, workspace)
 
@@ -274,6 +289,8 @@ class GoalRunner:
 
         if record["status"] == "candidate_verified":
             return self._await_image(contract, workspace)
+        if record["status"] == "merge_ready":
+            return self._publish_candidate(contract, workspace, record)
         return self._report(record)
 
     def _run_dag(
@@ -283,7 +300,7 @@ class GoalRunner:
         record: Mapping[str, Any],
     ) -> RunReport:
         if record["status"] == "merge_ready":
-            return self._report(record)
+            return self._publish_candidate(contract, candidate, record)
         if record["status"] in {"candidate_verified", "waiting_image"}:
             return self._await_image(contract, candidate)
 
@@ -783,7 +800,8 @@ class GoalRunner:
     ) -> RunReport:
         if contract.image_profile is None:
             self._store.set_run_status(contract.run_id, "merge_ready")
-            return self._report(self._store.get(contract.run_id))
+            record = self._store.get(contract.run_id)
+            return self._publish_candidate(contract, workspace, record)
         self._store.set_run_status(contract.run_id, "candidate_verified")
         return self._await_image(contract, workspace)
 
@@ -816,8 +834,38 @@ class GoalRunner:
                     result.digest,
                     result.artifacts,
                 )
-                return self._report(self._store.get(contract.run_id))
+                record = self._store.get(contract.run_id)
+                return self._publish_candidate(contract, workspace, record)
             time.sleep(self._image_poll_interval_seconds)
+
+    def _publish_candidate(
+        self,
+        contract: _Contract,
+        workspace: "_GitWorkspace",
+        record: Mapping[str, Any],
+    ) -> RunReport:
+        profile = contract.candidate_publish
+        if profile is None or record["published_commit"]:
+            return self._report(record)
+        try:
+            result = self._candidate_publisher.publish(
+                CandidatePublishRequest(
+                    repository=contract.repository,
+                    branch=contract.branch,
+                    commit=workspace.head(),
+                    profile=profile,
+                )
+            )
+        except CandidatePublishError as error:
+            self._store.record_interruption(contract.run_id, str(error))
+            raise
+        self._store.complete_publish(
+            contract.run_id,
+            remote=result.remote,
+            ref=result.ref,
+            commit=result.commit,
+        )
+        return self._report(self._store.get(contract.run_id))
 
     def _run_gate(
         self,
@@ -913,6 +961,9 @@ class GoalRunner:
             image_status=record["image_status"],
             image_digest=record["image_digest"],
             image_artifacts=tuple(json.loads(record["image_artifacts_json"])),
+            published_remote=record["published_remote"],
+            published_ref=record["published_ref"],
+            published_commit=record["published_commit"],
         )
 
 
@@ -941,6 +992,9 @@ class _RunStore:
                     image_status TEXT NOT NULL DEFAULT '',
                     image_digest TEXT NOT NULL DEFAULT '',
                     image_artifacts_json TEXT NOT NULL DEFAULT '[]',
+                    published_remote TEXT NOT NULL DEFAULT '',
+                    published_ref TEXT NOT NULL DEFAULT '',
+                    published_commit TEXT NOT NULL DEFAULT '',
                     last_error TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
@@ -1076,6 +1130,21 @@ class _RunStore:
             image_status="succeeded",
             image_digest=digest,
             image_artifacts_json=json.dumps(list(artifacts)),
+            last_error=None,
+        )
+
+    def complete_publish(
+        self,
+        run_id: str,
+        remote: str,
+        ref: str,
+        commit: str,
+    ) -> None:
+        self._update(
+            run_id,
+            published_remote=remote,
+            published_ref=ref,
+            published_commit=commit,
             last_error=None,
         )
 
@@ -1253,6 +1322,9 @@ class _RunStore:
             "image_status": "TEXT NOT NULL DEFAULT ''",
             "image_digest": "TEXT NOT NULL DEFAULT ''",
             "image_artifacts_json": "TEXT NOT NULL DEFAULT '[]'",
+            "published_remote": "TEXT NOT NULL DEFAULT ''",
+            "published_ref": "TEXT NOT NULL DEFAULT ''",
+            "published_commit": "TEXT NOT NULL DEFAULT ''",
         }
         for name, definition in columns.items():
             if name not in existing:
@@ -1410,7 +1482,7 @@ def _load_contract(path: Path) -> _Contract:
     image_profile_name = candidate.get("image_profile", "")
     if not isinstance(image_profile_name, str):
         raise ContractError("candidate.image_profile must be a profile name")
-    todos, image_profile = _authorize_contract(
+    todos, image_profile, candidate_publish = _authorize_contract(
         project,
         repository,
         todos,
@@ -1431,6 +1503,7 @@ def _load_contract(path: Path) -> _Contract:
         legacy_single_todo=legacy_single_todo,
         image_profile_name=image_profile_name,
         image_profile=image_profile,
+        candidate_publish=candidate_publish,
     )
 
 
@@ -1453,7 +1526,11 @@ def _authorize_contract(
     repository: Path,
     todos: Sequence[_Todo],
     image_profile_name: str,
-) -> Tuple[Tuple[_Todo, ...], Optional[ImageProfile]]:
+) -> Tuple[
+    Tuple[_Todo, ...],
+    Optional[ImageProfile],
+    Optional[CandidatePublishProfile],
+]:
     workflow_value = project.get("workflow", ".ai-workbench/workflow.yaml")
     if not isinstance(workflow_value, str) or not workflow_value:
         raise ContractError("project.workflow must be a non-empty path")
@@ -1478,7 +1555,11 @@ def _authorize_contract(
             )
             for todo in todos
         )
-        return authorized_todos, policy.authorize_image(image_profile_name)
+        return (
+            authorized_todos,
+            policy.authorize_image(image_profile_name),
+            policy.authorize_publish(repository),
+        )
     except ProjectConfigError as error:
         raise ContractError(str(error)) from error
 

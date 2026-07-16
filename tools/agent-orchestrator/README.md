@@ -39,6 +39,7 @@ aiwb CLI ────┘                    ├── RunStore (SQLite)
                                  ├── AgentRouter
                                  │   ├── CodexCliAdapter
                                  │   └── ClaudeCodeCliAdapter
+                                 ├── CandidatePublisher
                                  ├── Project commands
                                  ├── Harness / ImageBuilder adapters
                                  └── KubernetesJanitor
@@ -153,7 +154,16 @@ The browser diagnostic tracer adds:
 - retained raw MCP results, screenshot, MCP stderr, and the original gate failure under the Run Evidence directory;
 - failure isolation: a diagnostic error is reported but never replaces the authoritative Playwright Test return code.
 
-The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates. The tool does not yet include automatic push, merge-conflict repair, or role-specific Skill injection. Those extend the same interfaces in later tracer bullets.
+The Candidate publication tracer adds:
+
+- an optional `publishing.candidate` policy that must be explicitly approved;
+- a fixed Git remote and namespaced branch prefix owned by project policy, never by the Contract or Agent;
+- publication only after the Candidate reaches `merge_ready`, including after immutable image digest Evidence when configured;
+- an exact commit-to-ref push followed by remote ref verification and durable remote/ref/commit reporting;
+- restart-safe idempotence when Git push succeeds before the SQLite checkpoint is written;
+- normal fast-forward protection with no force-push path, so a diverged remote ref blocks publication without being overwritten.
+
+The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates. The tool does not yet include merge-conflict repair or role-specific Skill injection. Those extend the same interfaces in later tracer bullets.
 
 ## Try the Tracer Bullet
 
@@ -178,6 +188,18 @@ aiwb doctor --config /path/to/project/.ai-workbench/workflow.yaml
 ```
 
 `doctor` is not advisory: both direct and Daemon execution load the same project policy before creating a worktree or starting an Agent. The Contract test command must exactly match one approved command, and any production Harness profile is rejected.
+
+Candidate publication is off by default. To let an overnight Run publish its merge-ready Candidate, review and add this project-owned policy:
+
+```yaml
+publishing:
+  candidate:
+    approved: true
+    remote: origin
+    branch_prefix: aiwb/
+```
+
+The prefix must be a Git-safe namespace ending in `/`. It becomes the local and remote Candidate branch namespace. The orchestrator never pushes `project.base_ref`, never creates a pull request, and never force-pushes. If the process dies after the remote accepts the commit but before SQLite records it, rerunning the same Contract safely confirms the same ref and completes the checkpoint.
 
 Copy [`examples/single-todo.contract.yaml`](examples/single-todo.contract.yaml) or [`examples/multi-todo.contract.yaml`](examples/multi-todo.contract.yaml), point `project.repo` at the trusted Git repository, and replace the example Goal and test command with an approved Contract. Every multi-Todo entry maps `test_ids` to the Goal acceptance boundary, declares `depends_on`, and owns its test command and protected test paths. The target repository must have Git author configuration because the runner records RED and GREEN checkpoints as commits.
 
@@ -288,3 +310,4 @@ Rerunning the same command after interruption reuses the immutable Contract hash
 7. MCP and Codex Skill interaction. ✅
 8. Claude Code CLI adapter and Contract-fixed provider routing. ✅
 9. Playwright MCP and Chrome DevTools MCP browser diagnostics. ✅
+10. Policy-approved namespaced Candidate publication. ✅
