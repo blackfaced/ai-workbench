@@ -29,6 +29,7 @@ from .project import (
     ProjectPolicy,
 )
 from .publish import CandidatePublishError, CandidatePublishRequest, CandidatePublisher
+from .repair import MergeConflictRepairRequest, MergeConflictRepairer
 
 
 class ContractError(ValueError):
@@ -137,6 +138,7 @@ class TodoReport:
     code_commit: str
     sessions: Mapping[str, str] = field(default_factory=dict)
     evidence: Tuple[CommandEvidence, ...] = field(default_factory=tuple)
+    repair_commits: Tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -168,6 +170,7 @@ class RunReport:
         for todo in self.todos:
             item = asdict(todo)
             item["evidence"] = [asdict(evidence) for evidence in todo.evidence]
+            item["repair_commits"] = list(todo.repair_commits)
             todo_values.append(item)
         value["todos"] = todo_values
         return value
@@ -252,6 +255,7 @@ class GoalRunner:
         self._kubernetes_janitor = KubernetesJanitor(self._state_dir)
         self._image_builder = CommandImageBuilder()
         self._candidate_publisher = CandidatePublisher()
+        self._conflict_repairer = MergeConflictRepairer(agent)
         self._image_poll_interval_seconds = image_poll_interval_seconds
 
     def prepare(self, contract_path: Path) -> RunReport:
@@ -379,7 +383,14 @@ class GoalRunner:
             todo_record = self._store.get_todo(contract.run_id, todo.todo_id)
             code_commit = _required_string(todo_record, "code_commit")
             if not candidate.contains(code_commit):
-                candidate.merge(contract.todo_branch(todo))
+                conflict_paths = candidate.merge(contract.todo_branch(todo))
+                if conflict_paths:
+                    self._repair_todo_merge_conflict(
+                        contract,
+                        todo,
+                        candidate,
+                        conflict_paths,
+                    )
             evidence = self._run_gate(
                 contract=contract,
                 todo=todo,
@@ -392,6 +403,41 @@ class GoalRunner:
                     + (evidence.stderr or evidence.stdout)
                 )
             self._store.integrate_todo(contract.run_id, todo.todo_id, evidence)
+
+    def _repair_todo_merge_conflict(
+        self,
+        contract: _Contract,
+        todo: _Todo,
+        candidate: "_GitWorkspace",
+        conflict_paths: Tuple[str, ...],
+    ) -> None:
+        self._store.set_todo_stage(contract.run_id, todo.todo_id, "conflict_repairer")
+        try:
+            result = self._conflict_repairer.repair(
+                MergeConflictRepairRequest(
+                    worktree=candidate.worktree,
+                    todo_id=todo.todo_id,
+                    prompt=_conflict_repair_prompt(contract, todo, conflict_paths),
+                    conflict_paths=conflict_paths,
+                    provider=contract.agent_provider,
+                    model=contract.agent_model,
+                    timeout_seconds=todo.timeout_seconds,
+                )
+            )
+        except Exception as error:
+            self._store.record_todo_interruption(
+                contract.run_id,
+                todo.todo_id,
+                str(error),
+            )
+            raise
+        self._store.record_todo_repair(
+            contract.run_id,
+            todo.todo_id,
+            "conflict_repairer",
+            result.agent_result,
+            result.merge_commit,
+        )
 
     @staticmethod
     def _todo_ready(
@@ -1017,6 +1063,7 @@ class _RunStore:
                     code_commit TEXT,
                     sessions_json TEXT NOT NULL,
                     evidence_json TEXT NOT NULL,
+                    repair_commits_json TEXT NOT NULL DEFAULT '[]',
                     last_error TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -1025,6 +1072,7 @@ class _RunStore:
                 )
                 """
             )
+            self._ensure_todo_columns(connection)
 
     def get_or_create(self, contract: _Contract, worktree: Path) -> Mapping[str, Any]:
         existing = self._find_by_hash(contract.contract_hash)
@@ -1249,6 +1297,28 @@ class _RunStore:
             last_error=None,
         )
 
+    def record_todo_repair(
+        self,
+        run_id: str,
+        todo_id: str,
+        role: str,
+        agent_result: AgentResult,
+        merge_commit: str,
+    ) -> None:
+        record = self.get_todo(run_id, todo_id)
+        sessions = json.loads(record["sessions_json"])
+        sessions[role] = agent_result.session_id
+        repair_commits = json.loads(record["repair_commits_json"])
+        repair_commits.append(merge_commit)
+        self._update_todo(
+            run_id,
+            todo_id,
+            active_stage="",
+            sessions_json=json.dumps(sessions, sort_keys=True),
+            repair_commits_json=json.dumps(repair_commits),
+            last_error=None,
+        )
+
     def checkpoint(
         self,
         run_id: str,
@@ -1330,6 +1400,18 @@ class _RunStore:
             if name not in existing:
                 connection.execute(f"ALTER TABLE runs ADD COLUMN {name} {definition}")
 
+    @staticmethod
+    def _ensure_todo_columns(connection: sqlite3.Connection) -> None:
+        existing = {
+            row[1] for row in connection.execute("PRAGMA table_info(todos)").fetchall()
+        }
+        columns = {
+            "repair_commits_json": "TEXT NOT NULL DEFAULT '[]'",
+        }
+        for name, definition in columns.items():
+            if name not in existing:
+                connection.execute(f"ALTER TABLE todos ADD COLUMN {name} {definition}")
+
 
 class _GitWorkspace:
     def __init__(
@@ -1399,8 +1481,50 @@ class _GitWorkspace:
             check=False,
         ).returncode == 0
 
-    def merge(self, branch: str) -> None:
-        self._in_worktree("merge", "--no-ff", "--no-edit", branch)
+    def merge(self, branch: str) -> Tuple[str, ...]:
+        if self._merge_in_progress():
+            if self._in_worktree("rev-parse", "MERGE_HEAD").stdout.strip() != (
+                self._in_worktree("rev-parse", branch).stdout.strip()
+            ):
+                raise RuntimeError("Candidate has an unrelated merge in progress")
+            return self._unmerged_paths()
+        result = self._in_worktree(
+            "merge",
+            "--no-ff",
+            "--no-edit",
+            branch,
+            check=False,
+        )
+        if result.returncode == 0:
+            return ()
+        conflict_paths = self._unmerged_paths()
+        if conflict_paths:
+            return conflict_paths
+        raise RuntimeError(
+            "Candidate merge failed without file conflicts:\n"
+            + (result.stderr or result.stdout)
+        )
+
+    def _merge_in_progress(self) -> bool:
+        return (
+            self._in_worktree(
+                "rev-parse",
+                "-q",
+                "--verify",
+                "MERGE_HEAD",
+                check=False,
+            ).returncode
+            == 0
+        )
+
+    def _unmerged_paths(self) -> Tuple[str, ...]:
+        output = self._in_worktree(
+            "diff",
+            "--name-only",
+            "--diff-filter=U",
+            "-z",
+        ).stdout
+        return tuple(path for path in output.split("\0") if path)
 
     def _in_repository(
         self,
@@ -1660,6 +1784,22 @@ def _implementer_prompt(contract: _Contract, todo: Optional[_Todo] = None) -> st
     )
 
 
+def _conflict_repair_prompt(
+    contract: _Contract,
+    todo: _Todo,
+    conflict_paths: Tuple[str, ...],
+) -> str:
+    return (
+        "You are the fresh Conflict Repairer for one approved Candidate integration.\n"
+        + _contract_prompt(contract, todo)
+        + "\nResolve only these existing Git conflict paths: "
+        + ", ".join(conflict_paths)
+        + ". Preserve the accepted behavior from both branches. Do not edit any "
+        "other path, do not stage or commit, and do not change the target branch. "
+        "Run the approved test command before finishing."
+    )
+
+
 def _verifier_prompt(contract: _Contract, todo: Optional[_Todo] = None) -> str:
     selected = todo or contract.todos[0]
     return (
@@ -1799,6 +1939,7 @@ def _todo_report(record: Mapping[str, Any]) -> TodoReport:
         code_commit=record["code_commit"] or "",
         sessions=json.loads(record["sessions_json"]),
         evidence=evidence,
+        repair_commits=tuple(json.loads(record["repair_commits_json"])),
     )
 
 
@@ -1807,8 +1948,13 @@ def _todo_report_from_dict(value: object) -> TodoReport:
         raise ValueError("Todo report must be a mapping")
     evidence_data = value.get("evidence", [])
     sessions_data = value.get("sessions", {})
-    if not isinstance(evidence_data, list) or not isinstance(sessions_data, dict):
-        raise ValueError("Todo report evidence and sessions have invalid types")
+    repair_commits_data = value.get("repair_commits", [])
+    if (
+        not isinstance(evidence_data, list)
+        or not isinstance(sessions_data, dict)
+        or not isinstance(repair_commits_data, list)
+    ):
+        raise ValueError("Todo report evidence, sessions, and repairs have invalid types")
     return TodoReport(
         todo_id=str(value["todo_id"]),
         status=str(value["status"]),
@@ -1834,6 +1980,7 @@ def _todo_report_from_dict(value: object) -> TodoReport:
             for item in evidence_data
             if isinstance(item, dict)
         ),
+        repair_commits=tuple(str(commit) for commit in repair_commits_data),
     )
 
 
