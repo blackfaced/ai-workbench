@@ -1,0 +1,36 @@
+schema_version: 1
+status: approved
+
+project:
+  root: /absolute/path/to/trusted/project
+  trusted: true
+
+capabilities:
+  commands:
+    unit:
+      argv: [python3, -m, pytest, -q]
+      approved: true
+    image_start:
+      argv: [./harness/image-build, start]
+      approved: true
+    image_status:
+      argv: [./harness/image-build, status]
+      approved: true
+    image_result:
+      argv: [./harness/image-build, result]
+      approved: true
+  skills: {}
+
+harness:
+  profiles: {}
+
+images:
+  profiles:
+    pr-image:
+      environment: non-production
+      start:
+        command: [./harness/image-build, start]
+      status:
+        command: [./harness/image-build, status]
+      result:
+        command: [./harness/image-build, result]

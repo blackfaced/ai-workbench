@@ -1,0 +1,41 @@
+schema_version: 1
+status: approved
+
+project:
+  root: /absolute/path/to/trusted/project
+  trusted: true
+
+capabilities:
+  commands:
+    kubernetes_provision:
+      argv: [./harness/kubernetes-e2e, provision]
+      approved: true
+    kubernetes_collect:
+      argv: [./harness/kubernetes-e2e, collect]
+      approved: true
+    kubernetes_cleanup:
+      argv: [./harness/kubernetes-e2e, cleanup]
+      approved: true
+    integration_gate:
+      argv: [python3, -m, pytest, -q, tests/e2e]
+      approved: true
+  skills: {}
+
+harness:
+  allowed_kubernetes_contexts: [development-cluster]
+  profiles:
+    development:
+      kind: kubernetes
+      environment: non-production
+      context: development-cluster
+      namespace_prefix: aiwb
+      ttl_seconds: 43200
+      provision:
+        command: [./harness/kubernetes-e2e, provision]
+      collect:
+        command: [./harness/kubernetes-e2e, collect]
+      cleanup:
+        command: [./harness/kubernetes-e2e, cleanup]
+
+images:
+  profiles: {}

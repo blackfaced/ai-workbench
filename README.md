@@ -1,8 +1,8 @@
 # AI Workbench
 
-Personal knowledge base for AI-assisted development, research, and repeatable agent workflows.
+Personal workbench for AI-assisted development, research, reusable knowledge, and repeatable agent workflows.
 
-This repository is a workbench, not a public skill registry. It records useful skills, tool integrations, workflows, personal todo items, and the repository decisions that keep the system coherent over time.
+This repository is a workbench, not a public skill registry. It records useful skills, tool integrations, workflows, personal todo items, and the repository decisions that keep the system coherent over time. Executable tools remain self-contained under `tools/`.
 
 ## Structure
 
@@ -29,4 +29,3 @@ Each entry should stay lightweight:
 ```
 
 Use `Domain:` for fields such as `coding`, `investing`, `research`, `learning`, or `ops`. Do not create new top-level directories for domains unless a decision record says why.
-
