@@ -8,9 +8,14 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Mapping, Tuple
+from typing import Callable, Dict, Mapping, Optional, Tuple
 from urllib.parse import urlsplit
 
+from .browser import (
+    BrowserDiagnosticAdapter,
+    BrowserDiagnosticRequest,
+    BrowserDiagnosticResult,
+)
 from .harness import HarnessError, HarnessExecution, HarnessRequest
 
 
@@ -25,9 +30,14 @@ class JanitorReport:
 class KubernetesHarness:
     """Run a gate in an isolated, project-provisioned non-production namespace."""
 
-    def __init__(self, state_dir: Path) -> None:
+    def __init__(
+        self,
+        state_dir: Path,
+        browser_diagnostics: Optional[BrowserDiagnosticAdapter] = None,
+    ) -> None:
         self._lease_dir = Path(state_dir).resolve() / "kubernetes-leases"
         self._lease_dir.mkdir(parents=True, exist_ok=True)
+        self._browser_diagnostics = browser_diagnostics
 
     def execute(self, request: HarnessRequest) -> HarnessExecution:
         profile = request.profile
@@ -55,6 +65,7 @@ class KubernetesHarness:
         _write_json(lease_path, lease)
 
         collected_artifacts: Tuple[str, ...] = tuple()
+        browser_diagnostic = None
         provisioned = False
         try:
             provision = _run_json_command(
@@ -77,6 +88,39 @@ class KubernetesHarness:
                 stderr=subprocess.PIPE,
                 timeout=request.timeout_seconds,
             )
+            if (
+                completed.returncode != 0
+                and request.stage != "red"
+                and profile.browser_diagnostic is not None
+                and self._browser_diagnostics is not None
+            ):
+                diagnostic_dir = artifact_dir / "browser-diagnostic"
+                diagnostic_dir.mkdir(parents=True, exist_ok=True)
+                diagnostic_request = BrowserDiagnosticRequest(
+                    profile=profile.browser_diagnostic,
+                    base_url=base_url,
+                    cwd=request.cwd,
+                    artifact_dir=diagnostic_dir,
+                    run_id=request.run_id,
+                    execution_id=request.execution_id,
+                    gate_stdout=completed.stdout,
+                    gate_stderr=completed.stderr,
+                )
+                try:
+                    browser_diagnostic = self._browser_diagnostics.diagnose(
+                        diagnostic_request
+                    )
+                except Exception as error:
+                    browser_diagnostic = BrowserDiagnosticResult(
+                        adapter=profile.browser_diagnostic.adapter,
+                        summary="browser diagnostic failed",
+                        artifacts=tuple(
+                            str(path)
+                            for path in sorted(diagnostic_dir.iterdir())
+                            if path.is_file()
+                        ),
+                        error=str(error),
+                    )
             collected = _run_json_command(
                 "collect",
                 profile.collect_command,
@@ -114,6 +158,7 @@ class KubernetesHarness:
             environment=(
                 f"{profile.environment}/{profile.kubernetes_context}/{namespace}"
             ),
+            browser_diagnostic=browser_diagnostic,
         )
 
 

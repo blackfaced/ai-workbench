@@ -144,7 +144,16 @@ The Claude Code provider tracer adds:
 - `plan` mode for read-only requests and configurable `auto`, `acceptEdits`, or `dontAsk` for writable requests;
 - an explicit rejection of `bypassPermissions`, which is unsafe for this host-native, non-containerized tool.
 
-The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools are intentionally not pass gates; they remain future Agent-side design and diagnostic aids. The tool does not yet include automatic push, merge-conflict repair, role-specific Skill injection, or browser diagnostics. Those extend the same interfaces in later tracer bullets.
+The browser diagnostic tracer adds:
+
+- an optional, project-approved `browser_diagnostic` block on Playwright Harness profiles;
+- interchangeable `playwright-mcp` and `chrome-devtools-mcp` stdio Adapters;
+- bounded navigation, accessibility snapshot, console, network, and screenshot collection after an unexpected GREEN, verification, or integration failure;
+- collection while the local or non-production Kubernetes target is still live, before normal Harness cleanup;
+- retained raw MCP results, screenshot, MCP stderr, and the original gate failure under the Run Evidence directory;
+- failure isolation: a diagnostic error is reported but never replaces the authoritative Playwright Test return code.
+
+The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates. The tool does not yet include automatic push, merge-conflict repair, or role-specific Skill injection. Those extend the same interfaces in later tracer bullets.
 
 ## Try the Tracer Bullet
 
@@ -180,7 +189,21 @@ agent:
   model: sonnet # optional
 ```
 
-For browser E2E, review [`examples/local-playwright.workflow.yaml`](examples/local-playwright.workflow.yaml) and [`examples/local-playwright.contract.yaml`](examples/local-playwright.contract.yaml). The service must bind to `AIWB_PORT`; the test command receives `AIWB_BASE_URL`. Both the service start command and the test command must exactly match approved capabilities.
+For browser E2E, review [`examples/local-playwright.workflow.yaml`](examples/local-playwright.workflow.yaml) and [`examples/local-playwright.contract.yaml`](examples/local-playwright.contract.yaml). The service must bind to `AIWB_PORT`; the test command receives `AIWB_BASE_URL`. The service, Playwright Test, and optional diagnostic MCP server commands must exactly match approved capabilities.
+
+An optional diagnostic block runs only after an unexpected failing browser gate, never during the expected RED gate and never after a pass:
+
+```yaml
+browser_gate: playwright
+browser_diagnostic:
+  adapter: playwright-mcp # or chrome-devtools-mcp
+  command: [npx, -y, "@playwright/mcp@latest", --headless]
+  timeout_seconds: 120
+```
+
+The Adapter speaks MCP directly and discovers the required tools before navigating to `AIWB_BASE_URL`. Both supported Adapters capture five observations: navigation, accessibility snapshot, console messages, network requests, and a full-page screenshot. Browser content is untrusted diagnostic input; it is retained as Evidence and is not treated as an instruction. Local profiles remain loopback-only, Kubernetes profiles remain allowlisted and non-production, and diagnostic timeouts are capped at five minutes.
+
+Use the official [Playwright MCP](https://github.com/microsoft/playwright-mcp) or [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) server command. Pin package versions in long-lived project policies when reproducibility matters; changing the approved command is a policy review, not a Run-time Agent decision.
 
 For an asynchronous Candidate image, review [`examples/async-image.workflow.yaml`](examples/async-image.workflow.yaml) and [`examples/async-image.contract.yaml`](examples/async-image.contract.yaml). Each command prints one JSON object on its final non-empty stdout line:
 
@@ -264,3 +287,4 @@ Rerunning the same command after interruption reuses the immutable Contract hash
 6. Non-production Kubernetes Harness and Janitor. ✅
 7. MCP and Codex Skill interaction. ✅
 8. Claude Code CLI adapter and Contract-fixed provider routing. ✅
+9. Playwright MCP and Chrome DevTools MCP browser diagnostics. ✅

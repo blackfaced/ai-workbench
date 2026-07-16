@@ -29,6 +29,13 @@ class ProjectConfigError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class BrowserDiagnosticProfile:
+    adapter: str
+    command: Tuple[str, ...]
+    timeout_seconds: int
+
+
+@dataclass(frozen=True)
 class HarnessProfile:
     name: str
     kind: str
@@ -37,6 +44,7 @@ class HarnessProfile:
     ready_url: str = ""
     ready_timeout_seconds: int = 0
     browser_gate: str = ""
+    browser_diagnostic: Optional[BrowserDiagnosticProfile] = None
     kubernetes_context: str = ""
     namespace_prefix: str = ""
     ttl_seconds: int = 0
@@ -239,6 +247,12 @@ def _parse_harness_profile(
         raise ProjectConfigError(
             f"Harness profile {name!r} browser pass Evidence requires Playwright Test"
         )
+    browser_diagnostic = _parse_browser_diagnostic(
+        name,
+        value.get("browser_diagnostic"),
+        browser_gate,
+        approved_commands,
+    )
     return HarnessProfile(
         name=name,
         kind=kind,
@@ -247,6 +261,52 @@ def _parse_harness_profile(
         ready_url=ready_url,
         ready_timeout_seconds=ready_timeout,
         browser_gate=browser_gate,
+        browser_diagnostic=browser_diagnostic,
+    )
+
+
+def _parse_browser_diagnostic(
+    harness_name: str,
+    value: object,
+    browser_gate: str,
+    approved_commands: Tuple[Tuple[str, ...], ...],
+) -> Optional[BrowserDiagnosticProfile]:
+    if value is None:
+        return None
+    if browser_gate != "playwright":
+        raise ProjectConfigError(
+            f"Harness profile {harness_name!r} browser diagnostics require a Playwright gate"
+        )
+    if not isinstance(value, dict):
+        raise ProjectConfigError(
+            f"Harness profile {harness_name!r} browser_diagnostic must be a mapping"
+        )
+    adapter = value.get("adapter")
+    if adapter not in {"playwright-mcp", "chrome-devtools-mcp"}:
+        raise ProjectConfigError(
+            f"Harness profile {harness_name!r} browser diagnostic adapter is unsupported"
+        )
+    command = _command_tuple(
+        value.get("command"),
+        f"Harness {harness_name!r} browser diagnostic",
+    )
+    if command not in approved_commands:
+        raise ProjectConfigError(
+            f"Harness profile {harness_name!r} browser diagnostic command is not approved"
+        )
+    timeout_seconds = value.get("timeout_seconds", 120)
+    if (
+        not isinstance(timeout_seconds, int)
+        or timeout_seconds <= 0
+        or timeout_seconds > 300
+    ):
+        raise ProjectConfigError(
+            f"Harness profile {harness_name!r} browser diagnostic timeout must be 1-300 seconds"
+        )
+    return BrowserDiagnosticProfile(
+        adapter=str(adapter),
+        command=command,
+        timeout_seconds=timeout_seconds,
     )
 
 
@@ -304,11 +364,18 @@ def _parse_kubernetes_harness_profile(
         raise ProjectConfigError(
             f"Harness profile {name!r} browser pass Evidence requires Playwright Test"
         )
+    browser_diagnostic = _parse_browser_diagnostic(
+        name,
+        value.get("browser_diagnostic"),
+        browser_gate,
+        approved_commands,
+    )
     return HarnessProfile(
         name=name,
         kind="kubernetes",
         environment=environment,
         browser_gate=browser_gate,
+        browser_diagnostic=browser_diagnostic,
         kubernetes_context=context,
         namespace_prefix=namespace_prefix,
         ttl_seconds=ttl_seconds,
