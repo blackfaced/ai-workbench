@@ -14,4 +14,4 @@ This repository is a personal AI development workbench knowledge base.
 - Prefer one entry per file plus a directory `README.md` index.
 - Do not create new top-level directories without adding or updating an ADR.
 - Keep entries concise and practical: when to use, setup notes, evaluation status, and personal observations.
-
+- Treat engineering skills as lightweight and opt-in; do not impose a heavyweight process framework by default.
