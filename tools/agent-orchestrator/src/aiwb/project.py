@@ -63,11 +63,18 @@ class ImageProfile:
 
 
 @dataclass(frozen=True)
+class CandidatePublishProfile:
+    remote: str
+    branch_prefix: str
+
+
+@dataclass(frozen=True)
 class ProjectPolicy:
     repository: Path
     approved_commands: Tuple[Tuple[str, ...], ...]
     harness_profiles: Mapping[str, HarnessProfile]
     image_profiles: Mapping[str, ImageProfile]
+    candidate_publish: Optional[CandidatePublishProfile]
 
     @classmethod
     def load(cls, config_path: Path) -> "ProjectPolicy":
@@ -119,11 +126,13 @@ class ProjectPolicy:
             raise ProjectConfigError(detail)
         harness_profiles = _load_harness_profiles(data, tuple(approved_commands))
         image_profiles = _load_image_profiles(data, tuple(approved_commands))
+        candidate_publish = _load_candidate_publish_profile(data)
         return cls(
             repository=repository,
             approved_commands=tuple(approved_commands),
             harness_profiles=harness_profiles,
             image_profiles=image_profiles,
+            candidate_publish=candidate_publish,
         )
 
     def authorize(
@@ -164,6 +173,62 @@ class ProjectPolicy:
                 f"Contract image profile is not approved: {image_profile_name}"
             )
         return profile
+
+    def authorize_publish(self, repository: Path) -> Optional[CandidatePublishProfile]:
+        profile = self.candidate_publish
+        if profile is None:
+            return None
+        if Path(repository).resolve() != self.repository:
+            raise ProjectConfigError(
+                "Candidate publishing repository does not match project policy root"
+            )
+        remote = subprocess.run(
+            ["git", "-C", str(self.repository), "remote", "get-url", profile.remote],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if remote.returncode != 0:
+            raise ProjectConfigError(
+                f"Candidate publishing remote is not configured: {profile.remote}"
+            )
+        return profile
+
+
+def _load_candidate_publish_profile(
+    data: Mapping[str, object],
+) -> Optional[CandidatePublishProfile]:
+    publishing = data.get("publishing", {})
+    if not isinstance(publishing, dict):
+        raise ProjectConfigError("publishing must be a mapping")
+    candidate = publishing.get("candidate")
+    if candidate is None:
+        return None
+    if not isinstance(candidate, dict):
+        raise ProjectConfigError("publishing.candidate must be a mapping")
+    if candidate.get("approved") is not True:
+        raise ProjectConfigError("Candidate publishing must be explicitly approved")
+    remote = candidate.get("remote")
+    if (
+        not isinstance(remote, str)
+        or not remote
+        or remote.startswith("-")
+        or any(character.isspace() for character in remote)
+    ):
+        raise ProjectConfigError("Candidate publishing remote must be a safe Git remote")
+    branch_prefix = candidate.get("branch_prefix")
+    if (
+        not isinstance(branch_prefix, str)
+        or not branch_prefix.endswith("/")
+        or branch_prefix.startswith("/")
+        or ".." in branch_prefix
+        or any(character in branch_prefix for character in " ~^:?*[\\")
+    ):
+        raise ProjectConfigError(
+            "Candidate publishing branch_prefix must be a safe namespace ending in /"
+        )
+    return CandidatePublishProfile(remote=remote, branch_prefix=branch_prefix)
 
 
 def _load_harness_profiles(
@@ -709,9 +774,45 @@ class ProjectDoctor:
                 environment_detail,
             )
         )
+        publishing_ok, publishing_detail = self._validate_publishing(data, repository)
+        checks.append(
+            _check(
+                "publishing",
+                publishing_ok,
+                publishing_detail,
+                publishing_detail,
+            )
+        )
 
         status = "ok" if all(check.status == "pass" for check in checks) else "failed"
         return DoctorReport(status=status, checks=tuple(checks))
+
+    @staticmethod
+    def _validate_publishing(
+        data: Mapping[str, object],
+        repository: Optional[Path],
+    ) -> Tuple[bool, str]:
+        try:
+            profile = _load_candidate_publish_profile(data)
+        except ProjectConfigError as error:
+            return False, str(error)
+        if profile is None:
+            return True, "Candidate publishing is disabled"
+        if repository is None:
+            return False, "Candidate publishing requires a valid Git repository"
+        remote = subprocess.run(
+            ["git", "-C", str(repository), "remote", "get-url", profile.remote],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if remote.returncode != 0:
+            return False, f"Candidate publishing remote is not configured: {profile.remote}"
+        return (
+            True,
+            f"Candidate publishing is approved for {profile.remote}/{profile.branch_prefix}",
+        )
 
     @staticmethod
     def _validate_commands(
