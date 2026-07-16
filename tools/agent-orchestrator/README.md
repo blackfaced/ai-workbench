@@ -173,7 +173,25 @@ The Candidate merge-conflict repair tracer adds:
 - restart-safe continuation of the same in-progress merge only when its `MERGE_HEAD` matches the Todo branch;
 - rejection of unrelated merges, unresolved paths, unexpected staged changes, or unrelated tracked and untracked file changes.
 
-The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates. The tool does not yet include role-specific Skill injection; that can extend the same interfaces in a later tracer bullet.
+The lightweight role-guidance tracer adds:
+
+- optional project-owned `SKILL.md` text for `test_designer`, `implementer`, `verifier`, or `conflict_repairer` only;
+- explicit paths under the trusted repository, bounded UTF-8 content, and no ambient user Skill discovery or execution;
+- advisory injection into only the selected fresh Agent role; Contract and role safety constraints always take precedence;
+- Skill text in the Contract hash, so changing guidance creates a new Run rather than silently resuming an old one.
+
+For a concise, project-local implementation hint, review and add it explicitly to the approved workflow:
+
+```yaml
+capabilities:
+  skills:
+    implementer:
+      - .agents/skills/focused-implementation/SKILL.md
+```
+
+Keep these files focused on project conventions and suggestions. They do not execute scripts, change permissions, add commands, replace tests, or enable a heavy mandatory process.
+
+The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates.
 
 ## Try the Tracer Bullet
 
@@ -322,3 +340,4 @@ Rerunning the same command after interruption reuses the immutable Contract hash
 9. Playwright MCP and Chrome DevTools MCP browser diagnostics. ✅
 10. Policy-approved namespaced Candidate publication. ✅
 11. Bounded, restart-safe Candidate merge-conflict repair. ✅
+12. Optional, project-owned role guidance from bounded local Skills. ✅
