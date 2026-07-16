@@ -40,6 +40,7 @@ aiwb CLI ────┘                    ├── RunStore (SQLite)
                                  │   ├── CodexCliAdapter
                                  │   └── ClaudeCodeCliAdapter
                                  ├── CandidatePublisher
+                                 ├── MergeConflictRepairer
                                  ├── Project commands
                                  ├── Harness / ImageBuilder adapters
                                  └── KubernetesJanitor
@@ -163,7 +164,16 @@ The Candidate publication tracer adds:
 - restart-safe idempotence when Git push succeeds before the SQLite checkpoint is written;
 - normal fast-forward protection with no force-push path, so a diverged remote ref blocks publication without being overwritten.
 
-The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates. The tool does not yet include merge-conflict repair or role-specific Skill injection. Those extend the same interfaces in later tracer bullets.
+The Candidate merge-conflict repair tracer adds:
+
+- a fresh `conflict_repairer` Agent session only when a Todo branch conflicts while entering the Candidate;
+- a narrow repair contract that permits changes only to Git's existing unmerged paths and forbids the Agent from staging or committing;
+- runner-owned staging and merge commit creation after it confirms every conflict is resolved;
+- durable Todo session and repair-commit reporting, followed by the same authoritative Candidate gate;
+- restart-safe continuation of the same in-progress merge only when its `MERGE_HEAD` matches the Todo branch;
+- rejection of unrelated merges, unresolved paths, unexpected staged changes, or unrelated tracked and untracked file changes.
+
+The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates. The tool does not yet include role-specific Skill injection; that can extend the same interfaces in a later tracer bullet.
 
 ## Try the Tracer Bullet
 
@@ -311,3 +321,4 @@ Rerunning the same command after interruption reuses the immutable Contract hash
 8. Claude Code CLI adapter and Contract-fixed provider routing. ✅
 9. Playwright MCP and Chrome DevTools MCP browser diagnostics. ✅
 10. Policy-approved namespaced Candidate publication. ✅
+11. Bounded, restart-safe Candidate merge-conflict repair. ✅
