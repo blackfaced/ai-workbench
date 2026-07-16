@@ -1,0 +1,30 @@
+schema_version: 1
+
+goal:
+  id: greeting-goal
+  title: Add a greeting
+  requirement: Expose a greeting function for a supplied name.
+  acceptance:
+    - id: AC-1
+      statement: Greeting includes the supplied name.
+
+approval:
+  status: approved
+  approved_by: owner
+  approved_at: 2026-07-15T00:00:00Z
+
+agent:
+  provider: codex
+
+project:
+  repo: /absolute/path/to/trusted/project
+  base_ref: main
+
+todo:
+  id: T-1
+  title: Implement the greeting behavior
+
+test:
+  command: [python3, -m, pytest, -q]
+  allowed_paths: [tests/**]
+  timeout_seconds: 600

@@ -1,0 +1,28 @@
+schema_version: 1
+status: approved
+
+project:
+  root: /absolute/path/to/trusted/project
+  trusted: true
+
+capabilities:
+  commands:
+    browser_e2e:
+      argv: [npx, playwright, test]
+      approved: true
+    serve_local:
+      argv: [npm, run, dev]
+      approved: true
+  skills: {}
+
+harness:
+  profiles:
+    local-browser:
+      kind: local_process
+      environment: local
+      browser_gate: playwright
+      start:
+        command: [npm, run, dev]
+      ready:
+        url: http://127.0.0.1:{port}/health
+        timeout_seconds: 60

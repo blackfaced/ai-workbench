@@ -1,0 +1,11 @@
+{
+    "schema_version": 1,
+    "commit": "6db5cc7b3a66cec76d20ccf7d46f7724aa18d63a",
+    "indexed_at": "2026-07-15T08:11:41Z",
+    "project": "blackfaced-ai-workbench",
+    "nodes": 96,
+    "edges": 90,
+    "original_size": 1769472,
+    "compressed_size": 15262,
+    "compression_level": 3
+}

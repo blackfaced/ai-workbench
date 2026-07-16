@@ -1,0 +1,10 @@
+interface:
+  display_name: "Run Approved Goal"
+  short_description: "Submit and observe approved AI Workbench Goals"
+  default_prompt: "Use $run-approved-goal to submit this approved Contract and report its durable progress."
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "ai-workbench"
+      description: "Durable AI Workbench Goal control tools"
+      transport: "stdio"
