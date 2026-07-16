@@ -13,6 +13,13 @@ from urllib.parse import urlparse
 import yaml
 
 
+_ROLE_NAMES = frozenset(
+    {"test_designer", "implementer", "verifier", "conflict_repairer"}
+)
+_MAX_ROLE_SKILL_BYTES = 16 * 1024
+_MAX_ROLE_GUIDANCE_BYTES = 32 * 1024
+
+
 @dataclass(frozen=True)
 class ProjectInitResult:
     config: str
@@ -72,6 +79,7 @@ class CandidatePublishProfile:
 class ProjectPolicy:
     repository: Path
     approved_commands: Tuple[Tuple[str, ...], ...]
+    role_skill_texts: Mapping[str, Tuple[Tuple[str, str], ...]]
     harness_profiles: Mapping[str, HarnessProfile]
     image_profiles: Mapping[str, ImageProfile]
     candidate_publish: Optional[CandidatePublishProfile]
@@ -121,6 +129,7 @@ class ProjectPolicy:
                 )
             approved_commands.append(tuple(argv))
 
+        role_skill_texts = _load_role_skill_texts(capabilities, repository)
         environments_ok, detail = ProjectDoctor._validate_environments(data)
         if not environments_ok:
             raise ProjectConfigError(detail)
@@ -130,6 +139,7 @@ class ProjectPolicy:
         return cls(
             repository=repository,
             approved_commands=tuple(approved_commands),
+            role_skill_texts=role_skill_texts,
             harness_profiles=harness_profiles,
             image_profiles=image_profiles,
             candidate_publish=candidate_publish,
@@ -194,6 +204,77 @@ class ProjectPolicy:
                 f"Candidate publishing remote is not configured: {profile.remote}"
             )
         return profile
+
+
+def _load_role_skill_texts(
+    capabilities: Mapping[str, object],
+    repository: Path,
+) -> Mapping[str, Tuple[Tuple[str, str], ...]]:
+    skills = capabilities.get("skills", {})
+    if not isinstance(skills, dict):
+        raise ProjectConfigError("capabilities.skills must be a mapping")
+    role_skill_texts: Dict[str, Tuple[Tuple[str, str], ...]] = {}
+    for role, paths in skills.items():
+        if not isinstance(role, str) or role not in _ROLE_NAMES:
+            raise ProjectConfigError(f"capabilities.skills has unsupported role: {role!r}")
+        if not isinstance(paths, list) or not paths:
+            raise ProjectConfigError(
+                f"capabilities.skills.{role} must be a non-empty list of paths"
+            )
+        seen = set()
+        guidance_bytes = 0
+        entries = []
+        for value in paths:
+            if not isinstance(value, str) or not value:
+                raise ProjectConfigError(
+                    f"capabilities.skills.{role} paths must be non-empty strings"
+                )
+            relative_path = Path(value)
+            if (
+                relative_path.is_absolute()
+                or ".." in relative_path.parts
+                or relative_path.name != "SKILL.md"
+            ):
+                raise ProjectConfigError(
+                    f"capabilities.skills.{role} must reference a local SKILL.md"
+                )
+            resolved_path = (repository / relative_path).resolve()
+            try:
+                resolved_path.relative_to(repository)
+            except ValueError as error:
+                raise ProjectConfigError(
+                    f"capabilities.skills.{role} must stay inside project.root"
+                ) from error
+            if not resolved_path.is_file():
+                raise ProjectConfigError(
+                    f"capabilities.skills.{role} file does not exist: {value}"
+                )
+            stable_path = resolved_path.relative_to(repository).as_posix()
+            if stable_path in seen:
+                raise ProjectConfigError(
+                    f"capabilities.skills.{role} contains a duplicate path: {stable_path}"
+                )
+            try:
+                content = resolved_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as error:
+                raise ProjectConfigError(
+                    f"cannot read capabilities.skills.{role}: {error}"
+                ) from error
+            content_bytes = len(content.encode("utf-8"))
+            if not content.strip() or content_bytes > _MAX_ROLE_SKILL_BYTES:
+                raise ProjectConfigError(
+                    f"capabilities.skills.{role} must be non-empty and at most "
+                    f"{_MAX_ROLE_SKILL_BYTES} bytes"
+                )
+            guidance_bytes += content_bytes
+            if guidance_bytes > _MAX_ROLE_GUIDANCE_BYTES:
+                raise ProjectConfigError(
+                    f"capabilities.skills.{role} exceeds {_MAX_ROLE_GUIDANCE_BYTES} bytes"
+                )
+            seen.add(stable_path)
+            entries.append((stable_path, content))
+        role_skill_texts[role] = tuple(entries)
+    return role_skill_texts
 
 
 def _load_candidate_publish_profile(

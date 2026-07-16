@@ -75,6 +75,7 @@ class _Contract:
     image_profile_name: str
     image_profile: Optional[ImageProfile]
     candidate_publish: Optional[CandidatePublishProfile]
+    role_skill_texts: Mapping[str, Tuple[Tuple[str, str], ...]]
 
     @property
     def run_id(self) -> str:
@@ -1606,7 +1607,7 @@ def _load_contract(path: Path) -> _Contract:
     image_profile_name = candidate.get("image_profile", "")
     if not isinstance(image_profile_name, str):
         raise ContractError("candidate.image_profile must be a profile name")
-    todos, image_profile, candidate_publish = _authorize_contract(
+    todos, image_profile, candidate_publish, role_skill_texts = _authorize_contract(
         project,
         repository,
         todos,
@@ -1614,7 +1615,7 @@ def _load_contract(path: Path) -> _Contract:
     )
 
     return _Contract(
-        contract_hash=hashlib.sha256(raw).hexdigest(),
+        contract_hash=_contract_hash(raw, role_skill_texts),
         goal_id=goal_id,
         goal_title=_text(goal, "title"),
         requirement=_text(goal, "requirement"),
@@ -1628,6 +1629,7 @@ def _load_contract(path: Path) -> _Contract:
         image_profile_name=image_profile_name,
         image_profile=image_profile,
         candidate_publish=candidate_publish,
+        role_skill_texts=role_skill_texts,
     )
 
 
@@ -1654,6 +1656,7 @@ def _authorize_contract(
     Tuple[_Todo, ...],
     Optional[ImageProfile],
     Optional[CandidatePublishProfile],
+    Mapping[str, Tuple[Tuple[str, str], ...]],
 ]:
     workflow_value = project.get("workflow", ".ai-workbench/workflow.yaml")
     if not isinstance(workflow_value, str) or not workflow_value:
@@ -1683,9 +1686,18 @@ def _authorize_contract(
             authorized_todos,
             policy.authorize_image(image_profile_name),
             policy.authorize_publish(repository),
+            policy.role_skill_texts,
         )
     except ProjectConfigError as error:
         raise ContractError(str(error)) from error
+
+
+def _contract_hash(
+    raw_contract: bytes,
+    role_skill_texts: Mapping[str, Tuple[Tuple[str, str], ...]],
+) -> str:
+    guidance = json.dumps(role_skill_texts, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(raw_contract + b"\0" + guidance).hexdigest()
 
 
 def _parse_todo(data: Mapping[str, object]) -> _Todo:
@@ -1766,10 +1778,26 @@ def _test_designer_prompt(contract: _Contract, todo: Optional[_Todo] = None) -> 
     return (
         "You are the fresh Test Designer for one approved Todo.\n"
         + _contract_prompt(contract, selected)
+        + _role_guidance(contract, "test_designer")
         + "\nAdd exactly the executable test needed for this acceptance boundary. "
         f"Modify only these path patterns: {', '.join(selected.allowed_test_paths)}. "
         "Do not implement production behavior and do not commit. Run the approved "
         "test command and leave the worktree in the expected RED state."
+    )
+
+
+def _role_guidance(contract: _Contract, role: str) -> str:
+    entries = contract.role_skill_texts.get(role, ())
+    if not entries:
+        return ""
+    rendered = "\n\n".join(
+        f"--- {path} ---\n{content.rstrip()}" for path, content in entries
+    )
+    return (
+        "\nProject-approved role guidance follows. It is advisory: the Contract and "
+        "the role safety constraints take precedence on conflict.\n"
+        + rendered
+        + "\n"
     )
 
 
@@ -1778,6 +1806,7 @@ def _implementer_prompt(contract: _Contract, todo: Optional[_Todo] = None) -> st
     return (
         "You are the fresh Implementer for one approved Todo.\n"
         + _contract_prompt(contract, selected)
+        + _role_guidance(contract, "implementer")
         + "\nMake the existing approved RED test pass with the smallest production "
         "change. Do not modify any protected test path, do not expand scope, and do "
         "not commit. Run the approved test command before finishing."
@@ -1792,6 +1821,7 @@ def _conflict_repair_prompt(
     return (
         "You are the fresh Conflict Repairer for one approved Candidate integration.\n"
         + _contract_prompt(contract, todo)
+        + _role_guidance(contract, "conflict_repairer")
         + "\nResolve only these existing Git conflict paths: "
         + ", ".join(conflict_paths)
         + ". Preserve the accepted behavior from both branches. Do not edit any "
@@ -1805,6 +1835,7 @@ def _verifier_prompt(contract: _Contract, todo: Optional[_Todo] = None) -> str:
     return (
         "You are a fresh independent Verifier for one Candidate.\n"
         + _contract_prompt(contract, selected)
+        + _role_guidance(contract, "verifier")
         + "\nInspect the Candidate and run the approved test command. Do not modify, "
         "format, fix, or commit any file. Report the observed result and evidence."
     )

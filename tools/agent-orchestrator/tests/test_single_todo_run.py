@@ -26,11 +26,13 @@ class ScriptedAgentAdapter:
         self.roles = []
         self.providers = []
         self.models = []
+        self.prompts = []
 
     def run(self, request: AgentRequest) -> AgentResult:
         self.roles.append(request.role)
         self.providers.append(request.provider)
         self.models.append(request.model)
+        self.prompts.append((request.role, request.prompt))
         worktree = Path(request.worktree)
 
         if request.role == "test_designer":
@@ -75,7 +77,17 @@ class SingleTodoRunTest(unittest.TestCase):
                 encoding="utf-8",
             )
             (repository / "README.md").write_text("# Fixture project\n", encoding="utf-8")
-            self._write_policy(repository, test_command)
+            skill = repository / ".agents" / "skills" / "focused" / "SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text(
+                "# Focused work\n\nPrefer the smallest accepted change.\n",
+                encoding="utf-8",
+            )
+            self._write_policy(
+                repository,
+                test_command,
+                {"implementer": [".agents/skills/focused/SKILL.md"]},
+            )
             self._git(repository, "add", ".")
             self._git(repository, "commit", "-m", "Initial fixture")
 
@@ -152,10 +164,34 @@ class SingleTodoRunTest(unittest.TestCase):
                 ["claude-code", "claude-code"],
             )
             self.assertEqual(resumed_adapter.models, ["sonnet", "sonnet"])
+            self.assertIn(
+                "Prefer the smallest accepted change.",
+                resumed_adapter.prompts[0][1],
+            )
+            self.assertNotIn(
+                "Prefer the smallest accepted change.",
+                resumed_adapter.prompts[1][1],
+            )
             self.assertNotEqual(report.red_commit, report.code_commit)
             self.assertEqual(
                 self._git(repository, "show", f"{report.branch}:greeting.py").stdout,
                 "def greeting(name):\n    return f'Hello, {name}!'\n",
+            )
+
+            skill.write_text(
+                "# Focused work\n\nPrefer a documented, small accepted change.\n",
+                encoding="utf-8",
+            )
+            changed_guidance_adapter = ScriptedAgentAdapter()
+            changed_guidance_report = GoalRunner(
+                state_dir=state_dir,
+                agent=changed_guidance_adapter,
+            ).run(contract_path)
+
+            self.assertNotEqual(changed_guidance_report.run_id, report.run_id)
+            self.assertIn(
+                "Prefer a documented, small accepted change.",
+                changed_guidance_adapter.prompts[1][1],
             )
 
     @staticmethod
@@ -170,7 +206,7 @@ class SingleTodoRunTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _write_policy(repository: Path, command) -> None:
+    def _write_policy(repository: Path, command, skills: dict[str, object]) -> None:
         workflow = repository / ".ai-workbench" / "workflow.yaml"
         workflow.parent.mkdir()
         workflow.write_text(
@@ -183,7 +219,7 @@ class SingleTodoRunTest(unittest.TestCase):
                         "commands": {
                             "unit": {"argv": command, "approved": True}
                         },
-                        "skills": {},
+                        "skills": skills,
                     },
                     "harness": {"profiles": {"local": {"environment": "local"}}},
                 },

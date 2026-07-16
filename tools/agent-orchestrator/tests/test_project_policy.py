@@ -134,6 +134,94 @@ def test_project_policy_rejects_a_production_image_profile() -> None:
             ProjectPolicy.load(workflow)
 
 
+def test_project_policy_loads_explicit_local_role_skills() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        skill = repository / ".agents" / "skills" / "focused-implementation" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        skill.write_text(
+            "# Focused implementation\n\nKeep the production change small.\n",
+            encoding="utf-8",
+        )
+        command = [sys.executable, "-m", "pytest", "-q"]
+        workflow = repository / ".ai-workbench" / "workflow.yaml"
+        workflow.parent.mkdir()
+        workflow.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {"argv": command, "approved": True},
+                        },
+                        "skills": {
+                            "implementer": [
+                                ".agents/skills/focused-implementation/SKILL.md",
+                            ],
+                        },
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        policy = ProjectPolicy.load(workflow)
+
+        assert policy.role_skill_texts == {
+            "implementer": (
+                (
+                    ".agents/skills/focused-implementation/SKILL.md",
+                    "# Focused implementation\n\nKeep the production change small.\n",
+                ),
+            ),
+        }
+
+
+@pytest.mark.parametrize(
+    ("skills", "message"),
+    [
+        ({"planner": ["skills/plan/SKILL.md"]}, "unsupported role"),
+        ({"implementer": ["../outside/SKILL.md"]}, "local SKILL.md"),
+        ({"implementer": ["skills/missing/SKILL.md"]}, "does not exist"),
+    ],
+)
+def test_project_policy_rejects_unsafe_or_unknown_role_skills(
+    skills: dict[str, object],
+    message: str,
+) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        command = [sys.executable, "-m", "pytest", "-q"]
+        workflow = repository / ".ai-workbench" / "workflow.yaml"
+        workflow.parent.mkdir()
+        workflow.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {"argv": command, "approved": True},
+                        },
+                        "skills": skills,
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ProjectConfigError, match=message):
+            ProjectPolicy.load(workflow)
+
+
 @pytest.mark.parametrize(
     ("candidate", "message"),
     [
