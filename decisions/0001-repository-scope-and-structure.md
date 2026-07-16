@@ -10,7 +10,6 @@ This repository is intended for personal use. It should help record useful AI sk
 
 The first known sources include:
 
-- `superpowers`
 - `mattpocock/skills`
 - `xbtlin/ai-berkshire`
 - `ChromeDevTools/chrome-devtools-mcp`
@@ -49,3 +48,4 @@ Domain-specific resources, such as `ai-berkshire`, remain discoverable through m
 
 New top-level directories require an ADR update, which prevents the structure from drifting during casual additions.
 
+Historical note: the original source list included a `superpowers` skill collection. It was removed under issue #2 because this repository favors small, opt-in skills over a heavyweight default process framework. This note preserves the decision history; it is not an active recommendation or dependency.

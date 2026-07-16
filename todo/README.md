@@ -13,7 +13,6 @@ These are owner tasks, not repository governance decisions. Durable structure ru
 - [ ] Compare Chrome DevTools MCP and Playwright MCP for browser debugging and UI smoke tests.
 - [ ] Evaluate Context7 on one library/API upgrade task.
 - [ ] Evaluate Chrome DevTools MCP for browser debugging workflows.
-- [ ] Summarize which `superpowers` skills are worth using by default.
 - [ ] Evaluate `mattpocock/skills` and choose which skills to install or adapt.
 - [ ] Review `ai-berkshire` and decide whether it fits the personal investing research process.
 
