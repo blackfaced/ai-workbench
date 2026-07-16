@@ -13,6 +13,9 @@ capabilities:
     serve_local:
       argv: [npm, run, dev]
       approved: true
+    diagnose_browser:
+      argv: [npx, -y, "@playwright/mcp@latest", --headless]
+      approved: true
   skills: {}
 
 harness:
@@ -21,6 +24,10 @@ harness:
       kind: local_process
       environment: local
       browser_gate: playwright
+      browser_diagnostic:
+        adapter: playwright-mcp
+        command: [npx, -y, "@playwright/mcp@latest", --headless]
+        timeout_seconds: 120
       start:
         command: [npm, run, dev]
       ready:

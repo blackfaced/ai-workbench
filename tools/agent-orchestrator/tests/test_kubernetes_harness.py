@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +22,9 @@ from aiwb import (  # noqa: E402
     AgentRequest,
     AgentResult,
     AgentDaemon,
+    BrowserDiagnosticProfile,
+    BrowserDiagnosticRequest,
+    BrowserDiagnosticResult,
     DaemonClient,
     GoalRunner,
     HarnessError,
@@ -29,6 +33,23 @@ from aiwb import (  # noqa: E402
     ProjectPolicy,
 )
 from aiwb.harness import HarnessRequest  # noqa: E402
+
+
+class RecordingKubernetesBrowserDiagnosticAdapter:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def diagnose(self, request: BrowserDiagnosticRequest) -> BrowserDiagnosticResult:
+        assert (self._root / "cluster-resource").exists()
+        with (self._root / "events.log").open("a", encoding="utf-8") as events:
+            events.write("diagnose\n")
+        artifact = request.artifact_dir / "cluster-browser-snapshot.json"
+        artifact.write_text('{"page":"reachable"}\n', encoding="utf-8")
+        return BrowserDiagnosticResult(
+            adapter=request.profile.adapter,
+            summary="diagnosed live non-production target",
+            artifacts=(str(artifact),),
+        )
 
 
 def test_non_production_kubernetes_harness_is_isolated_and_always_cleaned() -> None:
@@ -66,6 +87,91 @@ def test_non_production_kubernetes_harness_is_isolated_and_always_cleaned() -> N
         assert not (root / "cluster-resource").exists()
         assert any(Path(path).name == "cluster-evidence.log" for path in result.artifacts)
         assert not list((root / "state" / "kubernetes-leases").glob("*.json"))
+
+
+def test_failed_kubernetes_browser_gate_is_diagnosed_before_collect_and_cleanup() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = root / "project"
+        repository.mkdir()
+        commands = _write_fixture_commands(repository, root)
+        (repository / "gate.py").write_text("raise SystemExit(19)\n", encoding="utf-8")
+        policy = _write_policy(repository, commands)
+        profile = policy.authorize(repository, commands["gate"], "dev-cluster")
+        assert profile is not None
+        profile = replace(
+            profile,
+            browser_gate="playwright",
+            browser_diagnostic=BrowserDiagnosticProfile(
+                adapter="chrome-devtools-mcp",
+                command=(sys.executable, "fake-mcp.py"),
+                timeout_seconds=30,
+            ),
+        )
+
+        result = KubernetesHarness(
+            root / "state",
+            browser_diagnostics=RecordingKubernetesBrowserDiagnosticAdapter(root),
+        ).execute(
+            HarnessRequest(
+                profile=profile,
+                command=commands["gate"],
+                cwd=repository,
+                timeout_seconds=30,
+                run_id="run-123",
+                execution_id="T-1:verify",
+                artifact_dir=root / "evidence",
+                stage="verify",
+            )
+        )
+
+        assert result.returncode == 19
+        assert result.browser_diagnostic is not None
+        assert result.browser_diagnostic.adapter == "chrome-devtools-mcp"
+        assert (root / "events.log").read_text(encoding="utf-8").splitlines() == [
+            "provision",
+            "diagnose",
+            "collect",
+            "cleanup",
+        ]
+        assert not (root / "cluster-resource").exists()
+
+
+def test_kubernetes_policy_loads_approved_browser_diagnostics() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = root / "project"
+        repository.mkdir()
+        commands = _write_fixture_commands(repository, root)
+        commands["gate"] = (sys.executable, "playwright-gate.py")
+        commands["browser_diagnostic"] = (
+            sys.executable,
+            "chrome-devtools-mcp.py",
+        )
+        _write_policy(repository, commands)
+        workflow = repository / ".ai-workbench" / "workflow.yaml"
+        data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+        profile_data = data["harness"]["profiles"]["dev-cluster"]
+        profile_data["browser_gate"] = "playwright"
+        profile_data["browser_diagnostic"] = {
+            "adapter": "chrome-devtools-mcp",
+            "command": list(commands["browser_diagnostic"]),
+            "timeout_seconds": 120,
+        }
+        workflow.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+        profile = ProjectPolicy.load(workflow).authorize(
+            repository,
+            commands["gate"],
+            "dev-cluster",
+        )
+
+        assert profile is not None
+        assert profile.browser_diagnostic == BrowserDiagnosticProfile(
+            adapter="chrome-devtools-mcp",
+            command=commands["browser_diagnostic"],
+            timeout_seconds=120,
+        )
 
 
 class KubernetesFeatureAgent:

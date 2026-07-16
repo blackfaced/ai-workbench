@@ -8,13 +8,27 @@ from .agent import (
     ClaudeCodeCliAdapter,
     CodexCliAdapter,
 )
+from .browser import (
+    BrowserDiagnosticAdapter,
+    BrowserDiagnosticError,
+    BrowserDiagnosticRequest,
+    BrowserDiagnosticResult,
+    McpBrowserDiagnosticAdapter,
+)
 from .daemon import AgentDaemon, DaemonClient, DaemonError, RunStatus
-from .harness import HarnessError
+from .harness import (
+    HarnessError,
+    HarnessExecution,
+    HarnessRequest,
+    LocalProcessHarness,
+)
 from .image import ImageBuildError
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
 from .project import (
+    BrowserDiagnosticProfile,
     DoctorCheck,
     DoctorReport,
+    HarnessProfile,
     ProjectConfigError,
     ProjectDoctor,
     ProjectInitError,
@@ -31,6 +45,11 @@ __all__ = [
     "AgentRequest",
     "AgentResult",
     "AgentRouter",
+    "BrowserDiagnosticAdapter",
+    "BrowserDiagnosticError",
+    "BrowserDiagnosticProfile",
+    "BrowserDiagnosticRequest",
+    "BrowserDiagnosticResult",
     "ClaudeCodeCliAdapter",
     "CodexCliAdapter",
     "ContractError",
@@ -41,6 +60,9 @@ __all__ = [
     "GoalRunner",
     "GateError",
     "HarnessError",
+    "HarnessExecution",
+    "HarnessProfile",
+    "HarnessRequest",
     "ImageBuildError",
     "KubernetesHarness",
     "KubernetesJanitor",
@@ -48,6 +70,8 @@ __all__ = [
     "LaunchdError",
     "LaunchdInstallResult",
     "LaunchdService",
+    "LocalProcessHarness",
+    "McpBrowserDiagnosticAdapter",
     "ProjectInitError",
     "ProjectInitializer",
     "ProjectInitResult",

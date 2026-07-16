@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 import yaml
 
 from .agent import AgentAdapter, AgentRequest, AgentResult
+from .browser import McpBrowserDiagnosticAdapter
 from .harness import HarnessAdapter, HarnessRequest, LocalProcessHarness
 from .image import CommandImageBuilder, ImageBuildRequest
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
@@ -229,9 +230,10 @@ class GoalRunner:
         self._agent = agent
         self._max_workers = max_workers
         self._git_lock = threading.Lock()
+        browser_diagnostics = McpBrowserDiagnosticAdapter()
         self._harnesses: Mapping[str, HarnessAdapter] = {
-            "local_process": LocalProcessHarness(),
-            "kubernetes": KubernetesHarness(self._state_dir),
+            "local_process": LocalProcessHarness(browser_diagnostics),
+            "kubernetes": KubernetesHarness(self._state_dir, browser_diagnostics),
         }
         self._kubernetes_janitor = KubernetesJanitor(self._state_dir)
         self._image_builder = CommandImageBuilder()
@@ -847,18 +849,32 @@ class GoalRunner:
             run_id=contract.run_id,
             artifact_dir=artifact_dir,
             execution_id=f"{todo.todo_id}:{stage}",
+            stage=stage,
         ))
+        stderr = result.stderr
+        artifacts = result.artifacts
+        if result.browser_diagnostic is not None:
+            diagnostic = result.browser_diagnostic
+            diagnostic_detail = (
+                f"Browser diagnostic ({diagnostic.adapter}): {diagnostic.summary}"
+            )
+            if diagnostic.error:
+                diagnostic_detail += f" Error: {diagnostic.error}"
+            if diagnostic.artifacts:
+                diagnostic_detail += " Artifacts: " + ", ".join(diagnostic.artifacts)
+            stderr = "\n".join(part for part in (stderr, diagnostic_detail) if part)
+            artifacts = artifacts + diagnostic.artifacts
         return CommandEvidence(
             stage=stage,
             command=todo.test_command,
             returncode=result.returncode,
             stdout=result.stdout,
-            stderr=result.stderr,
+            stderr=stderr,
             recorded_at=_now(),
             harness_profile=todo.harness.name,
             environment=result.environment,
             base_url=result.base_url,
-            artifacts=result.artifacts,
+            artifacts=artifacts,
         )
 
     def _report(self, record: Mapping[str, Any]) -> RunReport:

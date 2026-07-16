@@ -7,11 +7,16 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Protocol, Sequence, Tuple
+from typing import Mapping, Optional, Protocol, Sequence, Tuple
 from urllib.error import URLError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
+from .browser import (
+    BrowserDiagnosticAdapter,
+    BrowserDiagnosticRequest,
+    BrowserDiagnosticResult,
+)
 from .project import HarnessProfile
 
 
@@ -27,6 +32,7 @@ class HarnessExecution:
     base_url: str
     artifacts: Tuple[str, ...]
     environment: str = ""
+    browser_diagnostic: Optional[BrowserDiagnosticResult] = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +44,7 @@ class HarnessRequest:
     run_id: str
     artifact_dir: Path
     execution_id: str = ""
+    stage: str = ""
 
 
 class HarnessAdapter(Protocol):
@@ -47,6 +54,12 @@ class HarnessAdapter(Protocol):
 
 class LocalProcessHarness:
     """Run one command against a disposable loopback service."""
+
+    def __init__(
+        self,
+        browser_diagnostics: Optional[BrowserDiagnosticAdapter] = None,
+    ) -> None:
+        self._browser_diagnostics = browser_diagnostics
 
     def execute(self, request: HarnessRequest) -> HarnessExecution:
         profile = request.profile
@@ -66,6 +79,7 @@ class LocalProcessHarness:
             artifact_dir=artifact_dir,
         )
 
+        browser_diagnostic = None
         with service_stdout.open("w", encoding="utf-8") as stdout_file, service_stderr.open(
             "w", encoding="utf-8"
         ) as stderr_file:
@@ -90,6 +104,39 @@ class LocalProcessHarness:
                     stderr=subprocess.PIPE,
                     timeout=request.timeout_seconds,
                 )
+                if (
+                    completed.returncode != 0
+                    and request.stage != "red"
+                    and profile.browser_diagnostic is not None
+                    and self._browser_diagnostics is not None
+                ):
+                    diagnostic_dir = artifact_dir / "browser-diagnostic"
+                    diagnostic_dir.mkdir(parents=True, exist_ok=True)
+                    diagnostic_request = BrowserDiagnosticRequest(
+                        profile=profile.browser_diagnostic,
+                        base_url=base_url,
+                        cwd=request.cwd,
+                        artifact_dir=diagnostic_dir,
+                        run_id=request.run_id,
+                        execution_id=request.execution_id,
+                        gate_stdout=completed.stdout,
+                        gate_stderr=completed.stderr,
+                    )
+                    try:
+                        browser_diagnostic = self._browser_diagnostics.diagnose(
+                            diagnostic_request
+                        )
+                    except Exception as error:
+                        browser_diagnostic = BrowserDiagnosticResult(
+                            adapter=profile.browser_diagnostic.adapter,
+                            summary="browser diagnostic failed",
+                            artifacts=tuple(
+                                str(path)
+                                for path in sorted(diagnostic_dir.iterdir())
+                                if path.is_file()
+                            ),
+                            error=str(error),
+                        )
             except HarnessError as error:
                 raise HarnessError(
                     f"{error}; service logs: {service_stdout}, {service_stderr}"
@@ -104,6 +151,7 @@ class LocalProcessHarness:
             base_url=base_url,
             artifacts=(str(service_stdout), str(service_stderr)),
             environment=profile.environment,
+            browser_diagnostic=browser_diagnostic,
         )
 
 

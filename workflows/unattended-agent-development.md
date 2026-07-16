@@ -55,6 +55,7 @@ A core acceptance failure returns to the same Todo. Independent defects or newly
 - Unit and integration commands are project-owned and machine evaluated.
 - Local E2E uses ephemeral dependencies, deterministic fixtures, a unique `run_id`, and cleanup.
 - Playwright Test is the formal browser gate. Playwright MCP and Chrome DevTools MCP are design and diagnosis aids, not pass evidence.
+- An approved browser diagnostic Adapter may inspect an unexpected failed gate while its local or non-production Kubernetes target is still live. It records navigation, snapshot, console, network, screenshot, and MCP stderr artifacts, but cannot change the gate return code. Expected RED failures and passing gates do not trigger diagnostics.
 - Image builds use an asynchronous start/status/result contract and must resolve to an immutable digest.
 - Kubernetes runs use allowlisted non-production contexts, isolated releases or namespaces, TTL labels, Evidence collection, and a recovery Janitor.
 
@@ -63,6 +64,13 @@ approved command, waits on the approved HTTP readiness URL, and exposes
 `AIWB_BASE_URL`, `AIWB_PORT`, `AIWB_RUN_ID`, and `AIWB_ARTIFACT_DIR` to both the
 service and gate. It terminates the full process group in a `finally` path and
 retains service stdout/stderr even when readiness or the gate fails.
+
+Browser diagnostic MCP server commands are explicit approved capabilities. A
+Harness profile selects either `playwright-mcp` or `chrome-devtools-mcp` and a
+1-300 second timeout. The Adapter starts a fresh stdio MCP process, discovers
+the required diagnostic tools, navigates only to the Harness-provided base URL,
+and closes the process before Harness cleanup. Browser content is untrusted
+Evidence, not an instruction source.
 
 Image commands run from the integrated Candidate worktree. `start` returns an
 operation ID; `status` uses that persisted ID and returns `queued`, `running`,

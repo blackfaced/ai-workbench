@@ -19,6 +19,7 @@ sys.path.insert(0, str(TOOL_ROOT / "src"))
 from aiwb import (  # noqa: E402
     AgentRequest,
     AgentResult,
+    GateError,
     GoalRunner,
     HarnessError,
     ProjectConfigError,
@@ -51,6 +52,18 @@ class BrowserFeatureAgent:
             session_id=f"{request.role}-session",
             final_output="completed",
         )
+
+
+class BrokenBrowserFeatureAgent(BrowserFeatureAgent):
+    def run(self, request: AgentRequest) -> AgentResult:
+        result = super().run(request)
+        if request.role == "implementer":
+            (Path(request.worktree) / "app.py").write_text(
+                "def message():\n"
+                "    return 'Still broken'\n",
+                encoding="utf-8",
+            )
+        return result
 
 
 def test_local_e2e_harness_runs_gate_collects_logs_and_cleans_up() -> None:
@@ -117,6 +130,80 @@ def test_browser_pass_evidence_requires_playwright_test() -> None:
         assert "Playwright Test" in next(
             check.detail for check in report.checks if check.name == "non_production"
         )
+
+
+def test_goal_runner_diagnoses_unexpected_browser_failure_but_not_red_gate() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        fake_mcp = repository / "fake_mcp.py"
+        fake_mcp.write_text(
+            "import base64,json,sys\n"
+            "tools = ['browser_navigate','browser_snapshot','browser_console_messages','browser_network_requests','browser_take_screenshot']\n"
+            "for line in sys.stdin:\n"
+            " request = json.loads(line)\n"
+            " if 'id' not in request:\n"
+            "  continue\n"
+            " if request['method'] == 'initialize':\n"
+            "  result = {'protocolVersion':'2025-11-25','capabilities':{'tools':{}},'serverInfo':{'name':'fake','version':'1'}}\n"
+            " elif request['method'] == 'tools/list':\n"
+            "  result = {'tools':[{'name':name,'inputSchema':{'type':'object'}} for name in tools]}\n"
+            " else:\n"
+            "  name = request['params']['name']\n"
+            "  result = {'content':[{'type':'text','text':name}]}\n"
+            "  if name == 'browser_take_screenshot':\n"
+            "   result = {'content':[{'type':'image','mimeType':'image/png','data':base64.b64encode(b'png').decode()}]}\n"
+            " print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}), flush=True)\n",
+            encoding="utf-8",
+        )
+        diagnostic_command = [sys.executable, "fake_mcp.py"]
+        playwright_command = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-W",
+            "ignore:playwright",
+        ]
+        workflow = repository / ".ai-workbench" / "workflow.yaml"
+        data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+        data["capabilities"]["commands"]["browser_e2e"]["argv"] = playwright_command
+        data["capabilities"]["commands"]["browser_diagnostic"] = {
+            "argv": diagnostic_command,
+            "approved": True,
+        }
+        profile = data["harness"]["profiles"]["local-e2e"]
+        profile["browser_gate"] = "playwright"
+        profile["browser_diagnostic"] = {
+            "adapter": "playwright-mcp",
+            "command": diagnostic_command,
+            "timeout_seconds": 10,
+        }
+        workflow.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        _git(repository, "add", ".")
+        _git(repository, "commit", "-m", "Add approved browser diagnostics")
+        contract = _write_contract(root, repository)
+        contract_data = yaml.safe_load(contract.read_text(encoding="utf-8"))
+        contract_data["test"]["command"] = playwright_command
+        contract.write_text(
+            yaml.safe_dump(contract_data, sort_keys=False),
+            encoding="utf-8",
+        )
+        runner = GoalRunner(state_dir=root / "state", agent=BrokenBrowserFeatureAgent())
+        prepared = runner.prepare(contract)
+
+        with pytest.raises(GateError, match="GREEN gate failed") as failure:
+            runner.run(contract)
+
+        evidence_root = root / "state" / "evidence" / prepared.run_id / "T-1"
+        assert not (evidence_root / "red" / "browser-diagnostic").exists()
+        diagnostic_dir = evidence_root / "green" / "browser-diagnostic"
+        assert (diagnostic_dir / "snapshot.json").is_file()
+        assert (diagnostic_dir / "console.json").is_file()
+        assert (diagnostic_dir / "network.json").is_file()
+        assert (diagnostic_dir / "browser-screenshot.png").is_file()
+        assert "Captured 5 browser observations" in str(failure.value)
+        assert str(diagnostic_dir / "snapshot.json") in str(failure.value)
 
 
 def _create_repository(root: Path, unready: bool = False) -> Path:
