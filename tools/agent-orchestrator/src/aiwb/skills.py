@@ -102,8 +102,9 @@ class SkillCatalog:
         if not repository.is_dir():
             raise ValueError(f"repository is not a directory: {repository}")
         skills = list(self._BUNDLED)
+        indexes_by_name = {skill.name: index for index, skill in enumerate(skills)}
         warnings = []
-        seen = set()
+        seen_paths = set()
         for root_name in (".agents/skills", ".claude/skills", ".codex/skills", "skills"):
             root = repository / root_name
             if not root.is_dir():
@@ -113,9 +114,16 @@ class SkillCatalog:
                 relative = path.relative_to(repository).as_posix()
                 if descriptor is None:
                     warnings.append(f"ignored invalid Skill: {relative}")
-                elif descriptor.path not in seen:
-                    seen.add(descriptor.path)
-                    skills.append(descriptor)
+                elif descriptor.path not in seen_paths:
+                    seen_paths.add(descriptor.path)
+                    existing_index = indexes_by_name.get(descriptor.name)
+                    if existing_index is None:
+                        indexes_by_name[descriptor.name] = len(skills)
+                        skills.append(descriptor)
+                    elif skills[existing_index].source == "bundled":
+                        skills[existing_index] = descriptor
+                    else:
+                        warnings.append(f"ignored duplicate Skill name: {relative}")
         return SkillCatalogSnapshot(skills=tuple(skills), warnings=tuple(warnings))
 
     def bundled_source(self, name: str) -> Path:

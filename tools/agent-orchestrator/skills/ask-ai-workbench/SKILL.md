@@ -11,6 +11,17 @@ Given a concrete repository path and task description, run:
 aiwb skills ask --repo /path/to/repository --task "describe the task"
 ```
 
+In this source checkout, when `aiwb` is not installed on `PATH`, use the
+equivalent command from the repository root:
+
+```bash
+PYTHONPATH=tools/agent-orchestrator/src python3 -m aiwb skills ask \
+  --repo /path/to/repository --task "describe the task"
+```
+
+Do not install or modify a global CLI configuration unless the user separately
+asks for it.
+
 Return the recommendations and their short match reasons. Recommending no Skill
 is a normal result.
 

@@ -50,3 +50,29 @@ def test_catalog_distinguishes_project_local_skills_and_ignores_invalid_entries(
         assert local.source == "project"
         assert local.path == ".agents/skills/release-notes/SKILL.md"
         assert snapshot.warnings == ("ignored invalid Skill: skills/broken/SKILL.md",)
+
+
+def test_catalog_prefers_a_project_copy_of_a_bundled_skill() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        copied = repository / ".codex" / "skills" / "ask-ai-workbench" / "SKILL.md"
+        copied.parent.mkdir(parents=True)
+        copied.write_text(
+            "---\n"
+            "name: ask-ai-workbench\n"
+            "description: Recommend optional Skills for a task without action.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+
+        snapshot = SkillCatalog().inspect(repository)
+        result = SkillCatalog().recommend(
+            repository,
+            "recommend optional skills for this workbench task",
+        )
+
+        matching = [skill for skill in snapshot.skills if skill.name == "ask-ai-workbench"]
+        assert [(skill.source, skill.path) for skill in matching] == [
+            ("project", ".codex/skills/ask-ai-workbench/SKILL.md"),
+        ]
+        assert [item.name for item in result.recommendations] == ["ask-ai-workbench"]

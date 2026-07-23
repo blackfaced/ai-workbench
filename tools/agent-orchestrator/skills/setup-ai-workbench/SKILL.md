@@ -16,6 +16,17 @@ Require a concrete repository path. Run:
 aiwb setup --repo /path/to/repository
 ```
 
+In this source checkout, when `aiwb` is not installed on `PATH`, use the
+equivalent command from the repository root:
+
+```bash
+PYTHONPATH=tools/agent-orchestrator/src python3 -m aiwb setup \
+  --repo /path/to/repository
+```
+
+Do not install or modify a global CLI configuration unless the user separately
+asks for it.
+
 Explain the returned workflow action, discovered optional Skills, and command
 suggestions. The inspect command is read-only. Treat both Codex and Claude Code
 as choices the user may select; do not edit global Agent configuration.
