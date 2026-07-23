@@ -27,6 +27,13 @@ class ProjectInitResult:
     suggestions: int
 
 
+@dataclass(frozen=True)
+class ProjectInitPreview:
+    config: str
+    suggestions: int
+    document: Mapping[str, object]
+
+
 class ProjectInitError(RuntimeError):
     pass
 
@@ -618,12 +625,11 @@ class DoctorReport:
 class ProjectInitializer:
     """Discover repository capabilities and render an inert draft configuration."""
 
-    def initialize(
+    def preview(
         self,
         repository: Path,
         output_path: Optional[Path] = None,
-        force: bool = False,
-    ) -> ProjectInitResult:
+    ) -> ProjectInitPreview:
         repository = Path(repository).expanduser().resolve()
         if not repository.is_dir():
             raise ProjectInitError(f"repository is not a directory: {repository}")
@@ -632,11 +638,37 @@ class ProjectInitializer:
             if output_path
             else repository / ".ai-workbench" / "workflow.yaml"
         )
+        document, suggestions = self._draft_document(repository)
+        return ProjectInitPreview(
+            config=str(output_path),
+            suggestions=suggestions,
+            document=document,
+        )
+
+    def initialize(
+        self,
+        repository: Path,
+        output_path: Optional[Path] = None,
+        force: bool = False,
+    ) -> ProjectInitResult:
+        preview = self.preview(repository, output_path)
+        output_path = Path(preview.config)
         if output_path.exists() and not force:
             raise ProjectInitError(
                 f"configuration already exists: {output_path}; use --force to replace it"
             )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            yaml.safe_dump(preview.document, sort_keys=False),
+            encoding="utf-8",
+        )
+        return ProjectInitResult(
+            config=preview.config,
+            status="draft",
+            suggestions=preview.suggestions,
+        )
 
+    def _draft_document(self, repository: Path) -> Tuple[Mapping[str, object], int]:
         skills = self._discover_skills(repository)
         scripts = self._discover_scripts(repository)
         signals: List[str] = []
@@ -669,7 +701,7 @@ class ProjectInitializer:
                 "reason": "executable repository script detected",
             }
 
-        config = {
+        document = {
             "schema_version": 1,
             "status": "draft",
             "project": {"root": str(repository), "trusted": False},
@@ -686,16 +718,7 @@ class ProjectInitializer:
             },
             "images": {"profiles": {}},
         }
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(
-            yaml.safe_dump(config, sort_keys=False),
-            encoding="utf-8",
-        )
-        return ProjectInitResult(
-            config=str(output_path),
-            status="draft",
-            suggestions=len(suggestions),
-        )
+        return document, len(suggestions)
 
     @staticmethod
     def _discover_skills(repository: Path) -> List[str]:

@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
 from .agent import AgentRouter, ClaudeCodeCliAdapter, CodexCliAdapter
 from .daemon import AgentDaemon, DaemonClient, DaemonError
@@ -16,6 +16,8 @@ from .project import (
     ProjectInitializer,
 )
 from .runner import GoalRunner
+from .setup import WorkbenchSetup
+from .skills import SkillCatalog
 from .supervisor import LaunchdError, LaunchdService
 
 
@@ -24,6 +26,8 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
     options = parser.parse_args(arguments)
     handlers = {
         "init": _run_init,
+        "setup": _run_setup,
+        "skills": _run_skills,
         "doctor": _run_doctor,
         "goal": _run_goal,
         "daemon": _run_daemon,
@@ -36,6 +40,7 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
         LaunchdError,
         ProjectConfigError,
         ProjectInitError,
+        ValueError,
         OSError,
     ) as error:
         _print_json(
@@ -56,6 +61,24 @@ def _build_parser() -> argparse.ArgumentParser:
     initialize.add_argument("--repo", required=True, type=Path)
     initialize.add_argument("--output", type=Path)
     initialize.add_argument("--force", action="store_true")
+
+    setup = commands.add_parser("setup")
+    setup.add_argument("--repo", required=True, type=Path)
+    setup.add_argument(
+        "--agent-target",
+        action="append",
+        choices=("codex", "claude-code"),
+        default=[],
+    )
+    setup.add_argument("--role-skill", action="append", default=[])
+    setup.add_argument("--install-skill", action="append", default=[])
+    setup.add_argument("--apply", action="store_true")
+
+    skills = commands.add_parser("skills")
+    skills_commands = skills.add_subparsers(dest="skills_command", required=True)
+    ask = skills_commands.add_parser("ask")
+    ask.add_argument("--repo", required=True, type=Path)
+    ask.add_argument("--task", required=True)
 
     doctor = commands.add_parser("doctor")
     doctor.add_argument("--config", required=True, type=Path)
@@ -151,6 +174,51 @@ def _run_init(options: argparse.Namespace) -> int:
     return 0
 
 
+def _run_setup(options: argparse.Namespace) -> int:
+    setup = WorkbenchSetup()
+    targets = tuple(options.agent_target)
+    role_skills = _role_skills(options.role_skill)
+    if options.apply:
+        result = setup.apply(
+            repository=options.repo,
+            confirmed=True,
+            agent_targets=targets,
+            role_skills=role_skills,
+            install_skills=tuple(options.install_skill),
+        )
+        _print_json(
+            {
+                "workflow_path": result.workflow_path,
+                "workflow_action": result.workflow_action,
+                "changed": result.changed,
+                "agent_targets": result.agent_targets,
+            }
+        )
+    else:
+        result = setup.inspect(options.repo, targets)
+        _print_json(
+            {
+                "workflow_path": result.workflow_path,
+                "workflow_action": result.workflow_action,
+                "suggestions": result.suggestions,
+                "agent_targets": result.agent_targets,
+                "skills": [skill.__dict__ for skill in result.catalog.skills],
+                "warnings": result.catalog.warnings,
+            }
+        )
+    return 0
+
+
+def _run_skills(options: argparse.Namespace) -> int:
+    if options.skills_command != "ask":
+        raise ValueError(f"unsupported skills command: {options.skills_command}")
+    result = SkillCatalog().recommend(options.repo, options.task)
+    _print_json(
+        {"recommendations": [item.__dict__ for item in result.recommendations]}
+    )
+    return 0
+
+
 def _run_doctor(options: argparse.Namespace) -> int:
     report = ProjectDoctor().inspect(
         config_path=options.config,
@@ -238,6 +306,16 @@ def _add_control_options(parser: argparse.ArgumentParser) -> None:
         default=Path("~/.ai-workbench").expanduser(),
     )
     parser.add_argument("--socket", type=Path)
+
+
+def _role_skills(values: Sequence[str]) -> dict[str, Tuple[str, ...]]:
+    result = {}
+    for value in values:
+        role, separator, path = value.partition("=")
+        if not separator or not role or not path:
+            raise ValueError("role skills must use ROLE=PATH")
+        result.setdefault(role, []).append(path)
+    return {role: tuple(paths) for role, paths in result.items()}
 
 
 def _agent_router(options: argparse.Namespace) -> AgentRouter:
