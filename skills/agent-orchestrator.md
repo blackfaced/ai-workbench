@@ -13,3 +13,7 @@ The bundled interaction Skills are:
 - [`run-approved-goal`](../tools/agent-orchestrator/skills/run-approved-goal/), which uses the local `ai-workbench` MCP server and does not own the Run lifecycle;
 - [`setup-ai-workbench`](../tools/agent-orchestrator/skills/setup-ai-workbench/), which inspects first and requires explicit confirmation before project-local setup;
 - [`ask-ai-workbench`](../tools/agent-orchestrator/skills/ask-ai-workbench/), which only recommends up to two optional Skills for a task.
+
+The two onboarding Skills are mirrored under [`.codex/skills`](../.codex/skills/)
+so a Codex Agent operating this repository can invoke them without a global
+installation.
