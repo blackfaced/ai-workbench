@@ -33,10 +33,19 @@ from .project import (
     ProjectDoctor,
     ProjectInitError,
     ProjectInitializer,
+    ProjectInitPreview,
     ProjectInitResult,
     ProjectPolicy,
 )
 from .runner import ContractError, GateError, GoalRunner, RunReport, TodoReport
+from .setup import SetupApplyResult, SetupInspection, WorkbenchSetup
+from .skills import (
+    SkillCatalog,
+    SkillCatalogSnapshot,
+    SkillDescriptor,
+    SkillRecommendation,
+    SkillRecommendationResult,
+)
 from .supervisor import LaunchdError, LaunchdInstallResult, LaunchdService
 
 __all__ = [
@@ -74,11 +83,20 @@ __all__ = [
     "McpBrowserDiagnosticAdapter",
     "ProjectInitError",
     "ProjectInitializer",
+    "ProjectInitPreview",
     "ProjectInitResult",
     "ProjectPolicy",
     "ProjectConfigError",
     "ProjectDoctor",
     "RunReport",
     "RunStatus",
+    "SetupApplyResult",
+    "SetupInspection",
+    "SkillCatalog",
+    "SkillCatalogSnapshot",
+    "SkillDescriptor",
+    "SkillRecommendation",
+    "SkillRecommendationResult",
     "TodoReport",
+    "WorkbenchSetup",
 ]

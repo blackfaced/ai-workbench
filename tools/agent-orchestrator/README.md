@@ -191,6 +191,15 @@ capabilities:
 
 Keep these files focused on project conventions and suggestions. They do not execute scripts, change permissions, add commands, replace tests, or enable a heavy mandatory process.
 
+The lightweight setup-and-ask tracer adds:
+
+- a single `SkillCatalog` interface that lists bundled and project-local Skills while safely ignoring malformed or escaping entries;
+- an advisory `aiwb skills ask` command that recommends zero to two Skills and never invokes one;
+- an idempotent `aiwb setup` inspection that reuses project-capability discovery without writing;
+- an explicit `--apply` boundary for draft workflow creation, role-guidance selection, and optional project-local Skill copies;
+- Codex and Claude Code project targets only when selected, with no writes to user-global Agent configuration;
+- destination containment checks that reject Skill paths escaping the selected repository.
+
 The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates.
 
 ## Try the Tracer Bullet
@@ -305,7 +314,18 @@ codex mcp list
 
 Registration is intentionally a user action; the repository never edits global Codex configuration. The MCP server needs no network access or OpenAI API key. It connects only to the local `0600` daemon socket. Start or install the daemon separately before using the tools.
 
-The bundled Codex Skill lives at [`skills/run-approved-goal`](skills/run-approved-goal). To make it globally discoverable, copy or link that directory into `$CODEX_HOME/skills/run-approved-goal` (or `~/.codex/skills/run-approved-goal` when `CODEX_HOME` is unset). Invoke it as `$run-approved-goal` with an approved Contract path. The Skill submits once, returns the durable Run ID, and uses MCP status/report calls for observation; it never keeps a conversation alive to own execution.
+The bundled interaction Skills live in [`skills/`](skills/): `run-approved-goal`, `setup-ai-workbench`, and `ask-ai-workbench`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `run-approved-goal` submits an approved Contract and observes its durable Run; `$setup-ai-workbench` inspects first and requires explicit confirmation before project-local setup; `$ask-ai-workbench` is advisory and can return no recommendation.
+
+For direct CLI use, inspect first and add `--apply` only after reviewing the exact planned changes:
+
+```bash
+aiwb setup --repo /path/to/project
+aiwb setup --repo /path/to/project --agent-target codex \
+  --install-skill ask-ai-workbench --apply
+aiwb skills ask --repo /path/to/project --task "describe the task"
+```
+
+The optional install writes only to `/path/to/project/.codex/skills/` or `/path/to/project/.claude/skills/`; it never changes user-global configuration. `ask` is side-effect free and returns at most two optional recommendations.
 
 For macOS background operation, inspect the plist without loading it:
 
@@ -341,3 +361,4 @@ Rerunning the same command after interruption reuses the immutable Contract hash
 10. Policy-approved namespaced Candidate publication. ✅
 11. Bounded, restart-safe Candidate merge-conflict repair. ✅
 12. Optional, project-owned role guidance from bounded local Skills. ✅
+13. Lightweight, confirmation-gated setup and advisory Skill routing. ✅
