@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Optional, Sequence, Tuple
+from typing import Callable, Mapping, Optional, Sequence, Tuple
 
 import yaml
 
 from .project import ProjectInitializer
-from .skills import SkillCatalog, SkillCatalogSnapshot
+from .skills import (
+    SkillCatalog,
+    SkillCatalogSnapshot,
+    SkillPackCatalog,
+    SkillPackDescriptor,
+)
 
 
 @dataclass(frozen=True)
@@ -17,6 +23,7 @@ class SetupInspection:
     suggestions: int
     agent_targets: Tuple[str, ...]
     catalog: SkillCatalogSnapshot
+    packs: Tuple[SkillPackDescriptor, ...]
 
 
 @dataclass(frozen=True)
@@ -25,13 +32,22 @@ class SetupApplyResult:
     workflow_action: str
     changed: bool
     agent_targets: Tuple[str, ...]
+    installed_packs: Tuple[str, ...] = ()
+    next_actions: Tuple[str, ...] = ()
 
 
 class WorkbenchSetup:
     """Plan explicit project setup without changing repository or user configuration."""
 
-    def __init__(self, catalog: Optional[SkillCatalog] = None) -> None:
+    def __init__(
+        self,
+        catalog: Optional[SkillCatalog] = None,
+        pack_catalog: Optional[SkillPackCatalog] = None,
+        command_runner: Optional[Callable[[Tuple[str, ...], Path], None]] = None,
+    ) -> None:
         self._catalog = catalog or SkillCatalog()
+        self._pack_catalog = pack_catalog or SkillPackCatalog()
+        self._command_runner = command_runner or _run_pack_command
         self._initializer = ProjectInitializer()
 
     def inspect(
@@ -52,6 +68,7 @@ class WorkbenchSetup:
             suggestions=preview.suggestions,
             agent_targets=agent_targets,
             catalog=self._catalog.inspect(repository),
+            packs=self._pack_catalog.inspect(),
         )
 
     def apply(
@@ -61,13 +78,16 @@ class WorkbenchSetup:
         agent_targets: Tuple[str, ...] = (),
         role_skills: Optional[Mapping[str, Sequence[str]]] = None,
         install_skills: Tuple[str, ...] = (),
+        pack_skills: Optional[Mapping[str, Sequence[str]]] = None,
     ) -> SetupApplyResult:
         if not confirmed:
             raise ValueError("setup requires explicit confirmation before writing")
         inspection = self.inspect(repository, agent_targets)
         repository = Path(repository).expanduser().resolve()
-        if install_skills and not agent_targets:
+        selected_packs = pack_skills or {}
+        if (install_skills or selected_packs) and not agent_targets:
             raise ValueError("installing a Skill requires an explicit agent target")
+        pack_plans = self._pack_catalog.plans(selected_packs, agent_targets)
         workflow = Path(inspection.workflow_path)
         created = not workflow.exists()
         if created:
@@ -115,6 +135,9 @@ class WorkbenchSetup:
                 _require_within_repository(destination.parent, repository)
                 destination.write_bytes(source_bytes)
                 changed = True
+        for plan in pack_plans:
+            self._command_runner(plan.command, repository)
+            changed = True
         if workflow_changed:
             workflow.write_text(
                 yaml.safe_dump(document, sort_keys=False),
@@ -125,6 +148,12 @@ class WorkbenchSetup:
             workflow_action=("created" if created else "updated" if changed else "unchanged"),
             changed=changed,
             agent_targets=agent_targets,
+            installed_packs=tuple(dict.fromkeys(plan.name for plan in pack_plans)),
+            next_actions=tuple(
+                dict.fromkeys(
+                    plan.setup_action for plan in pack_plans if plan.setup_action
+                )
+            ),
         )
 
 
@@ -152,3 +181,18 @@ def _require_within_repository(path: Path, repository: Path) -> None:
         path.resolve().relative_to(repository)
     except ValueError as error:
         raise ValueError("Skill destination must remain inside the repository") from error
+
+
+def _run_pack_command(command: Tuple[str, ...], repository: Path) -> None:
+    try:
+        subprocess.run(
+            command,
+            cwd=str(repository),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError(f"Skill pack installation failed: {error}") from error

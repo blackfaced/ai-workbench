@@ -27,9 +27,10 @@ PYTHONPATH=tools/agent-orchestrator/src python3 -m aiwb setup \
 Do not install or modify a global CLI configuration unless the user separately
 asks for it.
 
-Explain the returned workflow action, discovered optional Skills, and command
-suggestions. The inspect command is read-only. Treat both Codex and Claude Code
-as choices the user may select; do not edit global Agent configuration.
+Explain the returned workflow action, discovered optional Skills, command
+suggestions, and optional Skill packs. The inspect command is read-only. Treat
+both Codex and Claude Code as choices the user may select; do not edit global
+Agent configuration.
 
 ## Confirm before applying
 
@@ -62,6 +63,30 @@ aiwb setup --repo /path/to/repository --agent-target codex \
 
 This writes only under the repository's `.codex/skills/` or `.claude/skills/`
 directory. It never writes to user-global Agent configuration.
+
+## Optional packs
+
+Offer packs only after inspection and only by explicit user choice. `matt` is
+an installable, project-local pack pinned to a reviewed public release;
+`anthropic` is reference-only and must not be installed. Ask the user to choose
+specific Matt Skills rather than installing the collection wholesale. Show the
+source, revision, target Agent, selected Skill names, and resulting project
+paths before applying.
+
+For example, after confirmation:
+
+```bash
+aiwb setup --repo /path/to/repository --agent-target codex \
+  --install-pack matt \
+  --pack-skill matt=ask-matt \
+  --pack-skill matt=setup-matt-pocock-skills \
+  --apply
+```
+
+The installer writes only project-local Agent Skill directories plus its
+project lock file. Do not pass global, bypass, or all-Skills options. After a
+Matt install, tell the user to invoke `$setup-matt-pocock-skills`; do not run
+that interactive configuration Skill automatically.
 
 ## Finish
 
