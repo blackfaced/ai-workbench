@@ -114,3 +114,62 @@ def test_setup_rejects_a_skill_target_that_escapes_the_repository() -> None:
             )
 
         assert list(outside.iterdir()) == []
+
+
+def test_setup_installs_selected_matt_skills_with_a_project_target() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        calls = []
+
+        def run(command: tuple[str, ...], cwd: Path) -> None:
+            calls.append((command, cwd))
+
+        result = WorkbenchSetup(command_runner=run).apply(
+            repository,
+            confirmed=True,
+            agent_targets=("codex",),
+            pack_skills={
+                "matt": ("ask-matt", "setup-matt-pocock-skills"),
+            },
+        )
+
+        assert result.installed_packs == ("matt",)
+        assert result.next_actions == ("$setup-matt-pocock-skills",)
+        assert calls == [
+            (
+                (
+                    "npx",
+                    "--yes",
+                    "skills@1.5.9",
+                    "add",
+                    "https://github.com/mattpocock/skills/tree/v1.1.0",
+                    "--copy",
+                    "--yes",
+                    "--agent",
+                    "codex",
+                    "--skill",
+                    "ask-matt",
+                    "--skill",
+                    "setup-matt-pocock-skills",
+                ),
+                repository.resolve(),
+            )
+        ]
+
+
+def test_setup_keeps_reference_only_packs_uninstallable() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        calls = []
+
+        with pytest.raises(ValueError, match="reference-only: anthropic"):
+            WorkbenchSetup(command_runner=lambda command, cwd: calls.append(command)).apply(
+                repository,
+                confirmed=True,
+                agent_targets=("codex",),
+                pack_skills={"anthropic": ("anything",)},
+            )
+
+        assert calls == []

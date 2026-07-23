@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Mapping, Optional, Sequence, Tuple
 
 import yaml
 
@@ -37,6 +37,23 @@ class SkillRecommendationResult:
 class SkillCatalogSnapshot:
     skills: Tuple[SkillDescriptor, ...]
     warnings: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SkillPackDescriptor:
+    name: str
+    description: str
+    source: str
+    revision: str
+    installable: bool
+    setup_action: str = ""
+
+
+@dataclass(frozen=True)
+class SkillPackInstallPlan:
+    name: str
+    command: Tuple[str, ...]
+    setup_action: str = ""
 
 
 class SkillCatalog:
@@ -184,3 +201,67 @@ def _metadata(content: str) -> Optional[dict[str, object]]:
     if not isinstance(parsed, dict):
         raise ValueError("Skill metadata must be a mapping")
     return parsed
+
+
+class SkillPackCatalog:
+    """Describe vetted optional packs and render their project-local install commands."""
+
+    _PACKS = (
+        SkillPackDescriptor(
+            name="matt",
+            description="Selected small engineering Skills from mattpocock/skills.",
+            source="https://github.com/mattpocock/skills/tree/v1.1.0",
+            revision="v1.1.0 (resolved d574778f94cf620fcc8ce741584093bc650a61d3)",
+            installable=True,
+            setup_action="$setup-matt-pocock-skills",
+        ),
+        SkillPackDescriptor(
+            name="anthropic",
+            description="Reference-only Skill design collection; not installable yet.",
+            source="https://github.com/anthropics/skills",
+            revision="",
+            installable=False,
+        ),
+    )
+
+    def inspect(self) -> Tuple[SkillPackDescriptor, ...]:
+        return self._PACKS
+
+    def plans(
+        self,
+        selections: Mapping[str, Sequence[str]],
+        agent_targets: Tuple[str, ...],
+    ) -> Tuple[SkillPackInstallPlan, ...]:
+        plans = []
+        descriptors = {pack.name: pack for pack in self._PACKS}
+        for name, requested_skills in selections.items():
+            pack = descriptors.get(name)
+            if pack is None:
+                raise ValueError(f"unknown Skill pack: {name}")
+            if not pack.installable:
+                raise ValueError(f"Skill pack is reference-only: {name}")
+            skills = tuple(dict.fromkeys(requested_skills))
+            if not skills:
+                raise ValueError(f"Skill pack requires selected Skills: {name}")
+            if any(not re.fullmatch(r"[a-z0-9-]+", skill) for skill in skills):
+                raise ValueError(f"invalid Skill name for pack {name}")
+            for target in agent_targets:
+                plans.append(
+                    SkillPackInstallPlan(
+                        name=name,
+                        command=(
+                            "npx",
+                            "--yes",
+                            "skills@1.5.9",
+                            "add",
+                            pack.source,
+                            "--copy",
+                            "--yes",
+                            "--agent",
+                            target,
+                            *(argument for skill in skills for argument in ("--skill", skill)),
+                        ),
+                        setup_action=pack.setup_action,
+                    )
+                )
+        return tuple(plans)

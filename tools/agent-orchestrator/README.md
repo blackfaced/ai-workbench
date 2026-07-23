@@ -199,6 +199,9 @@ The lightweight setup-and-ask tracer adds:
 - an explicit `--apply` boundary for draft workflow creation, role-guidance selection, and optional project-local Skill copies;
 - Codex and Claude Code project targets only when selected, with no writes to user-global Agent configuration;
 - destination containment checks that reject Skill paths escaping the selected repository.
+- a reviewed optional-pack catalog: selected Matt Skills install project-locally
+  from the fixed `v1.1.0` release through `skills@1.5.9`, while Anthropic
+  remains a reference-only design collection.
 
 The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates.
 
@@ -326,6 +329,26 @@ aiwb skills ask --repo /path/to/project --task "describe the task"
 ```
 
 The optional install writes only to `/path/to/project/.codex/skills/` or `/path/to/project/.claude/skills/`; it never changes user-global configuration. `ask` is side-effect free and returns at most two optional recommendations.
+
+Optional third-party packs are inspectable but never installed by default. To
+install selected Matt Skills for a project, review the displayed source and
+revision, then explicitly name each Skill and target:
+
+```bash
+aiwb setup --repo /path/to/project --agent-target codex \
+  --install-pack matt \
+  --pack-skill matt=ask-matt \
+  --pack-skill matt=setup-matt-pocock-skills \
+  --apply
+```
+
+This invokes the fixed `skills@1.5.9` installer against
+`mattpocock/skills` release `v1.1.0` (resolved during review to
+`d574778f94cf620fcc8ce741584093bc650a61d3`), with `--copy` and no global or
+all-Skills option. It writes project-local Skill directories and the
+installer's lock file. Then invoke `$setup-matt-pocock-skills` yourself to
+choose its issue-tracker, label, and document settings. Anthropic is listed as
+reference-only until separately reviewed.
 
 For macOS background operation, inspect the plist without loading it:
 

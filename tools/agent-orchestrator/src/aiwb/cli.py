@@ -72,6 +72,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     setup.add_argument("--role-skill", action="append", default=[])
     setup.add_argument("--install-skill", action="append", default=[])
+    setup.add_argument("--install-pack", action="append", default=[])
+    setup.add_argument("--pack-skill", action="append", default=[])
     setup.add_argument("--apply", action="store_true")
 
     skills = commands.add_parser("skills")
@@ -178,6 +180,7 @@ def _run_setup(options: argparse.Namespace) -> int:
     setup = WorkbenchSetup()
     targets = tuple(options.agent_target)
     role_skills = _role_skills(options.role_skill)
+    pack_skills = _pack_skills(options.install_pack, options.pack_skill)
     if options.apply:
         result = setup.apply(
             repository=options.repo,
@@ -185,6 +188,7 @@ def _run_setup(options: argparse.Namespace) -> int:
             agent_targets=targets,
             role_skills=role_skills,
             install_skills=tuple(options.install_skill),
+            pack_skills=pack_skills,
         )
         _print_json(
             {
@@ -192,6 +196,8 @@ def _run_setup(options: argparse.Namespace) -> int:
                 "workflow_action": result.workflow_action,
                 "changed": result.changed,
                 "agent_targets": result.agent_targets,
+                "installed_packs": result.installed_packs,
+                "next_actions": result.next_actions,
             }
         )
     else:
@@ -204,6 +210,7 @@ def _run_setup(options: argparse.Namespace) -> int:
                 "agent_targets": result.agent_targets,
                 "skills": [skill.__dict__ for skill in result.catalog.skills],
                 "warnings": result.catalog.warnings,
+                "packs": [pack.__dict__ for pack in result.packs],
             }
         )
     return 0
@@ -316,6 +323,21 @@ def _role_skills(values: Sequence[str]) -> dict[str, Tuple[str, ...]]:
             raise ValueError("role skills must use ROLE=PATH")
         result.setdefault(role, []).append(path)
     return {role: tuple(paths) for role, paths in result.items()}
+
+
+def _pack_skills(
+    packs: Sequence[str],
+    values: Sequence[str],
+) -> dict[str, Tuple[str, ...]]:
+    selected = {name: [] for name in packs}
+    for value in values:
+        pack, separator, skill = value.partition("=")
+        if not separator or not pack or not skill:
+            raise ValueError("pack skills must use PACK=SKILL")
+        if pack not in selected:
+            raise ValueError("pack skills require a matching --install-pack")
+        selected[pack].append(skill)
+    return {pack: tuple(skills) for pack, skills in selected.items()}
 
 
 def _agent_router(options: argparse.Namespace) -> AgentRouter:
