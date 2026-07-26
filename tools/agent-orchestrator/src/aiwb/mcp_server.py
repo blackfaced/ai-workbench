@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import IO, Dict, Mapping, Optional, Sequence
 
 from .daemon import DaemonClient, DaemonError
+from .runner import preview_execution
 
 
 _PROTOCOL_VERSION = "2025-06-18"
@@ -88,6 +89,9 @@ class McpServer:
                     "socket": str(self._socket_path),
                     "status": "ok" if self._client.ping() else "unavailable",
                 }
+            elif name == "aiwb_goal_preflight":
+                contract_path = _string_argument(arguments, "contract_path")
+                value = preview_execution(Path(contract_path)).to_dict()
             elif name == "aiwb_goal_submit":
                 contract_path = _string_argument(arguments, "contract_path")
                 value = self._client.submit(Path(contract_path)).__dict__
@@ -120,6 +124,19 @@ def _tools():
             "name": "aiwb_daemon_status",
             "description": "Check whether the local AI Workbench daemon is reachable.",
             "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+        {
+            "name": "aiwb_goal_preflight",
+            "description": (
+                "Preview the deterministic and conditional execution envelope "
+                "for a draft or approved Contract without creating a Run."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"contract_path": string_argument},
+                "required": ["contract_path"],
+                "additionalProperties": False,
+            },
         },
         {
             "name": "aiwb_goal_report",

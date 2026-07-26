@@ -209,6 +209,28 @@ class SingleTodoRunTest(unittest.TestCase):
             )
             self.assertIsNone(report.attempts[0].usage)
             consumption = report.to_dict()["consumption"]
+            comparison = report.to_dict()["consumption_comparison"]
+            self.assertEqual(
+                comparison,
+                {
+                    "planned": {
+                        "agent_attempts": 4,
+                        "harness_executions": 5,
+                    },
+                    "actual": {
+                        "agent_attempts": 5,
+                        "harness_executions": 5,
+                    },
+                    "variance": {
+                        "agent_attempts": 1,
+                        "harness_executions": 0,
+                    },
+                },
+            )
+            self.assertEqual(
+                report.execution_envelope["goal_id"],
+                "greeting-goal",
+            )
             self.assertEqual(
                 [
                     (item["todo_id"], item["role"], item["attempt_count"])

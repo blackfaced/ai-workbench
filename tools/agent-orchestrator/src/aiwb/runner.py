@@ -62,6 +62,7 @@ class _Todo:
 @dataclass(frozen=True)
 class _Contract:
     contract_hash: str
+    approval_status: str
     goal_id: str
     goal_title: str
     requirement: str
@@ -123,6 +124,46 @@ class AttemptReport:
 
 
 @dataclass(frozen=True)
+class TodoExecutionEnvelope:
+    todo_id: str
+    layer: int
+    agent_attempts: int
+    harness_executions: int
+
+
+@dataclass(frozen=True)
+class ExecutionEnvelope:
+    goal_id: str
+    approval_status: str
+    provider: str
+    model: Optional[str]
+    layers: Tuple[Tuple[str, ...], ...]
+    todos: Tuple[TodoExecutionEnvelope, ...]
+    deterministic: Mapping[str, object]
+    conditional_paths: Tuple[Mapping[str, object], ...]
+    provider_usage: Mapping[str, object]
+    monetary_cost: Mapping[str, object]
+    concurrency_explanation: str
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "goal_id": self.goal_id,
+            "approval_status": self.approval_status,
+            "provider": self.provider,
+            "model": self.model,
+            "layers": [list(layer) for layer in self.layers],
+            "todos": [asdict(todo) for todo in self.todos],
+            "deterministic": dict(self.deterministic),
+            "conditional_paths": [
+                dict(item) for item in self.conditional_paths
+            ],
+            "provider_usage": dict(self.provider_usage),
+            "monetary_cost": dict(self.monetary_cost),
+            "concurrency_explanation": self.concurrency_explanation,
+        }
+
+
+@dataclass(frozen=True)
 class TodoReport:
     todo_id: str
     status: str
@@ -151,6 +192,7 @@ class RunReport:
     attempts: Tuple[AttemptReport, ...] = field(default_factory=tuple)
     evidence: Tuple[CommandEvidence, ...] = field(default_factory=tuple)
     todos: Tuple[TodoReport, ...] = field(default_factory=tuple)
+    execution_envelope: Mapping[str, object] = field(default_factory=dict)
     candidate_commit: str = ""
     image_profile: str = ""
     image_operation_id: str = ""
@@ -173,10 +215,15 @@ class RunReport:
             item["repair_commits"] = list(todo.repair_commits)
             todo_values.append(item)
         value["todos"] = todo_values
-        value["consumption"] = _consumption_dict(
+        consumption = _consumption_dict(
             attempts=self.attempts,
             todos=self.todos,
             fallback_evidence=self.evidence,
+        )
+        value["consumption"] = consumption
+        value["consumption_comparison"] = _consumption_comparison(
+            self.execution_envelope,
+            consumption,
         )
         return value
 
@@ -211,6 +258,9 @@ class RunReport:
         todos_data = value.get("todos", [])
         if not isinstance(todos_data, list):
             raise ValueError("report todos must be a list")
+        execution_envelope = value.get("execution_envelope", {})
+        if not isinstance(execution_envelope, dict):
+            raise ValueError("report execution_envelope must be a mapping")
         return cls(
             run_id=str(value["run_id"]),
             goal_id=str(value["goal_id"]),
@@ -228,6 +278,7 @@ class RunReport:
             ),
             evidence=evidence,
             todos=tuple(_todo_report_from_dict(item) for item in todos_data),
+            execution_envelope=dict(execution_envelope),
             candidate_commit=str(value.get("candidate_commit", "")),
             image_profile=str(value.get("image_profile", "")),
             image_operation_id=str(value.get("image_operation_id", "")),
@@ -240,6 +291,15 @@ class RunReport:
             published_ref=str(value.get("published_ref", "")),
             published_commit=str(value.get("published_commit", "")),
         )
+
+
+def preview_execution(contract_path: Path) -> ExecutionEnvelope:
+    """Preview an authorized Contract without creating execution state."""
+    contract = _load_contract(
+        Path(contract_path).expanduser().resolve(),
+        require_approval=False,
+    )
+    return _execution_envelope(contract)
 
 
 class GoalRunner:
@@ -1074,6 +1134,7 @@ class GoalRunner:
             attempts=attempts,
             evidence=evidence,
             todos=todos,
+            execution_envelope=json.loads(record["execution_envelope_json"]),
             candidate_commit=record["candidate_commit"],
             image_profile=record["image_profile"],
             image_operation_id=record["image_operation_id"],
@@ -1107,6 +1168,7 @@ class _RunStore:
                     sessions_json TEXT NOT NULL,
                     attempts_json TEXT NOT NULL DEFAULT '[]',
                     evidence_json TEXT NOT NULL,
+                    execution_envelope_json TEXT NOT NULL DEFAULT '{}',
                     candidate_commit TEXT NOT NULL DEFAULT '',
                     candidate_verifier_completed INTEGER NOT NULL DEFAULT 0,
                     image_profile TEXT NOT NULL DEFAULT '',
@@ -1159,6 +1221,14 @@ class _RunStore:
                     contract.run_id,
                     image_profile=contract.image_profile_name,
                 )
+            if not json.loads(existing["execution_envelope_json"]):
+                self._update(
+                    contract.run_id,
+                    execution_envelope_json=json.dumps(
+                        _execution_envelope(contract).to_dict(),
+                        sort_keys=True,
+                    ),
+                )
             self._ensure_todos(contract)
             return self.get(contract.run_id)
         now = _now()
@@ -1168,8 +1238,10 @@ class _RunStore:
                 INSERT INTO runs (
                     run_id, contract_hash, goal_id, status, active_stage,
                     repository, worktree, branch, sessions_json, evidence_json,
-                    image_profile, created_at, updated_at
-                ) VALUES (?, ?, ?, 'approved', '', ?, ?, ?, '{}', '[]', ?, ?, ?)
+                    execution_envelope_json, image_profile, created_at, updated_at
+                ) VALUES (
+                    ?, ?, ?, 'approved', '', ?, ?, ?, '{}', '[]', ?, ?, ?, ?
+                )
                 """,
                 (
                     contract.run_id,
@@ -1178,6 +1250,10 @@ class _RunStore:
                     str(contract.repository),
                     str(worktree),
                     contract.branch,
+                    json.dumps(
+                        _execution_envelope(contract).to_dict(),
+                        sort_keys=True,
+                    ),
                     contract.image_profile_name,
                     now,
                     now,
@@ -1551,6 +1627,7 @@ class _RunStore:
         }
         columns = {
             "attempts_json": "TEXT NOT NULL DEFAULT '[]'",
+            "execution_envelope_json": "TEXT NOT NULL DEFAULT '{}'",
             "candidate_commit": "TEXT NOT NULL DEFAULT ''",
             "candidate_verifier_completed": "INTEGER NOT NULL DEFAULT 0",
             "image_profile": "TEXT NOT NULL DEFAULT ''",
@@ -1708,7 +1785,11 @@ class _GitWorkspace:
         return _git(self.worktree, *arguments, check=check)
 
 
-def _load_contract(path: Path) -> _Contract:
+def _load_contract(
+    path: Path,
+    *,
+    require_approval: bool = True,
+) -> _Contract:
     raw = path.read_bytes()
     try:
         data = yaml.safe_load(raw)
@@ -1720,10 +1801,14 @@ def _load_contract(path: Path) -> _Contract:
         raise ContractError("Contract schema_version must be 1")
 
     approval = _mapping(data, "approval")
-    if approval.get("status") != "approved":
+    approval_status = approval.get("status")
+    if approval_status not in {"draft", "approved"}:
+        raise ContractError("Contract approval.status must be draft or approved")
+    if require_approval and approval_status != "approved":
         raise ContractError("Contract must be approved before execution")
-    _text(approval, "approved_by")
-    _approval_time(approval)
+    if approval_status == "approved":
+        _text(approval, "approved_by")
+        _approval_time(approval)
 
     goal = _mapping(data, "goal")
     goal_id = _identifier(goal, "id")
@@ -1781,6 +1866,7 @@ def _load_contract(path: Path) -> _Contract:
 
     return _Contract(
         contract_hash=_contract_hash(raw, role_skill_texts),
+        approval_status=str(approval_status),
         goal_id=goal_id,
         goal_title=_text(goal, "title"),
         requirement=_text(goal, "requirement"),
@@ -1920,6 +2006,112 @@ def _validate_todo_dag(
         if not ready:
             raise ContractError("Todo dependencies must form an acyclic graph")
         completed.update(todo.todo_id for todo in ready)
+
+
+def _execution_envelope(contract: _Contract) -> ExecutionEnvelope:
+    completed: set[str] = set()
+    layers: List[Tuple[str, ...]] = []
+    todo_layers: Dict[str, int] = {}
+    while len(completed) < len(contract.todos):
+        ready = tuple(
+            sorted(
+                todo.todo_id
+                for todo in contract.todos
+                if todo.todo_id not in completed
+                and set(todo.depends_on) <= completed
+            )
+        )
+        layer_index = len(layers)
+        layers.append(ready)
+        for todo_id in ready:
+            todo_layers[todo_id] = layer_index
+        completed.update(ready)
+
+    todo_count = len(contract.todos)
+    browser_diagnostics_configured = any(
+        todo.harness is not None
+        and todo.harness.browser_diagnostic is not None
+        for todo in contract.todos
+    )
+    conditional_paths: Tuple[Mapping[str, object], ...] = (
+        {
+            "name": "conflict_repair",
+            "unit": "agent_attempt",
+            "trigger": "an integrated Todo produces a merge conflict",
+            "configured": True,
+        },
+        {
+            "name": "browser_diagnosis",
+            "unit": "diagnostic_invocation",
+            "trigger": "a formal browser Harness pass fails",
+            "configured": browser_diagnostics_configured,
+        },
+        {
+            "name": "retry",
+            "unit": "agent_attempt_or_harness_execution",
+            "trigger": "an execution step fails and policy permits retry",
+            "configured": False,
+        },
+        {
+            "name": "image_build",
+            "unit": "external_operation",
+            "trigger": "final Candidate acceptance succeeds",
+            "configured": contract.image_profile is not None,
+        },
+        {
+            "name": "candidate_publish",
+            "unit": "external_mutation",
+            "trigger": "final Candidate acceptance and image promotion succeed",
+            "configured": contract.candidate_publish is not None,
+        },
+    )
+    return ExecutionEnvelope(
+        goal_id=contract.goal_id,
+        approval_status=contract.approval_status,
+        provider=contract.agent_provider,
+        model=contract.agent_model,
+        layers=tuple(layers),
+        todos=tuple(
+            TodoExecutionEnvelope(
+                todo_id=todo.todo_id,
+                layer=todo_layers[todo.todo_id],
+                agent_attempts=3,
+                harness_executions=4,
+            )
+            for todo in contract.todos
+        ),
+        deterministic={
+            "agent_attempts": todo_count * 3 + 1,
+            "agent_attempts_by_role": {
+                "test_designer": todo_count,
+                "implementer": todo_count,
+                "verifier": todo_count,
+                "candidate_verifier": 1,
+            },
+            "harness_executions": todo_count * 5,
+            "harness_executions_by_stage": {
+                "red": todo_count,
+                "green": todo_count,
+                "verify": todo_count,
+                "integrate": todo_count,
+                "candidate_acceptance": todo_count,
+            },
+            "final_candidate_acceptance": {
+                "agent_attempts": 1,
+                "harness_executions": todo_count,
+            },
+        },
+        conditional_paths=conditional_paths,
+        provider_usage={
+            "status": "unknown",
+            "unit": "provider_reported_tokens",
+        },
+        monetary_cost={"status": "unknown", "currency": None},
+        concurrency_explanation=(
+            "Independent Todo layers may reduce elapsed wall-clock time; "
+            "concurrency does not reduce total consumption."
+        ),
+    )
 
 
 def _string_list(
@@ -2343,6 +2535,53 @@ def _consumption_dict(
         )
     ]
     return {"agents": agents, "harnesses": harnesses}
+
+
+def _consumption_comparison(
+    execution_envelope: Mapping[str, object],
+    consumption: Mapping[str, object],
+) -> Dict[str, object]:
+    deterministic = execution_envelope.get("deterministic", {})
+    if not isinstance(deterministic, dict):
+        deterministic = {}
+    planned_agents = deterministic.get("agent_attempts")
+    planned_harnesses = deterministic.get("harness_executions")
+    agents = consumption.get("agents", [])
+    harnesses = consumption.get("harnesses", [])
+    actual_agents = sum(
+        int(item.get("attempt_count", 0))
+        for item in agents
+        if isinstance(item, dict)
+    ) if isinstance(agents, list) else 0
+    actual_harnesses = sum(
+        int(item.get("execution_count", 0))
+        for item in harnesses
+        if isinstance(item, dict)
+    ) if isinstance(harnesses, list) else 0
+    planned = {
+        "agent_attempts": (
+            int(planned_agents)
+            if isinstance(planned_agents, int)
+            else None
+        ),
+        "harness_executions": (
+            int(planned_harnesses)
+            if isinstance(planned_harnesses, int)
+            else None
+        ),
+    }
+    actual = {
+        "agent_attempts": actual_agents,
+        "harness_executions": actual_harnesses,
+    }
+    return {
+        "planned": planned,
+        "actual": actual,
+        "variance": {
+            key: actual[key] - value if value is not None else None
+            for key, value in planned.items()
+        },
+    }
 
 
 def _now() -> str:

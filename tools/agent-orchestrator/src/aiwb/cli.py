@@ -15,7 +15,7 @@ from .project import (
     ProjectInitError,
     ProjectInitializer,
 )
-from .runner import GoalRunner
+from .runner import GoalRunner, preview_execution
 from .setup import WorkbenchSetup
 from .skills import SkillCatalog
 from .supervisor import LaunchdError, LaunchdService
@@ -120,6 +120,9 @@ def _build_parser() -> argparse.ArgumentParser:
     report = goal_commands.add_parser("report")
     report.add_argument("run_id")
     _add_control_options(report)
+
+    preflight = goal_commands.add_parser("preflight")
+    preflight.add_argument("--contract", required=True, type=Path)
 
     draft = goal_commands.add_parser("draft")
     draft.add_argument("--repo", required=True, type=Path)
@@ -256,6 +259,9 @@ def _run_goal(options: argparse.Namespace) -> int:
             force=options.force,
         )
         _print_json(result.__dict__)
+        return 0
+    if options.goal_command == "preflight":
+        _print_json(preview_execution(options.contract).to_dict())
         return 0
     if options.goal_command == "run":
         report = GoalRunner(
