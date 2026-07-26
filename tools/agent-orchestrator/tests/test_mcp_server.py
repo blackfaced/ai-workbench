@@ -229,6 +229,13 @@ def test_stdio_mcp_submits_and_observes_a_complete_goal() -> None:
             )
             assert report["status"] == "merge_ready"
             assert report["goal_id"] == "mcp-greeting-goal"
+            assert {
+                item["role"]
+                for item in report["consumption"]["agents"]
+            } == {"test_designer", "implementer", "verifier"}
+            assert report["consumption"]["harnesses"][0][
+                "execution_count"
+            ] == 4
 
             invalid = _request(
                 server,

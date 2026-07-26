@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Optional, Protocol
 
 
@@ -22,6 +22,7 @@ class AgentRequest:
 class AgentResult:
     session_id: str
     final_output: str
+    usage: Mapping[str, int] = field(default_factory=dict)
 
 
 class AgentAdapter(Protocol):
@@ -85,6 +86,7 @@ class CodexCliAdapter:
 
         session_id = ""
         final_output = ""
+        usage: Mapping[str, int] = {}
         for line in completed.stdout.splitlines():
             try:
                 event = json.loads(line)
@@ -97,6 +99,9 @@ class CodexCliAdapter:
             message = _agent_message(event)
             if message:
                 final_output = message
+            reported_usage = _normalize_usage(event.get("usage"))
+            if reported_usage:
+                usage = reported_usage
 
         if not session_id:
             raise RuntimeError("Codex JSONL output did not include a session identifier")
@@ -104,6 +109,7 @@ class CodexCliAdapter:
         return AgentResult(
             session_id=session_id,
             final_output=final_output or completed.stdout.strip(),
+            usage=usage,
         )
 
 
@@ -171,6 +177,7 @@ class ClaudeCodeCliAdapter:
         return AgentResult(
             session_id=session_id,
             final_output=final_output if isinstance(final_output, str) else "",
+            usage=_normalize_usage(result.get("usage")),
         )
 
 
@@ -200,3 +207,20 @@ def _agent_message(event: object) -> str:
         return ""
     text = item.get("text")
     return text if isinstance(text, str) else ""
+
+
+def _normalize_usage(value: object) -> Mapping[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    usage = {
+        str(key): item
+        for key, item in value.items()
+        if isinstance(key, str)
+        and key.endswith("_tokens")
+        and isinstance(item, int)
+        and not isinstance(item, bool)
+        and item >= 0
+    }
+    if usage and "total_tokens" not in usage:
+        usage["total_tokens"] = sum(usage.values())
+    return usage

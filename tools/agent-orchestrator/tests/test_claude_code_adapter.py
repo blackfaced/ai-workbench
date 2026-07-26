@@ -15,6 +15,7 @@ from aiwb.agent import (  # noqa: E402
     AgentResult,
     AgentRouter,
     ClaudeCodeCliAdapter,
+    CodexCliAdapter,
 )
 
 
@@ -30,7 +31,9 @@ def test_claude_code_adapter_runs_a_fresh_json_session_in_the_worktree() -> None
             "import json, os, sys\n"
             f"open({str(capture)!r}, 'w').write(json.dumps({{'args': sys.argv[1:], 'cwd': os.getcwd()}}))\n"
             "print(json.dumps({'type': 'result', 'subtype': 'success', "
-            "'is_error': False, 'result': 'implemented', 'session_id': 'session-123'}))\n"
+            "'is_error': False, 'result': 'implemented', 'session_id': 'session-123', "
+            "'usage': {'input_tokens': 101, 'cache_creation_input_tokens': 11, "
+            "'cache_read_input_tokens': 22, 'output_tokens': 33}}))\n"
         )
         executable.chmod(0o700)
 
@@ -45,6 +48,13 @@ def test_claude_code_adapter_runs_a_fresh_json_session_in_the_worktree() -> None
 
         assert result.session_id == "session-123"
         assert result.final_output == "implemented"
+        assert result.usage == {
+            "input_tokens": 101,
+            "cache_creation_input_tokens": 11,
+            "cache_read_input_tokens": 22,
+            "output_tokens": 33,
+            "total_tokens": 167,
+        }
         invocation = json.loads(capture.read_text())
         assert invocation["cwd"] == str(worktree.resolve())
         assert invocation["args"] == [
@@ -91,6 +101,40 @@ def test_claude_code_adapter_forces_read_only_requests_into_plan_mode() -> None:
         arguments = json.loads(capture.read_text())
         mode_index = arguments.index("--permission-mode") + 1
         assert arguments[mode_index] == "plan"
+
+
+def test_codex_adapter_preserves_reported_token_usage() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        executable = root / "fake-codex"
+        executable.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json\n"
+            "print(json.dumps({'type': 'thread.started', 'thread_id': 'thread-123'}))\n"
+            "print(json.dumps({'type': 'item.completed', 'item': {"
+            "'type': 'agent_message', 'text': 'implemented'}}))\n"
+            "print(json.dumps({'type': 'turn.completed', 'usage': {"
+            "'input_tokens': 80, 'cached_input_tokens': 20, "
+            "'output_tokens': 10, 'total_tokens': 110}}))\n"
+        )
+        executable.chmod(0o700)
+
+        result = CodexCliAdapter(str(executable)).run(
+            AgentRequest(
+                role="implementer",
+                prompt="Implement",
+                worktree=str(root),
+            )
+        )
+
+        assert result.session_id == "thread-123"
+        assert result.final_output == "implemented"
+        assert result.usage == {
+            "input_tokens": 80,
+            "cached_input_tokens": 20,
+            "output_tokens": 10,
+            "total_tokens": 110,
+        }
 
 
 def test_claude_code_adapter_rejects_bypass_permissions() -> None:
