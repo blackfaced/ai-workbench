@@ -15,6 +15,7 @@ sys.path.insert(0, str(TOOL_ROOT / "src"))
 from aiwb import (  # noqa: E402
     AgentRequest,
     AgentResult,
+    GateError,
     GoalRunner,
     ImageBuildError,
     RunReport,
@@ -45,6 +46,42 @@ class ImageFeatureAgent:
         )
 
 
+class MutatingFinalImageAgent(ImageFeatureAgent):
+    def run(self, request: AgentRequest) -> AgentResult:
+        if request.role == "candidate_verifier":
+            (Path(request.worktree) / "version.py").write_text(
+                "def version():\n"
+                "    return 'mutated'\n",
+                encoding="utf-8",
+            )
+            return AgentResult(
+                session_id="mutating-final-verifier",
+                final_output="completed",
+            )
+        return super().run(request)
+
+
+def test_image_promotion_cannot_start_before_final_candidate_acceptance() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        runner = GoalRunner(
+            state_dir=root / "state",
+            agent=MutatingFinalImageAgent(),
+            image_poll_interval_seconds=0.01,
+        )
+
+        try:
+            runner.run(contract)
+        except GateError as error:
+            assert "mutated the immutable Candidate" in str(error)
+        else:
+            raise AssertionError("image promotion must wait for final acceptance")
+
+        assert not list((root / "state").rglob("events.log"))
+
+
 def test_candidate_waits_for_async_image_and_records_immutable_digest() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -58,6 +95,17 @@ def test_candidate_waits_for_async_image_and_records_immutable_digest() -> None:
         ).run(contract)
 
         assert report.status == "merge_ready"
+        assert report.candidate_commit
+        assert any(
+            attempt.role == "candidate_verifier"
+            and attempt.status == "succeeded"
+            for attempt in report.attempts
+        )
+        assert any(
+            item.stage == "candidate_acceptance:T-1"
+            and item.returncode == 0
+            for item in report.evidence
+        )
         assert report.image_profile == "pr-image"
         assert report.image_operation_id == "build-123"
         assert report.image_status == "succeeded"

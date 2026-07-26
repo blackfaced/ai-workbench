@@ -12,7 +12,7 @@ import yaml
 TOOL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_ROOT / "src"))
 
-from aiwb import AgentRequest, AgentResult, GoalRunner  # noqa: E402
+from aiwb import AgentRequest, AgentResult, GateError, GoalRunner  # noqa: E402
 from aiwb.publish import (  # noqa: E402
     CandidatePublishError,
     CandidatePublishRequest,
@@ -42,12 +42,60 @@ class GreetingAgent:
                 "    return 'hello'\n",
                 encoding="utf-8",
             )
-        elif request.role != "verifier":
+        elif request.role not in {"verifier", "candidate_verifier"}:
             raise AssertionError(f"unexpected role: {request.role}")
         return AgentResult(
             session_id=f"{request.role}-session",
             final_output=f"{request.role} completed",
         )
+
+
+class MutatingFinalPublishAgent(GreetingAgent):
+    def run(self, request: AgentRequest) -> AgentResult:
+        if request.role == "candidate_verifier":
+            (Path(request.worktree) / "greeting.py").write_text(
+                "def greeting():\n"
+                "    return 'mutated'\n",
+                encoding="utf-8",
+            )
+            return AgentResult(
+                session_id="mutating-final-verifier",
+                final_output="completed",
+            )
+        return super().run(request)
+
+
+def test_candidate_branch_is_not_published_before_final_acceptance() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        _, remote, contract = _fixture(root)
+        runner = GoalRunner(
+            state_dir=root / "state",
+            agent=MutatingFinalPublishAgent(),
+        )
+        prepared = runner.prepare(contract)
+
+        try:
+            runner.run(contract)
+        except GateError as error:
+            assert "mutated the immutable Candidate" in str(error)
+        else:
+            raise AssertionError("publication must wait for final acceptance")
+
+        remote_ref = f"refs/heads/{prepared.branch}"
+        result = subprocess.run(
+            [
+                "git",
+                "--git-dir",
+                str(remote),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                remote_ref,
+            ],
+            check=False,
+        )
+        assert result.returncode != 0
 
 
 def test_merge_ready_candidate_is_pushed_to_the_policy_approved_namespace() -> None:
@@ -63,6 +111,7 @@ def test_merge_ready_candidate_is_pushed_to_the_policy_approved_namespace() -> N
         assert report.published_commit == _git(
             Path(report.worktree), "rev-parse", "HEAD"
         ).stdout.strip()
+        assert report.published_commit == report.candidate_commit
         assert _git(
             root,
             "--git-dir",
@@ -100,7 +149,12 @@ def test_resume_is_idempotent_after_push_succeeds_before_sqlite_checkpoint() -> 
         assert resumed.status == "merge_ready"
         assert resumed.published_commit == pushed_commit
         assert resumed.published_ref == remote_ref
-        assert agent.roles == ["test_designer", "implementer", "verifier"]
+        assert agent.roles == [
+            "test_designer",
+            "implementer",
+            "verifier",
+            "candidate_verifier",
+        ]
 
 
 def test_diverged_remote_candidate_is_rejected_without_force_push() -> None:

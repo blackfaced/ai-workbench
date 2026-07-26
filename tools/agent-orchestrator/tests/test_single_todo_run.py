@@ -52,7 +52,7 @@ class ScriptedAgentAdapter:
                 "    return f'Hello, {name}!'\n",
                 encoding="utf-8",
             )
-        elif request.role != "verifier":
+        elif request.role not in {"verifier", "candidate_verifier"}:
             raise AssertionError(f"unexpected role: {request.role}")
 
         return AgentResult(
@@ -159,12 +159,15 @@ class SingleTodoRunTest(unittest.TestCase):
 
             self.assertEqual(report.status, "merge_ready")
             self.assertEqual(report.goal_id, "greeting-goal")
-            self.assertEqual(resumed_adapter.roles, ["implementer", "verifier"])
+            self.assertEqual(
+                resumed_adapter.roles,
+                ["implementer", "verifier", "candidate_verifier"],
+            )
             self.assertEqual(
                 resumed_adapter.providers,
-                ["claude-code", "claude-code"],
+                ["claude-code", "claude-code", "claude-code"],
             )
-            self.assertEqual(resumed_adapter.models, ["sonnet", "sonnet"])
+            self.assertEqual(resumed_adapter.models, ["sonnet", "sonnet", "sonnet"])
             self.assertIn(
                 "Prefer the smallest accepted change.",
                 resumed_adapter.prompts[0][1],
@@ -186,9 +189,13 @@ class SingleTodoRunTest(unittest.TestCase):
                     ("implementer", "failed"),
                     ("implementer", "succeeded"),
                     ("verifier", "succeeded"),
+                    ("candidate_verifier", "succeeded"),
                 ],
             )
-            self.assertTrue(all(item.todo_id == "T-1" for item in report.attempts))
+            self.assertTrue(
+                all(item.todo_id == "T-1" for item in report.attempts[:-1])
+            )
+            self.assertEqual(report.attempts[-1].todo_id, "candidate")
             self.assertTrue(
                 all(item.provider == "claude-code" for item in report.attempts)
             )
@@ -211,6 +218,7 @@ class SingleTodoRunTest(unittest.TestCase):
                     ("T-1", "implementer", 2),
                     ("T-1", "test_designer", 1),
                     ("T-1", "verifier", 1),
+                    ("candidate", "candidate_verifier", 1),
                 ],
             )
             self.assertEqual(
@@ -222,6 +230,7 @@ class SingleTodoRunTest(unittest.TestCase):
                     "implementer": None,
                     "test_designer": None,
                     "verifier": {"input_tokens": 5},
+                    "candidate_verifier": None,
                 },
             )
             self.assertEqual(
@@ -231,10 +240,15 @@ class SingleTodoRunTest(unittest.TestCase):
                         "todo_id": "T-1",
                         "profile": "direct-command",
                         "environment": "local",
-                        "execution_count": len(report.todos[0].evidence),
+                        "execution_count": len(report.todos[0].evidence) + 1,
                         "duration_seconds": sum(
                             item.duration_seconds
                             for item in report.todos[0].evidence
+                        )
+                        + sum(
+                            item.duration_seconds
+                            for item in report.evidence
+                            if item.stage.startswith("candidate_acceptance:")
                         ),
                     }
                 ],
