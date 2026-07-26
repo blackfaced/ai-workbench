@@ -25,6 +25,12 @@ asks for it.
 Return the recommendations and their short match reasons. Recommending no Skill
 is a normal result.
 
+If the repository has a project-local `ask-matt` Skill and the task is general
+engineering work rather than an AI Workbench Goal, Contract, Harness, daemon,
+or Evidence question, recommend `$ask-matt` first. Do not copy or reimplement
+its flow router. The user may invoke it to select an upstream Skill; this Skill
+remains advisory.
+
 This is advisory only. Do not invoke any recommended Skill, submit a Goal,
 write files, install anything, start a daemon, change permissions, or expand
 the task scope unless the user separately asks for that action.

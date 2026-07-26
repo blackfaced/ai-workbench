@@ -79,15 +79,21 @@ class WorkbenchSetup:
         role_skills: Optional[Mapping[str, Sequence[str]]] = None,
         install_skills: Tuple[str, ...] = (),
         pack_skills: Optional[Mapping[str, Sequence[str]]] = None,
+        pack_profiles: Optional[Mapping[str, Sequence[str]]] = None,
     ) -> SetupApplyResult:
         if not confirmed:
             raise ValueError("setup requires explicit confirmation before writing")
         inspection = self.inspect(repository, agent_targets)
         repository = Path(repository).expanduser().resolve()
         selected_packs = pack_skills or {}
-        if (install_skills or selected_packs) and not agent_targets:
+        selected_profiles = pack_profiles or {}
+        if (install_skills or selected_packs or selected_profiles) and not agent_targets:
             raise ValueError("installing a Skill requires an explicit agent target")
-        pack_plans = self._pack_catalog.plans(selected_packs, agent_targets)
+        pack_plans = self._pack_catalog.plans(
+            selected_packs,
+            agent_targets,
+            profiles=selected_profiles,
+        )
         workflow = Path(inspection.workflow_path)
         created = not workflow.exists()
         if created:

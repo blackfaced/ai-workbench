@@ -76,3 +76,33 @@ def test_catalog_prefers_a_project_copy_of_a_bundled_skill() -> None:
             ("project", ".codex/skills/ask-ai-workbench/SKILL.md"),
         ]
         assert [item.name for item in result.recommendations] == ["ask-ai-workbench"]
+
+
+def test_catalog_recommends_installed_ask_matt_before_recreating_its_router() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        router = repository / ".codex" / "skills" / "ask-matt" / "SKILL.md"
+        router.parent.mkdir(parents=True)
+        router.write_text(
+            "---\n"
+            "name: ask-matt\n"
+            "description: Ask which skill or flow fits your situation.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+
+        result = SkillCatalog().recommend(
+            repository,
+            "design and implement a multi-session engineering feature",
+        )
+
+        assert [item.name for item in result.recommendations] == ["ask-matt"]
+        assert result.recommendations[0].reason == "installed upstream engineering router"
+
+
+def test_project_local_skill_mirrors_match_the_bundled_sources() -> None:
+    repository = TOOL_ROOT.parents[1]
+    for name in ("ask-ai-workbench", "setup-ai-workbench", "draft-aiwb-contract"):
+        bundled = TOOL_ROOT / "skills" / name / "SKILL.md"
+        mirrored = repository / ".codex" / "skills" / name / "SKILL.md"
+        assert mirrored.read_text(encoding="utf-8") == bundled.read_text(encoding="utf-8")

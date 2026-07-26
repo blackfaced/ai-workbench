@@ -47,6 +47,16 @@ class SkillPackDescriptor:
     revision: str
     installable: bool
     setup_action: str = ""
+    profiles: Tuple["SkillPackProfileDescriptor", ...] = ()
+
+
+@dataclass(frozen=True)
+class SkillPackProfileDescriptor:
+    """A reviewed, named selection from an optional upstream Skill pack."""
+
+    name: str
+    description: str
+    skills: Tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -65,6 +75,12 @@ class SkillCatalog:
             description="Submit and observe an approved unattended Goal with Evidence.",
             source="bundled",
             path="skills/run-approved-goal/SKILL.md",
+        ),
+        SkillDescriptor(
+            name="draft-aiwb-contract",
+            description="Create an unapproved Contract draft from approved local tickets.",
+            source="bundled",
+            path="skills/draft-aiwb-contract/SKILL.md",
         ),
         SkillDescriptor(
             name="setup-ai-workbench",
@@ -94,24 +110,42 @@ class SkillCatalog:
         if limit < 1:
             raise ValueError("limit must be positive")
 
+        snapshot = self.inspect(repository)
         task_terms = _terms(task)
         ranked = []
-        for skill in self.inspect(repository).skills:
+        for skill in snapshot.skills:
             matches = sorted(task_terms & _terms(f"{skill.name} {skill.description}"))
             if len(matches) >= 2:
                 ranked.append((len(matches), skill, matches))
         ranked.sort(key=lambda item: (-item[0], item[1].name))
-        return SkillRecommendationResult(
-            recommendations=tuple(
+        router = next(
+            (skill for skill in snapshot.skills if skill.name == "ask-matt"),
+            None,
+        )
+        recommendations = []
+        if router is not None and not _is_aiwb_task(task_terms):
+            recommendations.append(
                 SkillRecommendation(
-                    name=skill.name,
-                    description=skill.description,
-                    source=skill.source,
-                    path=skill.path,
-                    reason="matched: " + ", ".join(matches),
+                    name=router.name,
+                    description=router.description,
+                    source=router.source,
+                    path=router.path,
+                    reason="installed upstream engineering router",
                 )
-                for _, skill, matches in ranked[:limit]
             )
+        recommendations.extend(
+            SkillRecommendation(
+                name=skill.name,
+                description=skill.description,
+                source=skill.source,
+                path=skill.path,
+                reason="matched: " + ", ".join(matches),
+            )
+            for _, skill, matches in ranked
+            if skill.name != "ask-matt"
+        )
+        return SkillRecommendationResult(
+            recommendations=tuple(recommendations[:limit])
         )
 
     def inspect(self, repository: Path) -> SkillCatalogSnapshot:
@@ -191,6 +225,23 @@ def _terms(value: str) -> set[str]:
     }
 
 
+def _is_aiwb_task(task_terms: set[str]) -> bool:
+    return bool(
+        task_terms
+        & {
+            "aiwb",
+            "approved",
+            "candidate",
+            "contract",
+            "daemon",
+            "evidence",
+            "goal",
+            "harness",
+            "unattended",
+        }
+    )
+
+
 def _metadata(content: str) -> Optional[dict[str, object]]:
     if not content.startswith("---\n"):
         return None
@@ -210,10 +261,42 @@ class SkillPackCatalog:
         SkillPackDescriptor(
             name="matt",
             description="Selected small engineering Skills from mattpocock/skills.",
-            source="https://github.com/mattpocock/skills/tree/v1.1.0",
+            source="https://github.com/mattpocock/skills/tree/d574778f94cf620fcc8ce741584093bc650a61d3",
             revision="v1.1.0 (resolved d574778f94cf620fcc8ce741584093bc650a61d3)",
             installable=True,
             setup_action="$setup-matt-pocock-skills",
+            profiles=(
+                SkillPackProfileDescriptor(
+                    name="engineering",
+                    description=(
+                        "Dependency-complete ask-matt engineering flow; excludes "
+                        "deprecated, in-progress, personal, and unrelated upstream Skills."
+                    ),
+                    skills=(
+                        "setup-matt-pocock-skills",
+                        "ask-matt",
+                        "grill-with-docs",
+                        "grill-me",
+                        "grilling",
+                        "handoff",
+                        "prototype",
+                        "to-spec",
+                        "to-tickets",
+                        "implement",
+                        "tdd",
+                        "code-review",
+                        "codebase-design",
+                        "domain-modeling",
+                        "improve-codebase-architecture",
+                        "triage",
+                        "diagnosing-bugs",
+                        "wayfinder",
+                        "research",
+                        "teach",
+                        "writing-great-skills",
+                    ),
+                ),
+            ),
         ),
         SkillPackDescriptor(
             name="anthropic",
@@ -231,16 +314,28 @@ class SkillPackCatalog:
         self,
         selections: Mapping[str, Sequence[str]],
         agent_targets: Tuple[str, ...],
+        profiles: Optional[Mapping[str, Sequence[str]]] = None,
     ) -> Tuple[SkillPackInstallPlan, ...]:
         plans = []
         descriptors = {pack.name: pack for pack in self._PACKS}
-        for name, requested_skills in selections.items():
+        profile_selections = profiles or {}
+        pack_names = tuple(dict.fromkeys((*selections.keys(), *profile_selections.keys())))
+        for name in pack_names:
             pack = descriptors.get(name)
             if pack is None:
                 raise ValueError(f"unknown Skill pack: {name}")
             if not pack.installable:
                 raise ValueError(f"Skill pack is reference-only: {name}")
-            skills = tuple(dict.fromkeys(requested_skills))
+            profiles_by_name = {profile.name: profile for profile in pack.profiles}
+            profile_skills = []
+            for profile_name in profile_selections.get(name, ()):
+                profile = profiles_by_name.get(profile_name)
+                if profile is None:
+                    raise ValueError(f"unknown Skill pack profile: {name}={profile_name}")
+                profile_skills.extend(profile.skills)
+            skills = tuple(
+                dict.fromkeys((*profile_skills, *selections.get(name, ())))
+            )
             if not skills:
                 raise ValueError(f"Skill pack requires selected Skills: {name}")
             if any(not re.fullmatch(r"[a-z0-9-]+", skill) for skill in skills):

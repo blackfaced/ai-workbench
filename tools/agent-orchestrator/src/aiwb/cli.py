@@ -19,6 +19,7 @@ from .runner import GoalRunner
 from .setup import WorkbenchSetup
 from .skills import SkillCatalog
 from .supervisor import LaunchdError, LaunchdService
+from .tickets import TicketContractDraftBuilder
 
 
 def main(arguments: Optional[Sequence[str]] = None) -> int:
@@ -74,6 +75,7 @@ def _build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--install-skill", action="append", default=[])
     setup.add_argument("--install-pack", action="append", default=[])
     setup.add_argument("--pack-skill", action="append", default=[])
+    setup.add_argument("--pack-profile", action="append", default=[])
     setup.add_argument("--apply", action="store_true")
 
     skills = commands.add_parser("skills")
@@ -118,6 +120,12 @@ def _build_parser() -> argparse.ArgumentParser:
     report = goal_commands.add_parser("report")
     report.add_argument("run_id")
     _add_control_options(report)
+
+    draft = goal_commands.add_parser("draft")
+    draft.add_argument("--repo", required=True, type=Path)
+    draft.add_argument("--tickets", required=True, type=Path)
+    draft.add_argument("--output", required=True, type=Path)
+    draft.add_argument("--force", action="store_true")
 
     daemon = commands.add_parser("daemon")
     daemon_commands = daemon.add_subparsers(dest="daemon_command", required=True)
@@ -181,6 +189,7 @@ def _run_setup(options: argparse.Namespace) -> int:
     targets = tuple(options.agent_target)
     role_skills = _role_skills(options.role_skill)
     pack_skills = _pack_skills(options.install_pack, options.pack_skill)
+    pack_profiles = _pack_profiles(options.install_pack, options.pack_profile)
     if options.apply:
         result = setup.apply(
             repository=options.repo,
@@ -189,6 +198,7 @@ def _run_setup(options: argparse.Namespace) -> int:
             role_skills=role_skills,
             install_skills=tuple(options.install_skill),
             pack_skills=pack_skills,
+            pack_profiles=pack_profiles,
         )
         _print_json(
             {
@@ -210,7 +220,7 @@ def _run_setup(options: argparse.Namespace) -> int:
                 "agent_targets": result.agent_targets,
                 "skills": [skill.__dict__ for skill in result.catalog.skills],
                 "warnings": result.catalog.warnings,
-                "packs": [pack.__dict__ for pack in result.packs],
+                "packs": [_pack_to_dict(pack) for pack in result.packs],
             }
         )
     return 0
@@ -238,6 +248,15 @@ def _run_doctor(options: argparse.Namespace) -> int:
 
 
 def _run_goal(options: argparse.Namespace) -> int:
+    if options.goal_command == "draft":
+        result = TicketContractDraftBuilder().create(
+            tickets_path=options.tickets,
+            repository=options.repo,
+            output_path=options.output,
+            force=options.force,
+        )
+        _print_json(result.__dict__)
+        return 0
     if options.goal_command == "run":
         report = GoalRunner(
             state_dir=options.state_dir,
@@ -338,6 +357,33 @@ def _pack_skills(
             raise ValueError("pack skills require a matching --install-pack")
         selected[pack].append(skill)
     return {pack: tuple(skills) for pack, skills in selected.items()}
+
+
+def _pack_profiles(
+    packs: Sequence[str],
+    values: Sequence[str],
+) -> dict[str, Tuple[str, ...]]:
+    selected = {name: [] for name in packs}
+    for value in values:
+        pack, separator, profile = value.partition("=")
+        if not separator or not pack or not profile:
+            raise ValueError("pack profiles must use PACK=PROFILE")
+        if pack not in selected:
+            raise ValueError("pack profiles require a matching --install-pack")
+        selected[pack].append(profile)
+    return {pack: tuple(profiles) for pack, profiles in selected.items() if profiles}
+
+
+def _pack_to_dict(pack) -> dict[str, object]:
+    return {
+        "name": pack.name,
+        "description": pack.description,
+        "source": pack.source,
+        "revision": pack.revision,
+        "installable": pack.installable,
+        "setup_action": pack.setup_action,
+        "profiles": [profile.__dict__ for profile in pack.profiles],
+    }
 
 
 def _agent_router(options: argparse.Namespace) -> AgentRouter:

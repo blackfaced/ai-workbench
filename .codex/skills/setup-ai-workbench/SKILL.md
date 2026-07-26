@@ -69,24 +69,25 @@ directory. It never writes to user-global Agent configuration.
 Offer packs only after inspection and only by explicit user choice. `matt` is
 an installable, project-local pack pinned to a reviewed public release;
 `anthropic` is reference-only and must not be installed. Ask the user to choose
-specific Matt Skills rather than installing the collection wholesale. Show the
-source, revision, target Agent, selected Skill names, and resulting project
-paths before applying.
+either a reviewed Matt profile or specific Skills, rather than installing the
+collection wholesale. Show the source, revision, target Agent, selected profile
+or Skill names, and resulting project paths before applying.
 
-For example, after confirmation:
+For a reviewed, complete engineering flow after confirmation:
 
 ```bash
 aiwb setup --repo /path/to/repository --agent-target codex \
   --install-pack matt \
-  --pack-skill matt=ask-matt \
-  --pack-skill matt=setup-matt-pocock-skills \
+  --pack-profile matt=engineering \
   --apply
 ```
 
-The installer writes only project-local Agent Skill directories plus its
-project lock file. Do not pass global, bypass, or all-Skills options. After a
-Matt install, tell the user to invoke `$setup-matt-pocock-skills`; do not run
-that interactive configuration Skill automatically.
+The `engineering` profile is the reviewed dependency closure of upstream
+`ask-matt`, rather than the entire upstream collection. The installer writes
+only project-local Agent Skill directories plus its project lock file. Do not
+pass global, bypass, or all-Skills options. After a Matt install, tell the user
+to invoke `$setup-matt-pocock-skills`; do not run that interactive
+configuration Skill automatically.
 
 ## Finish
 
