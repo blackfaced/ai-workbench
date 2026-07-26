@@ -125,6 +125,15 @@ def test_new_daemon_process_recovers_a_run_interrupted_after_red() -> None:
             assert report.sessions["test_designer"].startswith(f"{first_pid}-")
             assert not report.sessions["implementer"].startswith(f"{first_pid}-")
             assert not report.sessions["verifier"].startswith(f"{first_pid}-")
+            assert [attempt.role for attempt in report.attempts] == [
+                "test_designer",
+                "implementer",
+                "verifier",
+            ]
+            assert {
+                item["role"]
+                for item in report.to_dict()["consumption"]["agents"]
+            } == {"test_designer", "implementer", "verifier"}
         finally:
             if first.is_alive():
                 first.terminate()

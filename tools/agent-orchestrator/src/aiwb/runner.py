@@ -101,10 +101,25 @@ class CommandEvidence:
     stdout: str
     stderr: str
     recorded_at: str
+    duration_seconds: float = 0.0
     harness_profile: str = ""
     environment: str = ""
     base_url: str = ""
     artifacts: Tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class AttemptReport:
+    role: str
+    todo_id: str
+    provider: str
+    model: str
+    session_id: str
+    status: str
+    elapsed_seconds: float
+    recorded_at: str
+    error: str = ""
+    usage: Optional[Mapping[str, int]] = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +132,7 @@ class TodoReport:
     red_commit: str
     code_commit: str
     sessions: Mapping[str, str] = field(default_factory=dict)
+    attempts: Tuple[AttemptReport, ...] = field(default_factory=tuple)
     evidence: Tuple[CommandEvidence, ...] = field(default_factory=tuple)
     repair_commits: Tuple[str, ...] = field(default_factory=tuple)
 
@@ -132,6 +148,7 @@ class RunReport:
     red_commit: str
     code_commit: str
     sessions: Mapping[str, str] = field(default_factory=dict)
+    attempts: Tuple[AttemptReport, ...] = field(default_factory=tuple)
     evidence: Tuple[CommandEvidence, ...] = field(default_factory=tuple)
     todos: Tuple[TodoReport, ...] = field(default_factory=tuple)
     image_profile: str = ""
@@ -145,14 +162,21 @@ class RunReport:
 
     def to_dict(self) -> Dict[str, object]:
         value = asdict(self)
+        value["attempts"] = [asdict(item) for item in self.attempts]
         value["evidence"] = [asdict(item) for item in self.evidence]
         todo_values = []
         for todo in self.todos:
             item = asdict(todo)
+            item["attempts"] = [asdict(attempt) for attempt in todo.attempts]
             item["evidence"] = [asdict(evidence) for evidence in todo.evidence]
             item["repair_commits"] = list(todo.repair_commits)
             todo_values.append(item)
         value["todos"] = todo_values
+        value["consumption"] = _consumption_dict(
+            attempts=self.attempts,
+            todos=self.todos,
+            fallback_evidence=self.evidence,
+        )
         return value
 
     @classmethod
@@ -168,6 +192,7 @@ class RunReport:
                 stdout=str(item["stdout"]),
                 stderr=str(item["stderr"]),
                 recorded_at=str(item["recorded_at"]),
+                duration_seconds=float(item.get("duration_seconds", 0)),
                 harness_profile=str(item.get("harness_profile", "")),
                 environment=str(item.get("environment", "")),
                 base_url=str(item.get("base_url", "")),
@@ -179,6 +204,9 @@ class RunReport:
         sessions_data = value.get("sessions", {})
         if not isinstance(sessions_data, dict):
             raise ValueError("report sessions must be a mapping")
+        attempts_data = value.get("attempts", [])
+        if not isinstance(attempts_data, list):
+            raise ValueError("report attempts must be a list")
         todos_data = value.get("todos", [])
         if not isinstance(todos_data, list):
             raise ValueError("report todos must be a list")
@@ -192,6 +220,11 @@ class RunReport:
             red_commit=str(value.get("red_commit", "")),
             code_commit=str(value.get("code_commit", "")),
             sessions={str(key): str(item) for key, item in sessions_data.items()},
+            attempts=tuple(
+                _attempt_report_from_dict(item)
+                for item in attempts_data
+                if isinstance(item, dict)
+            ),
             evidence=evidence,
             todos=tuple(_todo_report_from_dict(item) for item in todos_data),
             image_profile=str(value.get("image_profile", "")),
@@ -367,6 +400,7 @@ class GoalRunner:
         conflict_paths: Tuple[str, ...],
     ) -> None:
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "conflict_repairer")
+        started = time.monotonic()
         try:
             result = self._conflict_repairer.repair(
                 MergeConflictRepairRequest(
@@ -380,12 +414,42 @@ class GoalRunner:
                 )
             )
         except Exception as error:
+            self._store.record_todo_attempt(
+                contract.run_id,
+                todo.todo_id,
+                AttemptReport(
+                    role="conflict_repairer",
+                    todo_id=todo.todo_id,
+                    provider=contract.agent_provider,
+                    model=contract.agent_model or "",
+                    session_id="",
+                    status="failed",
+                    elapsed_seconds=time.monotonic() - started,
+                    recorded_at=_now(),
+                    error=str(error),
+                ),
+            )
             self._store.record_todo_interruption(
                 contract.run_id,
                 todo.todo_id,
                 str(error),
             )
             raise
+        self._store.record_todo_attempt(
+            contract.run_id,
+            todo.todo_id,
+            AttemptReport(
+                role="conflict_repairer",
+                todo_id=todo.todo_id,
+                provider=contract.agent_provider,
+                model=contract.agent_model or "",
+                session_id=result.agent_result.session_id,
+                status="succeeded",
+                elapsed_seconds=time.monotonic() - started,
+                recorded_at=_now(),
+                usage=_reported_usage(result.agent_result),
+            ),
+        )
         self._store.record_todo_repair(
             contract.run_id,
             todo.todo_id,
@@ -452,6 +516,61 @@ class GoalRunner:
         if record["status"] == "code_ready":
             self._verify_todo(contract, todo, workspace, record)
 
+    def _run_todo_agent(
+        self,
+        contract: _Contract,
+        todo: _Todo,
+        role: str,
+        prompt: str,
+        worktree: Path,
+    ) -> AgentResult:
+        started = time.monotonic()
+        try:
+            result = self._agent.run(
+                AgentRequest(
+                    role=role,
+                    prompt=prompt,
+                    worktree=str(worktree),
+                    todo_id=todo.todo_id,
+                    provider=contract.agent_provider,
+                    model=contract.agent_model,
+                    timeout_seconds=todo.timeout_seconds,
+                )
+            )
+        except Exception as error:
+            self._store.record_todo_attempt(
+                contract.run_id,
+                todo.todo_id,
+                AttemptReport(
+                    role=role,
+                    todo_id=todo.todo_id,
+                    provider=contract.agent_provider,
+                    model=contract.agent_model or "",
+                    session_id="",
+                    status="failed",
+                    elapsed_seconds=time.monotonic() - started,
+                    recorded_at=_now(),
+                    error=str(error),
+                ),
+            )
+            raise
+        self._store.record_todo_attempt(
+            contract.run_id,
+            todo.todo_id,
+            AttemptReport(
+                role=role,
+                todo_id=todo.todo_id,
+                provider=contract.agent_provider,
+                model=contract.agent_model or "",
+                session_id=result.session_id,
+                status="succeeded",
+                elapsed_seconds=time.monotonic() - started,
+                recorded_at=_now(),
+                usage=_reported_usage(result),
+            ),
+        )
+        return result
+
     def _create_todo_red_checkpoint(
         self,
         contract: _Contract,
@@ -461,16 +580,12 @@ class GoalRunner:
         record = self._store.get_todo(contract.run_id, todo.todo_id)
         workspace.restore_checkpoint(_required_string(record, "base_commit"))
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "test_designer")
-        result = self._agent.run(
-            AgentRequest(
-                role="test_designer",
-                prompt=_test_designer_prompt(contract, todo),
-                worktree=str(workspace.worktree),
-                todo_id=todo.todo_id,
-                provider=contract.agent_provider,
-                model=contract.agent_model,
-                timeout_seconds=todo.timeout_seconds,
-            )
+        result = self._run_todo_agent(
+            contract,
+            todo,
+            "test_designer",
+            _test_designer_prompt(contract, todo),
+            workspace.worktree,
         )
         changed_paths = workspace.changed_paths()
         if not changed_paths:
@@ -515,16 +630,12 @@ class GoalRunner:
         workspace.restore_checkpoint(_required_string(record, "red_commit"))
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "implementer")
         try:
-            result = self._agent.run(
-                AgentRequest(
-                    role="implementer",
-                    prompt=_implementer_prompt(contract, todo),
-                    worktree=str(workspace.worktree),
-                    todo_id=todo.todo_id,
-                    provider=contract.agent_provider,
-                    model=contract.agent_model,
-                    timeout_seconds=todo.timeout_seconds,
-                )
+            result = self._run_todo_agent(
+                contract,
+                todo,
+                "implementer",
+                _implementer_prompt(contract, todo),
+                workspace.worktree,
             )
         except Exception as error:
             self._store.record_todo_interruption(
@@ -577,16 +688,12 @@ class GoalRunner:
         code_commit = _required_string(record, "code_commit")
         workspace.restore_checkpoint(code_commit)
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "verifier")
-        result = self._agent.run(
-            AgentRequest(
-                role="verifier",
-                prompt=_verifier_prompt(contract, todo),
-                worktree=str(workspace.worktree),
-                todo_id=todo.todo_id,
-                provider=contract.agent_provider,
-                model=contract.agent_model,
-                timeout_seconds=todo.timeout_seconds,
-            )
+        result = self._run_todo_agent(
+            contract,
+            todo,
+            "verifier",
+            _verifier_prompt(contract, todo),
+            workspace.worktree,
         )
         if workspace.changed_paths():
             workspace.restore_checkpoint(code_commit)
@@ -723,6 +830,7 @@ class GoalRunner:
             / stage.replace(":", "-")
         )
         adapter = self._harnesses[todo.harness.kind]
+        started = time.monotonic()
         result = adapter.execute(HarnessRequest(
             profile=todo.harness,
             command=todo.test_command,
@@ -753,6 +861,7 @@ class GoalRunner:
             stdout=result.stdout,
             stderr=stderr,
             recorded_at=_now(),
+            duration_seconds=time.monotonic() - started,
             harness_profile=todo.harness.name,
             environment=result.environment,
             base_url=result.base_url,
@@ -768,6 +877,7 @@ class GoalRunner:
                 stdout=item["stdout"],
                 stderr=item["stderr"],
                 recorded_at=item["recorded_at"],
+                duration_seconds=float(item.get("duration_seconds", 0)),
                 harness_profile=item.get("harness_profile", ""),
                 environment=item.get("environment", ""),
                 base_url=item.get("base_url", ""),
@@ -778,6 +888,18 @@ class GoalRunner:
         todos = tuple(
             _todo_report(item)
             for item in self._store.get_todos(record["run_id"])
+        )
+        attempts = tuple(
+            sorted(
+                (
+                    *(
+                        _attempt_report_from_dict(item)
+                        for item in json.loads(record["attempts_json"])
+                    ),
+                    *(attempt for todo in todos for attempt in todo.attempts),
+                ),
+                key=lambda item: item.recorded_at,
+            )
         )
         sessions = json.loads(record["sessions_json"])
         red_commit = record["red_commit"] or ""
@@ -802,6 +924,7 @@ class GoalRunner:
             red_commit=red_commit,
             code_commit=code_commit,
             sessions=sessions,
+            attempts=attempts,
             evidence=evidence,
             todos=todos,
             image_profile=record["image_profile"],
@@ -834,6 +957,7 @@ class _RunStore:
                     red_commit TEXT,
                     code_commit TEXT,
                     sessions_json TEXT NOT NULL,
+                    attempts_json TEXT NOT NULL DEFAULT '[]',
                     evidence_json TEXT NOT NULL,
                     image_profile TEXT NOT NULL DEFAULT '',
                     image_operation_id TEXT NOT NULL DEFAULT '',
@@ -864,6 +988,7 @@ class _RunStore:
                     red_commit TEXT,
                     code_commit TEXT,
                     sessions_json TEXT NOT NULL,
+                    attempts_json TEXT NOT NULL DEFAULT '[]',
                     evidence_json TEXT NOT NULL,
                     repair_commits_json TEXT NOT NULL DEFAULT '[]',
                     last_error TEXT,
@@ -1050,6 +1175,21 @@ class _RunStore:
     ) -> None:
         self._update_todo(run_id, todo_id, last_error=error)
 
+    def record_todo_attempt(
+        self,
+        run_id: str,
+        todo_id: str,
+        attempt: AttemptReport,
+    ) -> None:
+        record = self.get_todo(run_id, todo_id)
+        attempts = json.loads(record["attempts_json"])
+        attempts.append(asdict(attempt))
+        self._update_todo(
+            run_id,
+            todo_id,
+            attempts_json=json.dumps(attempts, sort_keys=True),
+        )
+
     def todo_checkpoint(
         self,
         run_id: str,
@@ -1187,6 +1327,7 @@ class _RunStore:
             row[1] for row in connection.execute("PRAGMA table_info(runs)").fetchall()
         }
         columns = {
+            "attempts_json": "TEXT NOT NULL DEFAULT '[]'",
             "image_profile": "TEXT NOT NULL DEFAULT ''",
             "image_operation_id": "TEXT NOT NULL DEFAULT ''",
             "image_status": "TEXT NOT NULL DEFAULT ''",
@@ -1206,6 +1347,7 @@ class _RunStore:
             row[1] for row in connection.execute("PRAGMA table_info(todos)").fetchall()
         }
         columns = {
+            "attempts_json": "TEXT NOT NULL DEFAULT '[]'",
             "repair_commits_json": "TEXT NOT NULL DEFAULT '[]'",
         }
         for name, definition in columns.items():
@@ -1661,6 +1803,7 @@ def _run_command(
     cwd: Path,
     timeout_seconds: int,
 ) -> CommandEvidence:
+    started = time.monotonic()
     completed = subprocess.run(
         list(command),
         cwd=str(cwd),
@@ -1677,6 +1820,9 @@ def _run_command(
         stdout=completed.stdout,
         stderr=completed.stderr,
         recorded_at=_now(),
+        duration_seconds=time.monotonic() - started,
+        harness_profile="direct-command",
+        environment="local",
     )
 
 
@@ -1750,6 +1896,7 @@ def _todo_report(record: Mapping[str, Any]) -> TodoReport:
             stdout=item["stdout"],
             stderr=item["stderr"],
             recorded_at=item["recorded_at"],
+            duration_seconds=float(item.get("duration_seconds", 0)),
             harness_profile=item.get("harness_profile", ""),
             environment=item.get("environment", ""),
             base_url=item.get("base_url", ""),
@@ -1766,6 +1913,10 @@ def _todo_report(record: Mapping[str, Any]) -> TodoReport:
         red_commit=record["red_commit"] or "",
         code_commit=record["code_commit"] or "",
         sessions=json.loads(record["sessions_json"]),
+        attempts=tuple(
+            _attempt_report_from_dict(item)
+            for item in json.loads(record["attempts_json"])
+        ),
         evidence=evidence,
         repair_commits=tuple(json.loads(record["repair_commits_json"])),
     )
@@ -1776,13 +1927,17 @@ def _todo_report_from_dict(value: object) -> TodoReport:
         raise ValueError("Todo report must be a mapping")
     evidence_data = value.get("evidence", [])
     sessions_data = value.get("sessions", {})
+    attempts_data = value.get("attempts", [])
     repair_commits_data = value.get("repair_commits", [])
     if (
         not isinstance(evidence_data, list)
         or not isinstance(sessions_data, dict)
+        or not isinstance(attempts_data, list)
         or not isinstance(repair_commits_data, list)
     ):
-        raise ValueError("Todo report evidence, sessions, and repairs have invalid types")
+        raise ValueError(
+            "Todo report attempts, evidence, sessions, and repairs have invalid types"
+        )
     return TodoReport(
         todo_id=str(value["todo_id"]),
         status=str(value["status"]),
@@ -1792,6 +1947,11 @@ def _todo_report_from_dict(value: object) -> TodoReport:
         red_commit=str(value.get("red_commit", "")),
         code_commit=str(value.get("code_commit", "")),
         sessions={str(key): str(item) for key, item in sessions_data.items()},
+        attempts=tuple(
+            _attempt_report_from_dict(item)
+            for item in attempts_data
+            if isinstance(item, dict)
+        ),
         evidence=tuple(
             CommandEvidence(
                 stage=str(item["stage"]),
@@ -1800,6 +1960,7 @@ def _todo_report_from_dict(value: object) -> TodoReport:
                 stdout=str(item["stdout"]),
                 stderr=str(item["stderr"]),
                 recorded_at=str(item["recorded_at"]),
+                duration_seconds=float(item.get("duration_seconds", 0)),
                 harness_profile=str(item.get("harness_profile", "")),
                 environment=str(item.get("environment", "")),
                 base_url=str(item.get("base_url", "")),
@@ -1810,6 +1971,118 @@ def _todo_report_from_dict(value: object) -> TodoReport:
         ),
         repair_commits=tuple(str(commit) for commit in repair_commits_data),
     )
+
+
+def _attempt_report_from_dict(value: Mapping[str, object]) -> AttemptReport:
+    usage = value.get("usage")
+    if usage is not None and not isinstance(usage, dict):
+        raise ValueError("Attempt usage must be a mapping")
+    return AttemptReport(
+        role=str(value["role"]),
+        todo_id=str(value.get("todo_id", "")),
+        provider=str(value["provider"]),
+        model=str(value.get("model", "")),
+        session_id=str(value.get("session_id", "")),
+        status=str(value["status"]),
+        elapsed_seconds=float(value.get("elapsed_seconds", 0)),
+        recorded_at=str(value["recorded_at"]),
+        error=str(value.get("error", "")),
+        usage=(
+            {str(key): int(item) for key, item in usage.items()}
+            if isinstance(usage, dict)
+            else None
+        ),
+    )
+
+
+def _reported_usage(result: AgentResult) -> Optional[Mapping[str, int]]:
+    usage = getattr(result, "usage", {})
+    return dict(usage) if usage else None
+
+
+def _consumption_dict(
+    *,
+    attempts: Sequence[AttemptReport],
+    todos: Sequence[TodoReport],
+    fallback_evidence: Sequence[CommandEvidence],
+) -> Dict[str, object]:
+    agent_groups: Dict[Tuple[str, str, str, str], List[AttemptReport]] = {}
+    for attempt in attempts:
+        key = (
+            attempt.todo_id,
+            attempt.role,
+            attempt.provider,
+            attempt.model,
+        )
+        agent_groups.setdefault(key, []).append(attempt)
+
+    agents: List[Dict[str, object]] = []
+    for (todo_id, role, provider, model), group in sorted(agent_groups.items()):
+        usage_totals: Dict[str, int] = {}
+        for item in group:
+            if item.usage is None:
+                continue
+            for key, value in item.usage.items():
+                usage_totals[key] = usage_totals.get(key, 0) + value
+        agents.append(
+            {
+                "todo_id": todo_id,
+                "role": role,
+                "provider": provider,
+                "model": model or None,
+                "attempt_count": len(group),
+                "succeeded_count": sum(
+                    item.status == "succeeded" for item in group
+                ),
+                "failed_count": sum(item.status == "failed" for item in group),
+                "elapsed_seconds": sum(item.elapsed_seconds for item in group),
+                "usage": (
+                    usage_totals
+                    if all(item.usage is not None for item in group)
+                    else None
+                ),
+                "usage_reported_attempts": sum(
+                    item.usage is not None for item in group
+                ),
+                "usage_unknown_attempts": sum(
+                    item.usage is None for item in group
+                ),
+            }
+        )
+
+    harness_groups: Dict[
+        Tuple[str, str, str],
+        List[CommandEvidence],
+    ] = {}
+    if todos:
+        evidence_with_todo = (
+            (todo.todo_id, item)
+            for todo in todos
+            for item in todo.evidence
+        )
+    else:
+        evidence_with_todo = (("", item) for item in fallback_evidence)
+    for todo_id, item in evidence_with_todo:
+        key = (
+            todo_id,
+            item.harness_profile or "unknown",
+            item.environment or "unknown",
+        )
+        harness_groups.setdefault(key, []).append(item)
+
+    harnesses = [
+        {
+            "todo_id": todo_id,
+            "profile": profile,
+            "environment": environment,
+            "execution_count": len(group),
+            "duration_seconds": sum(item.duration_seconds for item in group),
+        }
+        for (todo_id, profile, environment), group in sorted(
+            harness_groups.items()
+        )
+    ]
+    return {"agents": agents, "harnesses": harnesses}
 
 
 def _now() -> str:

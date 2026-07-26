@@ -117,6 +117,15 @@ def test_candidate_repairs_a_todo_merge_conflict_with_a_fresh_agent_session() ->
         assert report.status == "merge_ready"
         assert agent.calls.count(("T-2", "conflict_repairer")) == 1
         repaired_todo = next(todo for todo in report.todos if todo.todo_id == "T-2")
+        repair_attempts = [
+            attempt
+            for attempt in repaired_todo.attempts
+            if attempt.role == "conflict_repairer"
+        ]
+        assert len(repair_attempts) == 1
+        assert repair_attempts[0].status == "succeeded"
+        assert repair_attempts[0].todo_id == "T-2"
+        assert repair_attempts[0].session_id == "T-2-conflict_repairer-session"
         assert len(repaired_todo.repair_commits) == 1
         assert repaired_todo.repair_commits[0] != repaired_todo.code_commit
         assert RunReport.from_dict(report.to_dict()) == report

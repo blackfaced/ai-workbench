@@ -37,7 +37,15 @@ from .project import (
     ProjectInitResult,
     ProjectPolicy,
 )
-from .runner import ContractError, GateError, GoalRunner, RunReport, TodoReport
+from .runner import (
+    AttemptReport,
+    CommandEvidence,
+    ContractError,
+    GateError,
+    GoalRunner,
+    RunReport,
+    TodoReport,
+)
 from .setup import SetupApplyResult, SetupInspection, WorkbenchSetup
 from .skills import (
     SkillCatalog,
@@ -57,6 +65,7 @@ __all__ = [
     "AgentRequest",
     "AgentResult",
     "AgentRouter",
+    "AttemptReport",
     "BrowserDiagnosticAdapter",
     "BrowserDiagnosticError",
     "BrowserDiagnosticProfile",
@@ -64,6 +73,7 @@ __all__ = [
     "BrowserDiagnosticResult",
     "ClaudeCodeCliAdapter",
     "CodexCliAdapter",
+    "CommandEvidence",
     "ContractError",
     "DaemonClient",
     "DaemonError",

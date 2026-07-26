@@ -239,7 +239,11 @@ def test_goal_runner_uses_kubernetes_harness_for_every_candidate_gate() -> None:
         assert all(item.base_url.startswith("https://aiwb-") for item in report.evidence)
         assert len({item.environment for item in report.evidence}) == len(report.evidence)
         events = (root / "events.log").read_text(encoding="utf-8").splitlines()
-        assert events == ["provision", "collect", "cleanup"] * 3
+        assert events == ["provision", "collect", "cleanup"] * 4
+        assert sum(
+            item["execution_count"]
+            for item in report.to_dict()["consumption"]["harnesses"]
+        ) == 4
         assert not (root / "cluster-resource").exists()
         assert not list((root / "state" / "kubernetes-leases").glob("*.json"))
 
