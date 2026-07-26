@@ -317,7 +317,7 @@ codex mcp list
 
 Registration is intentionally a user action; the repository never edits global Codex configuration. The MCP server needs no network access or OpenAI API key. It connects only to the local `0600` daemon socket. Start or install the daemon separately before using the tools.
 
-The bundled interaction Skills live in [`skills/`](skills/): `run-approved-goal`, `setup-ai-workbench`, and `ask-ai-workbench`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `run-approved-goal` submits an approved Contract and observes its durable Run; `$setup-ai-workbench` inspects first and requires explicit confirmation before project-local setup; `$ask-ai-workbench` is advisory and can return no recommendation.
+The bundled interaction Skills live in [`skills/`](skills/): `run-approved-goal`, `draft-aiwb-contract`, `setup-ai-workbench`, and `ask-ai-workbench`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `run-approved-goal` submits an approved Contract and observes its durable Run; `draft-aiwb-contract` converts approved local `tickets.md` content into a non-runnable Contract draft; `$setup-ai-workbench` inspects first and requires explicit confirmation before project-local setup; `$ask-ai-workbench` is advisory and can return no recommendation.
 
 For direct CLI use, inspect first and add `--apply` only after reviewing the exact planned changes:
 
@@ -337,18 +337,35 @@ revision, then explicitly name each Skill and target:
 ```bash
 aiwb setup --repo /path/to/project --agent-target codex \
   --install-pack matt \
-  --pack-skill matt=ask-matt \
-  --pack-skill matt=setup-matt-pocock-skills \
+  --pack-profile matt=engineering \
   --apply
 ```
 
-This invokes the fixed `skills@1.5.9` installer against
-`mattpocock/skills` release `v1.1.0` (resolved during review to
-`d574778f94cf620fcc8ce741584093bc650a61d3`), with `--copy` and no global or
+The `engineering` profile is the reviewed dependency closure of upstream
+`ask-matt`'s engineering flow, not the whole upstream collection. This invokes
+the fixed `skills@1.5.9` installer against the reviewed commit
+`d574778f94cf620fcc8ce741584093bc650a61d3`, with `--copy` and no global or
 all-Skills option. It writes project-local Skill directories and the
 installer's lock file. Then invoke `$setup-matt-pocock-skills` yourself to
 choose its issue-tracker, label, and document settings. Anthropic is listed as
 reference-only until separately reviewed.
+
+## From Matt tickets to an AI Workbench Contract
+
+Use `$to-tickets` to agree and publish local `tickets.md` first. Then create a
+draft that preserves the vertical slices, blocking edges, and acceptance
+criteria without granting any execution authority:
+
+```bash
+aiwb goal draft --repo /path/to/project \
+  --tickets /path/to/project/tickets.md \
+  --output /path/to/project/greeting.contract.yaml
+```
+
+The generated file has `approval.status: draft` and placeholder test commands.
+Review it against the project's workflow policy, replace every placeholder,
+and explicitly approve it before using `run-approved-goal`. The command does
+not fetch a tracker, configure a Harness, start a daemon, or submit a Goal.
 
 For macOS background operation, inspect the plist without loading it:
 

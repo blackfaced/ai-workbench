@@ -143,7 +143,7 @@ def test_setup_installs_selected_matt_skills_with_a_project_target() -> None:
                     "--yes",
                     "skills@1.5.9",
                     "add",
-                    "https://github.com/mattpocock/skills/tree/v1.1.0",
+                    "https://github.com/mattpocock/skills/tree/d574778f94cf620fcc8ce741584093bc650a61d3",
                     "--copy",
                     "--yes",
                     "--agent",
@@ -156,6 +156,40 @@ def test_setup_installs_selected_matt_skills_with_a_project_target() -> None:
                 repository.resolve(),
             )
         ]
+
+
+def test_setup_installs_the_reviewed_matt_engineering_profile() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        calls = []
+
+        result = WorkbenchSetup(command_runner=lambda command, cwd: calls.append((command, cwd))).apply(
+            repository,
+            confirmed=True,
+            agent_targets=("codex",),
+            pack_profiles={"matt": ("engineering",)},
+        )
+
+        command, cwd = calls[0]
+        selected = tuple(
+            command[index + 1]
+            for index, item in enumerate(command)
+            if item == "--skill"
+        )
+        assert result.installed_packs == ("matt",)
+        assert cwd == repository.resolve()
+        assert command[4] == "https://github.com/mattpocock/skills/tree/d574778f94cf620fcc8ce741584093bc650a61d3"
+        assert selected[:4] == (
+            "setup-matt-pocock-skills",
+            "ask-matt",
+            "grill-with-docs",
+            "grill-me",
+        )
+        assert "to-spec" in selected
+        assert "to-tickets" in selected
+        assert "tdd" in selected
+        assert "improve-codebase-architecture" in selected
 
 
 def test_setup_keeps_reference_only_packs_uninstallable() -> None:
