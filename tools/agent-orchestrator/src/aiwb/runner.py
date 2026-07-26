@@ -71,7 +71,6 @@ class _Contract:
     repository: Path
     base_ref: str
     todos: Tuple[_Todo, ...]
-    legacy_single_todo: bool
     image_profile_name: str
     image_profile: Optional[ImageProfile]
     candidate_publish: Optional[CandidatePublishProfile]
@@ -92,26 +91,6 @@ class _Contract:
 
     def todo_branch(self, todo: _Todo) -> str:
         return f"aiwb/{self.goal_id}/{todo.todo_id}-{self.contract_hash[:8]}"
-
-    @property
-    def todo_id(self) -> str:
-        return self.todos[0].todo_id
-
-    @property
-    def todo_title(self) -> str:
-        return self.todos[0].title
-
-    @property
-    def test_command(self) -> Tuple[str, ...]:
-        return self.todos[0].test_command
-
-    @property
-    def allowed_test_paths(self) -> Tuple[str, ...]:
-        return self.todos[0].allowed_test_paths
-
-    @property
-    def timeout_seconds(self) -> int:
-        return self.todos[0].timeout_seconds
 
 
 @dataclass(frozen=True)
@@ -271,32 +250,7 @@ class GoalRunner:
 
     def run(self, contract_path: Path) -> RunReport:
         contract, workspace, record = self._prepare(Path(contract_path))
-
-        if not contract.legacy_single_todo:
-            return self._run_dag(contract, workspace, record)
-
-        if record["status"] == "merge_ready":
-            return self._publish_candidate(contract, workspace, record)
-        if record["status"] in {"candidate_verified", "waiting_image"}:
-            return self._await_image(contract, workspace)
-
-        if record["status"] == "approved":
-            self._create_red_checkpoint(contract, workspace)
-            record = self._store.get(contract.run_id)
-
-        if record["status"] == "red_verified":
-            self._create_code_checkpoint(contract, workspace, record)
-            record = self._store.get(contract.run_id)
-
-        if record["status"] == "code_ready":
-            self._verify_candidate(contract, workspace, record)
-            record = self._store.get(contract.run_id)
-
-        if record["status"] == "candidate_verified":
-            return self._await_image(contract, workspace)
-        if record["status"] == "merge_ready":
-            return self._publish_candidate(contract, workspace, record)
-        return self._report(record)
+        return self._run_dag(contract, workspace, record)
 
     def _run_dag(
         self,
@@ -662,9 +616,7 @@ class GoalRunner:
         contract_path: Path,
     ) -> Tuple[_Contract, "_GitWorkspace", Mapping[str, Any]]:
         contract = _load_contract(contract_path)
-        worktree = self._state_dir / "worktrees" / contract.run_id
-        if not contract.legacy_single_todo:
-            worktree = worktree / "candidate"
+        worktree = self._state_dir / "worktrees" / contract.run_id / "candidate"
         workspace = _GitWorkspace(
             repository=contract.repository,
             worktree=worktree,
@@ -674,171 +626,6 @@ class GoalRunner:
         workspace.ensure()
         record = self._store.get_or_create(contract, workspace.worktree)
         return contract, workspace, record
-
-    def _create_red_checkpoint(
-        self,
-        contract: _Contract,
-        workspace: "_GitWorkspace",
-    ) -> None:
-        workspace.restore_checkpoint(workspace.head())
-        self._store.set_active_stage(contract.run_id, "test_designer")
-        result = self._agent.run(
-            AgentRequest(
-                role="test_designer",
-                prompt=_test_designer_prompt(contract),
-                worktree=str(workspace.worktree),
-                todo_id=contract.todo_id,
-                provider=contract.agent_provider,
-                model=contract.agent_model,
-                timeout_seconds=contract.timeout_seconds,
-            )
-        )
-        changed_paths = workspace.changed_paths()
-        if not changed_paths:
-            raise GateError("Test Designer produced no test changes")
-        outside_test_paths = [
-            path
-            for path in changed_paths
-            if not _matches_any(path, contract.allowed_test_paths)
-        ]
-        if outside_test_paths:
-            raise GateError(
-                "Test Designer changed paths outside the approved test paths: "
-                + ", ".join(outside_test_paths)
-            )
-
-        evidence = self._run_gate(
-            contract,
-            contract.todos[0],
-            "red",
-            workspace.worktree,
-        )
-        if evidence.returncode == 0:
-            raise GateError("RED gate failed: the new test passed before implementation")
-
-        red_commit = workspace.commit(f"test({contract.todo_id}): add RED acceptance test")
-        self._store.checkpoint(
-            contract.run_id,
-            status="red_verified",
-            red_commit=red_commit,
-            agent_result=result,
-            role="test_designer",
-            evidence=evidence,
-        )
-
-    def _create_code_checkpoint(
-        self,
-        contract: _Contract,
-        workspace: "_GitWorkspace",
-        record: Mapping[str, Any],
-    ) -> None:
-        red_commit = _required_string(record, "red_commit")
-        workspace.restore_checkpoint(red_commit)
-        self._store.set_active_stage(contract.run_id, "implementer")
-        try:
-            result = self._agent.run(
-                AgentRequest(
-                    role="implementer",
-                prompt=_implementer_prompt(contract),
-                worktree=str(workspace.worktree),
-                todo_id=contract.todo_id,
-                provider=contract.agent_provider,
-                model=contract.agent_model,
-                timeout_seconds=contract.timeout_seconds,
-                )
-            )
-        except Exception as error:
-            self._store.record_interruption(contract.run_id, str(error))
-            raise
-
-        changed_paths = workspace.changed_paths()
-        if not changed_paths:
-            raise GateError("Implementer produced no code changes")
-        protected_changes = [
-            path
-            for path in changed_paths
-            if _matches_any(path, contract.allowed_test_paths)
-        ]
-        if protected_changes:
-            raise GateError(
-                "Implementer changed protected RED tests: "
-                + ", ".join(protected_changes)
-            )
-
-        evidence = self._run_gate(
-            contract,
-            contract.todos[0],
-            "green",
-            workspace.worktree,
-        )
-        if evidence.returncode != 0:
-            raise GateError(
-                "GREEN gate failed after implementation:\n"
-                + (evidence.stderr or evidence.stdout)
-            )
-
-        code_commit = workspace.commit(f"feat({contract.todo_id}): satisfy acceptance test")
-        self._store.checkpoint(
-            contract.run_id,
-            status="code_ready",
-            code_commit=code_commit,
-            agent_result=result,
-            role="implementer",
-            evidence=evidence,
-        )
-
-    def _verify_candidate(
-        self,
-        contract: _Contract,
-        workspace: "_GitWorkspace",
-        record: Mapping[str, Any],
-    ) -> None:
-        code_commit = _required_string(record, "code_commit")
-        workspace.restore_checkpoint(code_commit)
-        self._store.set_active_stage(contract.run_id, "verifier")
-        result = self._agent.run(
-            AgentRequest(
-                role="verifier",
-                prompt=_verifier_prompt(contract),
-                worktree=str(workspace.worktree),
-                todo_id=contract.todo_id,
-                provider=contract.agent_provider,
-                model=contract.agent_model,
-                timeout_seconds=contract.timeout_seconds,
-            )
-        )
-        changed_paths = workspace.changed_paths()
-        if changed_paths:
-            workspace.restore_checkpoint(code_commit)
-            raise GateError(
-                "Verifier mutated the Candidate: " + ", ".join(changed_paths)
-            )
-
-        evidence = self._run_gate(
-            contract,
-            contract.todos[0],
-            "verify",
-            workspace.worktree,
-        )
-        if evidence.returncode != 0:
-            raise GateError(
-                "verification gate failed:\n" + (evidence.stderr or evidence.stdout)
-            )
-        if workspace.changed_paths():
-            workspace.restore_checkpoint(code_commit)
-            raise GateError("Verification command mutated the Candidate")
-
-        self._store.checkpoint(
-            contract.run_id,
-            status=(
-                "candidate_verified"
-                if contract.image_profile is not None
-                else "merge_ready"
-            ),
-            agent_result=result,
-            role="verifier",
-            evidence=evidence,
-        )
 
     def _finish_candidate(
         self,
@@ -988,6 +775,23 @@ class GoalRunner:
             )
             for item in json.loads(record["evidence_json"])
         )
+        todos = tuple(
+            _todo_report(item)
+            for item in self._store.get_todos(record["run_id"])
+        )
+        sessions = json.loads(record["sessions_json"])
+        red_commit = record["red_commit"] or ""
+        code_commit = record["code_commit"] or ""
+        if len(todos) == 1:
+            todo = todos[0]
+            red_commit = red_commit or todo.red_commit
+            code_commit = code_commit or todo.code_commit
+            sessions = sessions or dict(todo.sessions)
+            evidence = evidence or tuple(
+                item
+                for item in todo.evidence
+                if not item.stage.startswith("integrate:")
+            )
         return RunReport(
             run_id=record["run_id"],
             goal_id=record["goal_id"],
@@ -995,14 +799,11 @@ class GoalRunner:
             branch=record["branch"],
             worktree=record["worktree"],
             contract_hash=record["contract_hash"],
-            red_commit=record["red_commit"] or "",
-            code_commit=record["code_commit"] or "",
-            sessions=json.loads(record["sessions_json"]),
+            red_commit=red_commit,
+            code_commit=code_commit,
+            sessions=sessions,
             evidence=evidence,
-            todos=tuple(
-                _todo_report(item)
-                for item in self._store.get_todos(record["run_id"])
-            ),
+            todos=todos,
             image_profile=record["image_profile"],
             image_operation_id=record["image_operation_id"],
             image_status=record["image_status"],
@@ -1111,8 +912,6 @@ class _RunStore:
         return self.get(contract.run_id)
 
     def _ensure_todos(self, contract: _Contract) -> None:
-        if contract.legacy_single_todo:
-            return
         now = _now()
         with self._connect() as connection:
             for todo in contract.todos:
@@ -1586,8 +1385,7 @@ def _load_contract(path: Path) -> _Contract:
     project = _mapping(data, "project")
     repository = _load_repository(path, project)
 
-    legacy_single_todo = "todos" not in data
-    if legacy_single_todo:
+    if "todos" not in data:
         todo_data = dict(_mapping(data, "todo"))
         todo_data["test"] = _mapping(data, "test")
         todo_data["depends_on"] = []
@@ -1625,7 +1423,6 @@ def _load_contract(path: Path) -> _Contract:
         repository=repository,
         base_ref=_text(project, "base_ref"),
         todos=todos,
-        legacy_single_todo=legacy_single_todo,
         image_profile_name=image_profile_name,
         image_profile=image_profile,
         candidate_publish=candidate_publish,
