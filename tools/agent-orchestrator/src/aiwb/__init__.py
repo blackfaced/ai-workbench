@@ -41,10 +41,13 @@ from .runner import (
     AttemptReport,
     CommandEvidence,
     ContractError,
+    ExecutionEnvelope,
     GateError,
     GoalRunner,
     RunReport,
+    TodoExecutionEnvelope,
     TodoReport,
+    preview_execution,
 )
 from .setup import SetupApplyResult, SetupInspection, WorkbenchSetup
 from .skills import (
@@ -75,6 +78,7 @@ __all__ = [
     "CodexCliAdapter",
     "CommandEvidence",
     "ContractError",
+    "ExecutionEnvelope",
     "DaemonClient",
     "DaemonError",
     "DoctorCheck",
@@ -114,5 +118,7 @@ __all__ = [
     "SkillRecommendation",
     "SkillRecommendationResult",
     "TodoReport",
+    "TodoExecutionEnvelope",
     "WorkbenchSetup",
+    "preview_execution",
 ]

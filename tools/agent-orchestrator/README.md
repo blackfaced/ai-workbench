@@ -297,6 +297,7 @@ In another terminal:
 
 ```bash
 aiwb daemon status
+aiwb goal preflight --contract /path/to/contract.yaml
 aiwb goal submit --contract /path/to/contract.yaml
 aiwb goal status <run-id>
 aiwb goal report <run-id>
@@ -364,8 +365,18 @@ aiwb goal draft --repo /path/to/project \
 
 The generated file has `approval.status: draft` and placeholder test commands.
 Review it against the project's workflow policy, replace every placeholder,
-and explicitly approve it before using `run-approved-goal`. The command does
-not fetch a tracker, configure a Harness, start a daemon, or submit a Goal.
+then inspect the side-effect-free execution envelope:
+
+```bash
+aiwb goal preflight --contract /path/to/project/greeting.contract.yaml
+```
+
+The preview reports the deterministic Agent/Harness lower bound, parallel Todo
+layers, and conditional repair/diagnostic/retry/image/publication paths. Token
+usage and monetary cost remain unknown unless a provider reports them. After
+review, explicitly approve the Contract before using `run-approved-goal`. The
+draft command does not fetch a tracker, configure a Harness, start a daemon, or
+submit a Goal.
 
 For macOS background operation, inspect the plist without loading it:
 
