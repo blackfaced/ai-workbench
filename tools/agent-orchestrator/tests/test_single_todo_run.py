@@ -173,6 +173,11 @@ class SingleTodoRunTest(unittest.TestCase):
                 resumed_adapter.prompts[1][1],
             )
             self.assertNotEqual(report.red_commit, report.code_commit)
+            self.assertEqual(len(report.todos), 1)
+            self.assertEqual(report.todos[0].todo_id, "T-1")
+            self.assertEqual(report.todos[0].status, "integrated")
+            self.assertEqual(report.todos[0].red_commit, report.red_commit)
+            self.assertEqual(report.todos[0].code_commit, report.code_commit)
             self.assertEqual(
                 self._git(repository, "show", f"{report.branch}:greeting.py").stdout,
                 "def greeting(name):\n    return f'Hello, {name}!'\n",
