@@ -56,7 +56,7 @@ class ProcessAgentAdapter:
                 "    return f'Hello, {name}!'\n",
                 encoding="utf-8",
             )
-        elif request.role != "verifier":
+        elif request.role not in {"verifier", "candidate_verifier"}:
             raise AssertionError(f"unexpected role: {request.role}")
         return AgentResult(
             session_id=f"{os.getpid()}-{request.role}",
@@ -129,11 +129,17 @@ def test_new_daemon_process_recovers_a_run_interrupted_after_red() -> None:
                 "test_designer",
                 "implementer",
                 "verifier",
+                "candidate_verifier",
             ]
             assert {
                 item["role"]
                 for item in report.to_dict()["consumption"]["agents"]
-            } == {"test_designer", "implementer", "verifier"}
+            } == {
+                "test_designer",
+                "implementer",
+                "verifier",
+                "candidate_verifier",
+            }
         finally:
             if first.is_alive():
                 first.terminate()

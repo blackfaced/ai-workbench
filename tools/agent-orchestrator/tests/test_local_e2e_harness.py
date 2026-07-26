@@ -78,7 +78,12 @@ def test_local_e2e_harness_runs_gate_collects_logs_and_cleans_up() -> None:
         ).run(contract)
 
         assert report.status == "merge_ready"
-        assert [item.stage for item in report.evidence] == ["red", "green", "verify"]
+        assert [item.stage for item in report.evidence] == [
+            "red",
+            "green",
+            "verify",
+            "candidate_acceptance:T-1",
+        ]
         assert all(item.harness_profile == "local-e2e" for item in report.evidence)
         assert all(item.environment == "local" for item in report.evidence)
         assert all(item.base_url.startswith("http://127.0.0.1:") for item in report.evidence)

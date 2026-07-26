@@ -69,7 +69,7 @@ class ConflictingTodoAgent:
                 "    return 'goodbye'\n",
                 encoding="utf-8",
             )
-        elif request.role != "verifier":
+        elif request.role not in {"verifier", "candidate_verifier"}:
             raise AssertionError(f"unexpected role: {request.role}")
 
         return AgentResult(
@@ -162,7 +162,10 @@ def test_resume_repairs_an_interrupted_candidate_merge_without_rerunning_todos()
         ).run(contract)
 
         assert report.status == "merge_ready"
-        assert resumed_agent.calls == [("T-2", "conflict_repairer")]
+        assert resumed_agent.calls == [
+            ("T-2", "conflict_repairer"),
+            ("candidate", "candidate_verifier"),
+        ]
 
 
 def test_conflict_repairer_cannot_change_paths_outside_the_conflict() -> None:

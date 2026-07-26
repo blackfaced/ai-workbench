@@ -151,6 +151,7 @@ class RunReport:
     attempts: Tuple[AttemptReport, ...] = field(default_factory=tuple)
     evidence: Tuple[CommandEvidence, ...] = field(default_factory=tuple)
     todos: Tuple[TodoReport, ...] = field(default_factory=tuple)
+    candidate_commit: str = ""
     image_profile: str = ""
     image_operation_id: str = ""
     image_status: str = ""
@@ -227,6 +228,7 @@ class RunReport:
             ),
             evidence=evidence,
             todos=tuple(_todo_report_from_dict(item) for item in todos_data),
+            candidate_commit=str(value.get("candidate_commit", "")),
             image_profile=str(value.get("image_profile", "")),
             image_operation_id=str(value.get("image_operation_id", "")),
             image_status=str(value.get("image_status", "")),
@@ -295,8 +297,11 @@ class GoalRunner:
             return self._publish_candidate(contract, candidate, record)
         if record["status"] in {"candidate_verified", "waiting_image"}:
             return self._await_image(contract, candidate)
+        if record["status"] == "candidate_accepted":
+            return self._promote_candidate(contract, candidate)
 
-        self._store.set_run_status(contract.run_id, "running")
+        if record["status"] != "candidate_accepting":
+            self._store.set_run_status(contract.run_id, "running")
         while True:
             todo_records = self._store.get_todos(contract.run_id)
             if all(item["status"] == "integrated" for item in todo_records):
@@ -739,12 +744,154 @@ class GoalRunner:
         contract: _Contract,
         workspace: "_GitWorkspace",
     ) -> RunReport:
+        self._accept_candidate(contract, workspace)
+        return self._promote_candidate(contract, workspace)
+
+    def _promote_candidate(
+        self,
+        contract: _Contract,
+        workspace: "_GitWorkspace",
+    ) -> RunReport:
         if contract.image_profile is None:
             self._store.set_run_status(contract.run_id, "merge_ready")
             record = self._store.get(contract.run_id)
             return self._publish_candidate(contract, workspace, record)
         self._store.set_run_status(contract.run_id, "candidate_verified")
         return self._await_image(contract, workspace)
+
+    def _accept_candidate(
+        self,
+        contract: _Contract,
+        workspace: "_GitWorkspace",
+    ) -> None:
+        record = self._store.get(contract.run_id)
+        candidate_commit = record["candidate_commit"] or workspace.head()
+        self._store.start_candidate_acceptance(
+            contract.run_id,
+            candidate_commit,
+        )
+        workspace.restore_checkpoint(candidate_commit)
+        record = self._store.get(contract.run_id)
+
+        if not record["candidate_verifier_completed"]:
+            try:
+                result, elapsed_seconds = self._run_candidate_verifier(
+                    contract,
+                    workspace,
+                )
+            except Exception:
+                workspace.restore_checkpoint(candidate_commit)
+                raise
+            if (
+                workspace.head() != candidate_commit
+                or workspace.changed_paths()
+            ):
+                workspace.restore_checkpoint(candidate_commit)
+                error = "Final Candidate verifier mutated the immutable Candidate"
+                self._store.record_run_attempt(
+                    contract.run_id,
+                    AttemptReport(
+                        role="candidate_verifier",
+                        todo_id="candidate",
+                        provider=contract.agent_provider,
+                        model=contract.agent_model or "",
+                        session_id=result.session_id,
+                        status="rejected",
+                        elapsed_seconds=elapsed_seconds,
+                        recorded_at=_now(),
+                        error=error,
+                        usage=_reported_usage(result),
+                    ),
+                )
+                self._store.record_interruption(contract.run_id, error)
+                raise GateError(error)
+            self._store.record_run_attempt(
+                contract.run_id,
+                AttemptReport(
+                    role="candidate_verifier",
+                    todo_id="candidate",
+                    provider=contract.agent_provider,
+                    model=contract.agent_model or "",
+                    session_id=result.session_id,
+                    status="succeeded",
+                    elapsed_seconds=elapsed_seconds,
+                    recorded_at=_now(),
+                    usage=_reported_usage(result),
+                ),
+            )
+            self._store.complete_candidate_verifier(contract.run_id, result)
+
+        completed_stages = {
+            item["stage"]
+            for item in json.loads(
+                self._store.get(contract.run_id)["evidence_json"]
+            )
+            if item["returncode"] == 0
+        }
+        for todo in contract.todos:
+            stage = f"candidate_acceptance:{todo.todo_id}"
+            if stage in completed_stages:
+                continue
+            workspace.restore_checkpoint(candidate_commit)
+            try:
+                evidence = self._run_gate(
+                    contract=contract,
+                    todo=todo,
+                    stage=stage,
+                    cwd=workspace.worktree,
+                )
+            finally:
+                workspace.restore_checkpoint(candidate_commit)
+            self._store.record_run_evidence(contract.run_id, evidence)
+            if evidence.returncode != 0:
+                error = (
+                    f"Final Candidate acceptance failed for {todo.todo_id}:\n"
+                    + (evidence.stderr or evidence.stdout)
+                )
+                self._store.record_interruption(contract.run_id, error)
+                raise GateError(error)
+
+        self._store.complete_candidate_acceptance(contract.run_id)
+
+    def _run_candidate_verifier(
+        self,
+        contract: _Contract,
+        workspace: "_GitWorkspace",
+    ) -> Tuple[AgentResult, float]:
+        started = time.monotonic()
+        try:
+            result = self._agent.run(
+                AgentRequest(
+                    role="candidate_verifier",
+                    prompt=_candidate_verifier_prompt(contract),
+                    worktree=str(workspace.worktree),
+                    todo_id="candidate",
+                    sandbox="read-only",
+                    provider=contract.agent_provider,
+                    model=contract.agent_model,
+                    timeout_seconds=max(
+                        todo.timeout_seconds for todo in contract.todos
+                    ),
+                )
+            )
+        except Exception as error:
+            self._store.record_run_attempt(
+                contract.run_id,
+                AttemptReport(
+                    role="candidate_verifier",
+                    todo_id="candidate",
+                    provider=contract.agent_provider,
+                    model=contract.agent_model or "",
+                    session_id="",
+                    status="failed",
+                    elapsed_seconds=time.monotonic() - started,
+                    recorded_at=_now(),
+                    error=str(error),
+                ),
+            )
+            self._store.record_interruption(contract.run_id, str(error))
+            raise
+        return result, time.monotonic() - started
 
     def _await_image(
         self,
@@ -908,12 +1055,12 @@ class GoalRunner:
             todo = todos[0]
             red_commit = red_commit or todo.red_commit
             code_commit = code_commit or todo.code_commit
-            sessions = sessions or dict(todo.sessions)
-            evidence = evidence or tuple(
+            sessions = {**todo.sessions, **sessions}
+            evidence = tuple(
                 item
                 for item in todo.evidence
                 if not item.stage.startswith("integrate:")
-            )
+            ) + evidence
         return RunReport(
             run_id=record["run_id"],
             goal_id=record["goal_id"],
@@ -927,6 +1074,7 @@ class GoalRunner:
             attempts=attempts,
             evidence=evidence,
             todos=todos,
+            candidate_commit=record["candidate_commit"],
             image_profile=record["image_profile"],
             image_operation_id=record["image_operation_id"],
             image_status=record["image_status"],
@@ -959,6 +1107,8 @@ class _RunStore:
                     sessions_json TEXT NOT NULL,
                     attempts_json TEXT NOT NULL DEFAULT '[]',
                     evidence_json TEXT NOT NULL,
+                    candidate_commit TEXT NOT NULL DEFAULT '',
+                    candidate_verifier_completed INTEGER NOT NULL DEFAULT 0,
                     image_profile TEXT NOT NULL DEFAULT '',
                     image_operation_id TEXT NOT NULL DEFAULT '',
                     image_status TEXT NOT NULL DEFAULT '',
@@ -1073,6 +1223,79 @@ class _RunStore:
 
     def set_run_status(self, run_id: str, status: str) -> None:
         self._update(run_id, status=status)
+
+    def start_candidate_acceptance(
+        self,
+        run_id: str,
+        candidate_commit: str,
+    ) -> None:
+        record = self.get(run_id)
+        persisted_commit = record["candidate_commit"]
+        if persisted_commit and persisted_commit != candidate_commit:
+            raise GateError(
+                "Assembled Candidate commit changed during final acceptance"
+            )
+        self._update(
+            run_id,
+            status="candidate_accepting",
+            active_stage=(
+                "candidate_harness"
+                if record["candidate_verifier_completed"]
+                else "candidate_verifier"
+            ),
+            candidate_commit=persisted_commit or candidate_commit,
+            last_error=None,
+        )
+
+    def record_run_attempt(
+        self,
+        run_id: str,
+        attempt: AttemptReport,
+    ) -> None:
+        record = self.get(run_id)
+        attempts = json.loads(record["attempts_json"])
+        attempts.append(asdict(attempt))
+        self._update(
+            run_id,
+            attempts_json=json.dumps(attempts, sort_keys=True),
+        )
+
+    def complete_candidate_verifier(
+        self,
+        run_id: str,
+        result: AgentResult,
+    ) -> None:
+        record = self.get(run_id)
+        sessions = json.loads(record["sessions_json"])
+        sessions["candidate_verifier"] = result.session_id
+        self._update(
+            run_id,
+            active_stage="candidate_harness",
+            sessions_json=json.dumps(sessions, sort_keys=True),
+            candidate_verifier_completed=1,
+            last_error=None,
+        )
+
+    def record_run_evidence(
+        self,
+        run_id: str,
+        evidence: CommandEvidence,
+    ) -> None:
+        record = self.get(run_id)
+        evidence_items = json.loads(record["evidence_json"])
+        evidence_items.append(asdict(evidence))
+        self._update(
+            run_id,
+            evidence_json=json.dumps(evidence_items),
+        )
+
+    def complete_candidate_acceptance(self, run_id: str) -> None:
+        self._update(
+            run_id,
+            status="candidate_accepted",
+            active_stage="",
+            last_error=None,
+        )
 
     def start_image(self, run_id: str, operation_id: str) -> None:
         self._update(
@@ -1328,6 +1551,8 @@ class _RunStore:
         }
         columns = {
             "attempts_json": "TEXT NOT NULL DEFAULT '[]'",
+            "candidate_commit": "TEXT NOT NULL DEFAULT ''",
+            "candidate_verifier_completed": "INTEGER NOT NULL DEFAULT 0",
             "image_profile": "TEXT NOT NULL DEFAULT ''",
             "image_operation_id": "TEXT NOT NULL DEFAULT ''",
             "image_status": "TEXT NOT NULL DEFAULT ''",
@@ -1780,6 +2005,30 @@ def _verifier_prompt(contract: _Contract, todo: Optional[_Todo] = None) -> str:
     )
 
 
+def _candidate_verifier_prompt(contract: _Contract) -> str:
+    acceptance = "\n".join(
+        f"- {item.test_id}: {item.statement}"
+        for item in contract.acceptance
+    )
+    boundary = "\n".join(
+        f"- {todo.todo_id} ({todo.harness_name or 'direct-command'}): "
+        f"{json.dumps(todo.test_command)}"
+        for todo in contract.todos
+    )
+    return (
+        "You are the fresh final Verifier for the fully assembled Candidate.\n"
+        f"Goal: {contract.goal_title}\n"
+        f"Requirement: {contract.requirement}\n"
+        f"Acceptance:\n{acceptance}\n"
+        f"Complete approved Harness boundary:\n{boundary}\n"
+        + _role_guidance(contract, "verifier")
+        + "\nInspect the immutable assembled Candidate and the complete acceptance "
+        "boundary. Do not modify, format, fix, stage, or commit any file. The "
+        "orchestrator runs every approved Harness command after this independent "
+        "review; report any cross-Todo risk or inconsistency you observe."
+    )
+
+
 def _contract_prompt(contract: _Contract, todo: Optional[_Todo] = None) -> str:
     selected = todo or contract.todos[0]
     acceptance = "\n".join(
@@ -2035,6 +2284,9 @@ def _consumption_dict(
                     item.status == "succeeded" for item in group
                 ),
                 "failed_count": sum(item.status == "failed" for item in group),
+                "rejected_count": sum(
+                    item.status == "rejected" for item in group
+                ),
                 "elapsed_seconds": sum(item.elapsed_seconds for item in group),
                 "usage": (
                     usage_totals
@@ -2055,13 +2307,21 @@ def _consumption_dict(
         List[CommandEvidence],
     ] = {}
     if todos:
-        evidence_with_todo = (
+        evidence_with_todo = [
             (todo.todo_id, item)
             for todo in todos
             for item in todo.evidence
+        ]
+        evidence_with_todo.extend(
+            (
+                item.stage.removeprefix("candidate_acceptance:"),
+                item,
+            )
+            for item in fallback_evidence
+            if item.stage.startswith("candidate_acceptance:")
         )
     else:
-        evidence_with_todo = (("", item) for item in fallback_evidence)
+        evidence_with_todo = [("", item) for item in fallback_evidence]
     for todo_id, item in evidence_with_todo:
         key = (
             todo_id,
