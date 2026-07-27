@@ -132,6 +132,7 @@ def _build_parser() -> argparse.ArgumentParser:
     intake_source = intake.add_mutually_exclusive_group(required=True)
     intake_source.add_argument("--contract", type=Path)
     intake_source.add_argument("--tickets", type=Path)
+    intake_source.add_argument("--handoff", type=Path)
     intake.add_argument("--task", default="")
     _add_control_options(intake)
 
@@ -142,6 +143,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     preflight = goal_commands.add_parser("preflight")
     preflight.add_argument("--contract", required=True, type=Path)
+    preflight_policy = preflight.add_mutually_exclusive_group()
+    preflight_policy.add_argument("--workflow", type=Path)
+    preflight_policy.add_argument("--policy", dest="workflow", type=Path)
 
     draft = goal_commands.add_parser("draft")
     draft.add_argument("--repo", required=True, type=Path)
@@ -289,7 +293,12 @@ def _run_goal(options: argparse.Namespace) -> int:
         _print_json(result.__dict__)
         return 0
     if options.goal_command == "preflight":
-        _print_json(preview_execution(options.contract).to_dict())
+        _print_json(
+            preview_execution(
+                options.contract,
+                workflow_path=options.workflow,
+            ).to_dict()
+        )
         return 0
     if options.goal_command == "intake":
         client = DaemonClient(_socket_path(options))
@@ -297,6 +306,7 @@ def _run_goal(options: argparse.Namespace) -> int:
             repository=options.repo,
             contract_path=options.contract,
             tickets_path=options.tickets,
+            handoff_path=options.handoff,
             task=options.task,
         )
         _print_json(result.to_dict())

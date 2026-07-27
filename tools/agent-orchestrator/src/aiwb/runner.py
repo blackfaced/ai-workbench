@@ -100,6 +100,8 @@ class _Contract:
     image_profile: Optional[ImageProfile]
     candidate_publish: Optional[CandidatePublishProfile]
     role_skill_texts: Mapping[str, Tuple[Tuple[str, str], ...]]
+    policy: Mapping[str, object]
+    policy_blockers: Tuple[Mapping[str, str], ...]
 
     @property
     def run_id(self) -> str:
@@ -187,6 +189,9 @@ class ExecutionEnvelope:
     monetary_cost: Mapping[str, object]
     resource_boundaries: Mapping[str, object]
     concurrency_explanation: str
+    policy: Mapping[str, object] = field(default_factory=dict)
+    readiness: str = "ready"
+    blockers: Tuple[Mapping[str, str], ...] = ()
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -204,6 +209,9 @@ class ExecutionEnvelope:
             "monetary_cost": dict(self.monetary_cost),
             "resource_boundaries": dict(self.resource_boundaries),
             "concurrency_explanation": self.concurrency_explanation,
+            "policy": dict(self.policy),
+            "readiness": self.readiness,
+            "blockers": [dict(blocker) for blocker in self.blockers],
         }
 
 
@@ -334,11 +342,16 @@ class RunReport:
         )
 
 
-def preview_execution(contract_path: Path) -> ExecutionEnvelope:
+def preview_execution(
+    contract_path: Path,
+    workflow_path: Optional[Path] = None,
+) -> ExecutionEnvelope:
     """Preview an authorized Contract without creating execution state."""
     contract = _load_contract(
         Path(contract_path).expanduser().resolve(),
         require_approval=False,
+        workflow_path=workflow_path,
+        preflight=True,
     )
     return _execution_envelope(contract)
 
@@ -2449,6 +2462,8 @@ def _load_contract(
     path: Path,
     *,
     require_approval: bool = True,
+    workflow_path: Optional[Path] = None,
+    preflight: bool = False,
 ) -> _Contract:
     raw = path.read_bytes()
     try:
@@ -2517,11 +2532,19 @@ def _load_contract(
     image_profile_name = candidate.get("image_profile", "")
     if not isinstance(image_profile_name, str):
         raise ContractError("candidate.image_profile must be a profile name")
-    todos, image_profile, candidate_publish, role_skill_texts = _authorize_contract(
+    (
+        todos,
+        image_profile,
+        candidate_publish,
+        role_skill_texts,
+        policy_metadata,
+    ) = _authorize_contract(
         project,
         repository,
         todos,
         image_profile_name,
+        workflow_path=workflow_path,
+        preflight=preflight,
     )
     resources = _parse_resources(data.get("resources", {}))
 
@@ -2542,6 +2565,12 @@ def _load_contract(
         image_profile=image_profile,
         candidate_publish=candidate_publish,
         role_skill_texts=role_skill_texts,
+        policy={
+            key: value
+            for key, value in policy_metadata.items()
+            if key != "blockers"
+        },
+        policy_blockers=tuple(policy_metadata.get("blockers", ())),
     )
 
 
@@ -2591,44 +2620,242 @@ def _authorize_contract(
     repository: Path,
     todos: Sequence[_Todo],
     image_profile_name: str,
+    *,
+    workflow_path: Optional[Path] = None,
+    preflight: bool = False,
 ) -> Tuple[
     Tuple[_Todo, ...],
     Optional[ImageProfile],
     Optional[CandidatePublishProfile],
     Mapping[str, Tuple[Tuple[str, str], ...]],
+    Mapping[str, object],
 ]:
-    workflow_value = project.get("workflow", ".ai-workbench/workflow.yaml")
-    if not isinstance(workflow_value, str) or not workflow_value:
-        raise ContractError("project.workflow must be a non-empty path")
-    workflow_path = Path(workflow_value).expanduser()
-    if not workflow_path.is_absolute():
-        workflow_path = repository / workflow_path
-    workflow_path = workflow_path.resolve()
+    explicit = workflow_path is not None
+    if explicit:
+        resolved_workflow_path = Path(workflow_path).expanduser().resolve()
+    else:
+        workflow_value = project.get("workflow", ".ai-workbench/workflow.yaml")
+        if not isinstance(workflow_value, str) or not workflow_value:
+            raise ContractError("project.workflow must be a non-empty path")
+        resolved_workflow_path = Path(workflow_value).expanduser()
+        if not resolved_workflow_path.is_absolute():
+            resolved_workflow_path = repository / resolved_workflow_path
+        resolved_workflow_path = resolved_workflow_path.resolve()
+        try:
+            resolved_workflow_path.relative_to(repository)
+        except ValueError as error:
+            raise ContractError(
+                "project.workflow must stay inside project.repo"
+            ) from error
     try:
-        workflow_path.relative_to(repository)
-    except ValueError as error:
-        raise ContractError("project.workflow must stay inside project.repo") from error
-    try:
-        policy = ProjectPolicy.load(workflow_path)
-        authorized_todos = tuple(
-            replace(
-                todo,
-                harness=policy.authorize(
-                    repository,
-                    todo.test_command,
-                    todo.harness_name,
-                ),
+        policy = ProjectPolicy.load(resolved_workflow_path)
+        blockers = []
+        authorized_todos = []
+        root_mismatch = policy.repository != repository
+        if preflight and root_mismatch:
+            blockers.append(
+                {
+                    "code": "policy_root_mismatch",
+                    "message": (
+                        "The selected policy root does not match the Contract "
+                        "repository."
+                    ),
+                    "action": (
+                        f"Review {resolved_workflow_path} and set project.root to "
+                        f"{repository}."
+                    ),
+                }
             )
-            for todo in todos
-        )
+            authorized_todos.extend(todos)
+        else:
+            for todo in todos:
+                try:
+                    harness = policy.authorize(
+                        repository,
+                        todo.test_command,
+                        todo.harness_name,
+                    )
+                except ProjectConfigError as error:
+                    if (
+                        preflight
+                        and str(error)
+                        == "Contract test command is not an approved project capability"
+                    ):
+                        blockers.append(
+                            {
+                                "code": "approved_command_missing",
+                                "message": (
+                                    f"Contract Todo {todo.todo_id} test command is not "
+                                    "exactly approved by the selected policy."
+                                ),
+                                "action": (
+                                    "Review and add the exact command to "
+                                    f"{resolved_workflow_path} capabilities.commands "
+                                    "with approved: true."
+                                ),
+                            }
+                        )
+                        harness = None
+                    else:
+                        raise
+                authorized_todos.append(replace(todo, harness=harness))
         return (
-            authorized_todos,
+            tuple(authorized_todos),
             policy.authorize_image(image_profile_name),
             policy.authorize_publish(repository),
             policy.role_skill_texts,
+            {
+                "path": str(resolved_workflow_path),
+                "source": "explicit" if explicit else "repository",
+                "candidate_commands": [
+                    dict(command) for command in policy.candidate_commands
+                ],
+                "approved_commands": [
+                    list(command) for command in policy.approved_commands
+                ],
+                "blockers": blockers,
+            },
         )
     except ProjectConfigError as error:
+        blocker = _preflight_policy_error(
+            error,
+            resolved_workflow_path,
+        ) if preflight else None
+        if blocker is not None:
+            return _blocked_preflight_authorization(
+                todos=todos,
+                path=resolved_workflow_path,
+                explicit=explicit,
+                blocker=blocker,
+            )
         raise ContractError(str(error)) from error
+
+
+def _preflight_policy_error(
+    error: ProjectConfigError,
+    path: Path,
+) -> Optional[Mapping[str, str]]:
+    message = str(error)
+    if (
+        message == "project policy requires an approved command"
+        or (
+            message.startswith("project command ")
+            and message.endswith(" must be approved")
+        )
+    ):
+        return {
+            "code": "approved_command_missing",
+            "message": message,
+            "action": (
+                "Review and add the exact Contract test command to "
+                f"{path} capabilities.commands with approved: true."
+            ),
+        }
+    if message in {
+        "project policy status must be approved",
+        "project must be explicitly trusted",
+    }:
+        return {
+            "code": "policy_not_approved",
+            "message": message,
+            "action": (
+                f"Review {path}, explicitly approve its trusted project and "
+                "capabilities, then rerun preflight."
+            ),
+        }
+    if message.startswith(
+        (
+            "production Harness profile is forbidden:",
+            "production image profile is forbidden:",
+        )
+    ):
+        return {
+            "code": "production_target",
+            "message": message,
+            "action": (
+                f"Review {path} and use only local or non-production "
+                "Harness and image profiles."
+            ),
+        }
+    return None
+
+
+def _blocked_preflight_authorization(
+    *,
+    todos: Sequence[_Todo],
+    path: Path,
+    explicit: bool,
+    blocker: Mapping[str, str],
+) -> Tuple[
+    Tuple[_Todo, ...],
+    Optional[ImageProfile],
+    Optional[CandidatePublishProfile],
+    Mapping[str, Tuple[Tuple[str, str], ...]],
+    Mapping[str, object],
+]:
+    return (
+        tuple(todos),
+        None,
+        None,
+        {},
+        {
+            **_policy_display_metadata(
+                _read_policy_mapping(path),
+                path,
+                explicit,
+            ),
+            "blockers": [dict(blocker)],
+        },
+    )
+
+
+def _read_policy_mapping(path: Path) -> Mapping[str, object]:
+    try:
+        value = yaml.safe_load(path.read_bytes())
+    except (OSError, yaml.YAMLError) as error:
+        raise ContractError(f"cannot read project policy: {error}") from error
+    if not isinstance(value, dict):
+        raise ContractError("project policy must be a YAML mapping")
+    return value
+
+
+def _policy_display_metadata(
+    data: Mapping[str, object],
+    path: Path,
+    explicit: bool,
+) -> Mapping[str, object]:
+    suggestions = data.get("suggestions")
+    suggestions = suggestions if isinstance(suggestions, dict) else {}
+    candidate_values = suggestions.get("commands")
+    candidate_values = (
+        candidate_values if isinstance(candidate_values, dict) else {}
+    )
+    candidates = []
+    for name, definition in candidate_values.items():
+        if isinstance(name, str) and isinstance(definition, dict):
+            argv = definition.get("argv")
+            reason = definition.get("reason", "")
+            if isinstance(argv, list) and isinstance(reason, str):
+                candidates.append(
+                    {"name": name, "argv": list(argv), "reason": reason}
+                )
+    capabilities = data.get("capabilities")
+    capabilities = capabilities if isinstance(capabilities, dict) else {}
+    command_values = capabilities.get("commands")
+    command_values = command_values if isinstance(command_values, dict) else {}
+    approved = [
+        list(definition["argv"])
+        for definition in command_values.values()
+        if isinstance(definition, dict)
+        and definition.get("approved") is True
+        and isinstance(definition.get("argv"), list)
+    ]
+    return {
+        "path": str(path),
+        "source": "explicit" if explicit else "repository",
+        "candidate_commands": candidates,
+        "approved_commands": approved,
+    }
 
 
 def _contract_hash(
@@ -2698,7 +2925,7 @@ def _validate_todo_dag(
 
 
 def _execution_envelope(contract: _Contract) -> ExecutionEnvelope:
-    return _execution_envelope_from_graph(
+    envelope = _execution_envelope_from_graph(
         goal_id=contract.goal_id,
         approval_status=contract.approval_status,
         provider=contract.agent_provider,
@@ -2714,6 +2941,12 @@ def _execution_envelope(contract: _Contract) -> ExecutionEnvelope:
         ),
         image_build_configured=contract.image_profile is not None,
         candidate_publish_configured=contract.candidate_publish is not None,
+    )
+    return replace(
+        envelope,
+        policy=contract.policy,
+        readiness="blocked" if contract.policy_blockers else "ready",
+        blockers=contract.policy_blockers,
     )
 
 
