@@ -33,6 +33,7 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
         "doctor": _run_doctor,
         "goal": _run_goal,
         "daemon": _run_daemon,
+        "evidence": _run_evidence,
         "janitor": _run_janitor,
     }
     try:
@@ -134,6 +135,11 @@ def _build_parser() -> argparse.ArgumentParser:
     intake.add_argument("--task", default="")
     _add_control_options(intake)
 
+    goal_evidence = goal_commands.add_parser("evidence")
+    goal_evidence.add_argument("run_id")
+    goal_evidence.add_argument("artifact_id")
+    _add_control_options(goal_evidence)
+
     preflight = goal_commands.add_parser("preflight")
     preflight.add_argument("--contract", required=True, type=Path)
 
@@ -187,6 +193,15 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("~/.ai-workbench").expanduser(),
     )
+
+    evidence = commands.add_parser("evidence")
+    evidence_commands = evidence.add_subparsers(
+        dest="evidence_command",
+        required=True,
+    )
+    prune = evidence_commands.add_parser("prune")
+    prune.add_argument("--older-than-days", required=True, type=int)
+    _add_control_options(prune)
     return parser
 
 
@@ -305,6 +320,10 @@ def _run_goal(options: argparse.Namespace) -> int:
         _print_json(client.report(options.run_id).to_dict())
     elif options.goal_command == "resume":
         _print_json(client.resume(options.run_id).__dict__)
+    elif options.goal_command == "evidence":
+        _print_json(
+            client.evidence(options.run_id, options.artifact_id).to_dict()
+        )
     else:
         raise ValueError(f"unsupported goal command: {options.goal_command}")
     return 0
@@ -354,6 +373,16 @@ def _run_janitor(options: argparse.Namespace) -> int:
     report = KubernetesJanitor(options.state_dir).sweep()
     _print_json(report.__dict__)
     return 0 if report.failed == 0 else 1
+
+
+def _run_evidence(options: argparse.Namespace) -> int:
+    if options.evidence_command != "prune":
+        raise ValueError(f"unsupported Evidence command: {options.evidence_command}")
+    report = DaemonClient(_socket_path(options)).prune_evidence(
+        options.older_than_days
+    )
+    _print_json(report.__dict__)
+    return 0
 
 
 def _add_control_options(parser: argparse.ArgumentParser) -> None:

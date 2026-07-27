@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 from .agent import AgentAdapter
+from .evidence import EvidencePayload, EvidencePruneReport
 from .runner import GoalRunner, RunReport
 
 
@@ -82,6 +83,27 @@ class DaemonClient:
 
     def report(self, run_id: str) -> RunReport:
         return RunReport.from_dict(self._request("report", run_id=run_id))
+
+    def evidence(self, run_id: str, artifact_id: str) -> EvidencePayload:
+        return EvidencePayload.from_dict(
+            self._request(
+                "evidence",
+                run_id=run_id,
+                artifact_id=artifact_id,
+            )
+        )
+
+    def prune_evidence(self, older_than_days: int) -> EvidencePruneReport:
+        value = self._request(
+            "evidence_prune",
+            older_than_days=older_than_days,
+        )
+        return EvidencePruneReport(
+            scanned=int(value["scanned"]),
+            deleted=int(value["deleted"]),
+            retained=int(value["retained"]),
+            older_than_days=int(value["older_than_days"]),
+        )
 
     def _request(self, method: str, **parameters: object) -> Mapping[str, object]:
         request = json.dumps({"method": method, "params": parameters}) + "\n"
@@ -240,6 +262,25 @@ class AgentDaemon:
                         "report_not_ready", f"Run {run_id!r} has no report yet"
                     ) from error
             return report.to_dict()
+        if method == "evidence":
+            run_id = _required_parameter(parameters, "run_id")
+            artifact_id = _required_parameter(parameters, "artifact_id")
+            try:
+                return self._runner.evidence(run_id, artifact_id).to_dict()
+            except KeyError as error:
+                raise DaemonError("evidence_not_found", str(error)) from error
+        if method == "evidence_prune":
+            older_than_days = parameters.get("older_than_days")
+            if (
+                isinstance(older_than_days, bool)
+                or not isinstance(older_than_days, int)
+                or older_than_days <= 0
+            ):
+                raise DaemonError(
+                    "invalid_request",
+                    "older_than_days must be a positive integer",
+                )
+            return asdict(self._runner.prune_evidence(older_than_days))
         raise DaemonError("method_not_found", f"unknown daemon method: {method!r}")
 
     def _schedule(self, run_id: str) -> None:

@@ -33,6 +33,9 @@ after interruption is a recovery action, not a new approval.
 - Call `aiwb_goal_status` for lightweight progress checks.
 - Call `aiwb_goal_report` when the user requests Evidence, failure detail, Todo
   progress, image state, Harness identity, or a terminal result.
+- Treat report output as a bounded summary. When the user explicitly needs the
+  full bytes behind one artifact reference, call `aiwb_goal_evidence` with that
+  Run ID and artifact ID. Do not fetch every artifact during routine polling.
 - Let the daemon continue after the current Codex conversation ends. Do not keep
   a Codex turn alive merely to own the execution lifecycle.
 - If asked to wait actively, poll at a reasonable interval and stop only at a
@@ -59,5 +62,7 @@ Interpret terminal results conservatively:
 
 Lead with the Run status and acceptance conclusion. Include the `run_id`,
 Candidate branch, Todo states, decisive Evidence, image digest when applicable,
-Harness/environment identity, and retained artifact paths. Distinguish machine
+Harness/environment identity, bounded summaries, and retained artifact
+references. If full Evidence was explicitly retrieved, report whether its
+recorded size and SHA-256 integrity check succeeded. Distinguish machine
 Evidence from Agent claims and state clearly that no target-branch merge occurs.

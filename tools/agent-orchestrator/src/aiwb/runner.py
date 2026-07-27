@@ -18,6 +18,12 @@ import yaml
 
 from .agent import AgentAdapter, AgentRequest, AgentResult, ProviderQuotaError
 from .browser import McpBrowserDiagnosticAdapter
+from .evidence import (
+    EvidencePayload,
+    EvidencePruneReport,
+    EvidenceReference,
+    EvidenceStore,
+)
 from .harness import HarnessAdapter, HarnessError, HarnessRequest, LocalProcessHarness
 from .image import CommandImageBuilder, ImageBuildRequest
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
@@ -125,6 +131,9 @@ class CommandEvidence:
     environment: str = ""
     base_url: str = ""
     artifacts: Tuple[str, ...] = field(default_factory=tuple)
+    stdout_ref: Optional[EvidenceReference] = None
+    stderr_ref: Optional[EvidenceReference] = None
+    artifact_refs: Tuple[EvidenceReference, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -236,6 +245,7 @@ class RunReport:
     image_status: str = ""
     image_digest: str = ""
     image_artifacts: Tuple[str, ...] = field(default_factory=tuple)
+    image_artifact_refs: Tuple[EvidenceReference, ...] = field(default_factory=tuple)
     published_remote: str = ""
     published_ref: str = ""
     published_commit: str = ""
@@ -270,19 +280,7 @@ class RunReport:
         if not isinstance(evidence_data, list):
             raise ValueError("report evidence must be a list")
         evidence = tuple(
-            CommandEvidence(
-                stage=str(item["stage"]),
-                command=tuple(str(part) for part in item["command"]),
-                returncode=int(item["returncode"]),
-                stdout=str(item["stdout"]),
-                stderr=str(item["stderr"]),
-                recorded_at=str(item["recorded_at"]),
-                duration_seconds=float(item.get("duration_seconds", 0)),
-                harness_profile=str(item.get("harness_profile", "")),
-                environment=str(item.get("environment", "")),
-                base_url=str(item.get("base_url", "")),
-                artifacts=tuple(str(path) for path in item.get("artifacts", [])),
-            )
+            _command_evidence_from_dict(item)
             for item in evidence_data
             if isinstance(item, dict)
         )
@@ -324,6 +322,11 @@ class RunReport:
             image_digest=str(value.get("image_digest", "")),
             image_artifacts=tuple(
                 str(item) for item in value.get("image_artifacts", [])
+            ),
+            image_artifact_refs=tuple(
+                _evidence_reference_from_dict(item)
+                for item in value.get("image_artifact_refs", [])
+                if isinstance(item, dict)
             ),
             published_remote=str(value.get("published_remote", "")),
             published_ref=str(value.get("published_ref", "")),
@@ -392,6 +395,7 @@ class GoalRunner:
         self._state_dir = Path(state_dir).expanduser().resolve()
         self._state_dir.mkdir(parents=True, exist_ok=True)
         self._store = _RunStore(self._state_dir / "state.db")
+        self._evidence_store = EvidenceStore(self._state_dir)
         self._agent = agent
         self._max_workers = max_workers
         self._git_lock = threading.Lock()
@@ -412,6 +416,42 @@ class GoalRunner:
 
     def report(self, run_id: str) -> RunReport:
         return self._report(self._store.get(run_id))
+
+    def evidence(self, run_id: str, artifact_id: str) -> EvidencePayload:
+        report = self.report(run_id)
+        evidence_items = (
+            *report.evidence,
+            *(item for todo in report.todos for item in todo.evidence),
+        )
+        references = [
+            *(
+                reference
+                for item in evidence_items
+                for reference in (
+                    item.stdout_ref,
+                    item.stderr_ref,
+                    *item.artifact_refs,
+                )
+                if reference is not None
+            ),
+            *report.image_artifact_refs,
+        ]
+        reference = next(
+            (
+                item
+                for item in references
+                if item.artifact_id == artifact_id
+            ),
+            None,
+        )
+        if reference is None:
+            raise KeyError(
+                f"Evidence artifact {artifact_id!r} does not belong to Run {run_id!r}"
+            )
+        return self._evidence_store.read(artifact_id, reference=reference)
+
+    def prune_evidence(self, older_than_days: int) -> EvidencePruneReport:
+        return self._evidence_store.prune(older_than_days)
 
     def resume(self, run_id: str) -> RunReport:
         self._store.resume(run_id)
@@ -587,6 +627,11 @@ class GoalRunner:
                 cwd=candidate.worktree,
             )
             if evidence.returncode != 0:
+                self._store.record_todo_evidence(
+                    contract.run_id,
+                    todo.todo_id,
+                    evidence,
+                )
                 raise GateError(
                     f"Candidate integration failed for {todo.todo_id}:\n"
                     + (evidence.stderr or evidence.stdout)
@@ -822,6 +867,11 @@ class GoalRunner:
             workspace.worktree,
         )
         if evidence.returncode == 0:
+            self._store.record_todo_evidence(
+                contract.run_id,
+                todo.todo_id,
+                evidence,
+            )
             raise GateError(f"RED gate failed for {todo.todo_id}")
         with self._git_lock:
             red_commit = workspace.commit(
@@ -877,6 +927,11 @@ class GoalRunner:
             workspace.worktree,
         )
         if evidence.returncode != 0:
+            self._store.record_todo_evidence(
+                contract.run_id,
+                todo.todo_id,
+                evidence,
+            )
             raise GateError(
                 f"GREEN gate failed for {todo.todo_id}:\n"
                 + (evidence.stderr or evidence.stdout)
@@ -922,6 +977,11 @@ class GoalRunner:
             workspace.worktree,
         )
         if evidence.returncode != 0:
+            self._store.record_todo_evidence(
+                contract.run_id,
+                todo.todo_id,
+                evidence,
+            )
             raise GateError(
                 f"verification gate failed for {todo.todo_id}:\n"
                 + (evidence.stderr or evidence.stdout)
@@ -1278,20 +1338,52 @@ class GoalRunner:
             record = self._store.get(contract.run_id)
             operation_id = record["image_operation_id"]
             if not operation_id:
-                operation_id = self._image_builder.start(request)
+                try:
+                    operation_id = self._image_builder.start(request)
+                finally:
+                    self._sync_image_artifacts(contract.run_id, request.artifact_dir)
                 self._store.start_image(contract.run_id, operation_id)
-            status = self._image_builder.status(request, operation_id)
+            try:
+                status = self._image_builder.status(request, operation_id)
+            finally:
+                self._sync_image_artifacts(contract.run_id, request.artifact_dir)
             self._store.set_image_status(contract.run_id, status)
             if status == "succeeded":
-                result = self._image_builder.result(request, operation_id)
+                try:
+                    result = self._image_builder.result(request, operation_id)
+                finally:
+                    self._sync_image_artifacts(
+                        contract.run_id,
+                        request.artifact_dir,
+                    )
+                artifact_refs = self._retain_artifact_paths(
+                    contract.run_id,
+                    "image",
+                    result.artifacts,
+                )
                 self._store.complete_image(
                     contract.run_id,
                     result.digest,
                     result.artifacts,
+                    artifact_refs,
                 )
                 record = self._store.get(contract.run_id)
                 return self._publish_candidate(contract, workspace, record)
             time.sleep(self._image_poll_interval_seconds)
+
+    def _sync_image_artifacts(self, run_id: str, artifact_dir: Path) -> None:
+        paths = tuple(
+            str(path)
+            for path in sorted(artifact_dir.rglob("*"))
+            if path.is_file()
+        )
+        if not paths:
+            return
+        self._store.record_image_artifacts(
+            run_id,
+            paths,
+            self._retain_artifact_paths(run_id, "image-operation", paths),
+        )
 
     def _publish_candidate(
         self,
@@ -1331,73 +1423,146 @@ class GoalRunner:
     ) -> CommandEvidence:
         self._admit_harness(contract, todo.todo_id, stage)
         if todo.harness is None:
-            return _run_command(
+            evidence = _run_command(
                 stage=stage,
                 command=todo.test_command,
                 cwd=cwd,
                 timeout_seconds=todo.timeout_seconds,
             )
-        artifact_dir = (
-            self._state_dir
-            / "evidence"
-            / contract.run_id
-            / todo.todo_id
-            / stage.replace(":", "-")
-        )
-        adapter = self._harnesses[todo.harness.kind]
-        started = time.monotonic()
-        result = adapter.execute(HarnessRequest(
-            profile=todo.harness,
-            command=todo.test_command,
-            cwd=cwd,
-            timeout_seconds=todo.timeout_seconds,
-            run_id=contract.run_id,
-            artifact_dir=artifact_dir,
-            execution_id=f"{todo.todo_id}:{stage}",
-            stage=stage,
-        ))
-        stderr = result.stderr
-        artifacts = result.artifacts
-        if result.browser_diagnostic is not None:
-            diagnostic = result.browser_diagnostic
-            diagnostic_detail = (
-                f"Browser diagnostic ({diagnostic.adapter}): {diagnostic.summary}"
+        else:
+            artifact_dir = (
+                self._state_dir
+                / "evidence"
+                / contract.run_id
+                / todo.todo_id
+                / stage.replace(":", "-")
             )
-            if diagnostic.error:
-                diagnostic_detail += f" Error: {diagnostic.error}"
-            if diagnostic.artifacts:
-                diagnostic_detail += " Artifacts: " + ", ".join(diagnostic.artifacts)
-            stderr = "\n".join(part for part in (stderr, diagnostic_detail) if part)
-            artifacts = artifacts + diagnostic.artifacts
-        return CommandEvidence(
-            stage=stage,
-            command=todo.test_command,
-            returncode=result.returncode,
-            stdout=result.stdout,
-            stderr=stderr,
-            recorded_at=_now(),
-            duration_seconds=time.monotonic() - started,
-            harness_profile=todo.harness.name,
-            environment=result.environment,
-            base_url=result.base_url,
-            artifacts=artifacts,
+            adapter = self._harnesses[todo.harness.kind]
+            started = time.monotonic()
+            try:
+                result = adapter.execute(HarnessRequest(
+                    profile=todo.harness,
+                    command=todo.test_command,
+                    cwd=cwd,
+                    timeout_seconds=todo.timeout_seconds,
+                    run_id=contract.run_id,
+                    artifact_dir=artifact_dir,
+                    execution_id=f"{todo.todo_id}:{stage}",
+                    stage=stage,
+                ))
+            except HarnessError as error:
+                retained = self._retain_command_evidence(
+                    contract.run_id,
+                    todo.todo_id,
+                    CommandEvidence(
+                        stage=stage,
+                        command=todo.test_command,
+                        returncode=-1,
+                        stdout="",
+                        stderr=str(error),
+                        recorded_at=_now(),
+                        duration_seconds=time.monotonic() - started,
+                        harness_profile=todo.harness.name,
+                        environment=todo.harness.environment,
+                        artifacts=tuple(
+                            str(path)
+                            for path in sorted(artifact_dir.rglob("*"))
+                            if path.is_file()
+                        ),
+                    ),
+                )
+                self._store.record_todo_evidence(
+                    contract.run_id,
+                    todo.todo_id,
+                    retained,
+                )
+                raise
+            stderr = result.stderr
+            artifacts = result.artifacts
+            if result.browser_diagnostic is not None:
+                diagnostic = result.browser_diagnostic
+                diagnostic_detail = (
+                    f"Browser diagnostic ({diagnostic.adapter}): {diagnostic.summary}"
+                )
+                if diagnostic.error:
+                    diagnostic_detail += f" Error: {diagnostic.error}"
+                if diagnostic.artifacts:
+                    diagnostic_detail += " Artifacts: " + ", ".join(
+                        diagnostic.artifacts
+                    )
+                stderr = "\n".join(
+                    part for part in (stderr, diagnostic_detail) if part
+                )
+                artifacts = artifacts + diagnostic.artifacts
+            evidence = CommandEvidence(
+                stage=stage,
+                command=todo.test_command,
+                returncode=result.returncode,
+                stdout=result.stdout,
+                stderr=stderr,
+                recorded_at=_now(),
+                duration_seconds=time.monotonic() - started,
+                harness_profile=todo.harness.name,
+                environment=result.environment,
+                base_url=result.base_url,
+                artifacts=artifacts,
+            )
+        return self._retain_command_evidence(
+            contract.run_id,
+            todo.todo_id,
+            evidence,
         )
+
+    def _retain_command_evidence(
+        self,
+        run_id: str,
+        todo_id: str,
+        evidence: CommandEvidence,
+    ) -> CommandEvidence:
+        label = f"{run_id}/{todo_id}/{evidence.stage}"
+        stdout, stdout_ref = self._evidence_store.retain_text(
+            evidence.stdout,
+            label=f"{label}/stdout",
+        )
+        stderr, stderr_ref = self._evidence_store.retain_text(
+            evidence.stderr,
+            label=f"{label}/stderr",
+        )
+        return replace(
+            evidence,
+            stdout=stdout,
+            stderr=stderr,
+            stdout_ref=stdout_ref,
+            stderr_ref=stderr_ref,
+            artifact_refs=self._retain_artifact_paths(
+                run_id,
+                f"{todo_id}/{evidence.stage}",
+                evidence.artifacts,
+            ),
+        )
+
+    def _retain_artifact_paths(
+        self,
+        run_id: str,
+        label: str,
+        paths: Sequence[str],
+    ) -> Tuple[EvidenceReference, ...]:
+        references = []
+        for index, value in enumerate(paths, start=1):
+            path = Path(value)
+            if not path.is_file():
+                continue
+            references.append(
+                self._evidence_store.retain_file(
+                    path,
+                    label=f"{run_id}/{label}/artifact-{index}-{path.name}",
+                )
+            )
+        return tuple(references)
 
     def _report(self, record: Mapping[str, Any]) -> RunReport:
         evidence = tuple(
-            CommandEvidence(
-                stage=item["stage"],
-                command=tuple(item["command"]),
-                returncode=item["returncode"],
-                stdout=item["stdout"],
-                stderr=item["stderr"],
-                recorded_at=item["recorded_at"],
-                duration_seconds=float(item.get("duration_seconds", 0)),
-                harness_profile=item.get("harness_profile", ""),
-                environment=item.get("environment", ""),
-                base_url=item.get("base_url", ""),
-                artifacts=tuple(item.get("artifacts", [])),
-            )
+            _command_evidence_from_dict(item)
             for item in json.loads(record["evidence_json"])
         )
         todos = tuple(
@@ -1450,6 +1615,10 @@ class GoalRunner:
             image_status=record["image_status"],
             image_digest=record["image_digest"],
             image_artifacts=tuple(json.loads(record["image_artifacts_json"])),
+            image_artifact_refs=tuple(
+                _evidence_reference_from_dict(item)
+                for item in json.loads(record["image_artifact_refs_json"])
+            ),
             published_remote=record["published_remote"],
             published_ref=record["published_ref"],
             published_commit=record["published_commit"],
@@ -1490,6 +1659,7 @@ class _RunStore:
                     image_status TEXT NOT NULL DEFAULT '',
                     image_digest TEXT NOT NULL DEFAULT '',
                     image_artifacts_json TEXT NOT NULL DEFAULT '[]',
+                    image_artifact_refs_json TEXT NOT NULL DEFAULT '[]',
                     published_remote TEXT NOT NULL DEFAULT '',
                     published_ref TEXT NOT NULL DEFAULT '',
                     published_commit TEXT NOT NULL DEFAULT '',
@@ -1835,14 +2005,41 @@ class _RunStore:
         run_id: str,
         digest: str,
         artifacts: Sequence[str],
+        artifact_refs: Sequence[EvidenceReference],
     ) -> None:
+        self.record_image_artifacts(run_id, artifacts, artifact_refs)
         self._update(
             run_id,
             status="merge_ready",
             image_status="succeeded",
             image_digest=digest,
-            image_artifacts_json=json.dumps(list(artifacts)),
             last_error=None,
+        )
+
+    def record_image_artifacts(
+        self,
+        run_id: str,
+        artifacts: Sequence[str],
+        artifact_refs: Sequence[EvidenceReference],
+    ) -> None:
+        record = self.get(run_id)
+        known_paths = list(json.loads(record["image_artifacts_json"]))
+        known_refs = [
+            _evidence_reference_from_dict(item)
+            for item in json.loads(record["image_artifact_refs_json"])
+        ]
+        merged_paths = list(dict.fromkeys((*known_paths, *artifacts)))
+        refs_by_id = {
+            reference.artifact_id: reference
+            for reference in (*known_refs, *artifact_refs)
+        }
+        self._update(
+            run_id,
+            image_artifacts_json=json.dumps(merged_paths),
+            image_artifact_refs_json=json.dumps(
+                [asdict(reference) for reference in refs_by_id.values()],
+                sort_keys=True,
+            ),
         )
 
     def complete_publish(
@@ -1927,6 +2124,21 @@ class _RunStore:
             run_id,
             todo_id,
             attempts_json=json.dumps(attempts, sort_keys=True),
+        )
+
+    def record_todo_evidence(
+        self,
+        run_id: str,
+        todo_id: str,
+        evidence: CommandEvidence,
+    ) -> None:
+        record = self.get_todo(run_id, todo_id)
+        evidence_items = json.loads(record["evidence_json"])
+        evidence_items.append(asdict(evidence))
+        self._update_todo(
+            run_id,
+            todo_id,
+            evidence_json=json.dumps(evidence_items, sort_keys=True),
         )
 
     def todo_checkpoint(
@@ -2080,6 +2292,7 @@ class _RunStore:
             "image_status": "TEXT NOT NULL DEFAULT ''",
             "image_digest": "TEXT NOT NULL DEFAULT ''",
             "image_artifacts_json": "TEXT NOT NULL DEFAULT '[]'",
+            "image_artifact_refs_json": "TEXT NOT NULL DEFAULT '[]'",
             "published_remote": "TEXT NOT NULL DEFAULT ''",
             "published_ref": "TEXT NOT NULL DEFAULT ''",
             "published_commit": "TEXT NOT NULL DEFAULT ''",
@@ -2844,19 +3057,7 @@ def _required_string(record: Mapping[str, Any], key: str) -> str:
 
 def _todo_report(record: Mapping[str, Any]) -> TodoReport:
     evidence = tuple(
-        CommandEvidence(
-            stage=item["stage"],
-            command=tuple(item["command"]),
-            returncode=item["returncode"],
-            stdout=item["stdout"],
-            stderr=item["stderr"],
-            recorded_at=item["recorded_at"],
-            duration_seconds=float(item.get("duration_seconds", 0)),
-            harness_profile=item.get("harness_profile", ""),
-            environment=item.get("environment", ""),
-            base_url=item.get("base_url", ""),
-            artifacts=tuple(item.get("artifacts", [])),
-        )
+        _command_evidence_from_dict(item)
         for item in json.loads(record["evidence_json"])
     )
     return TodoReport(
@@ -2909,24 +3110,57 @@ def _todo_report_from_dict(value: object) -> TodoReport:
             if isinstance(item, dict)
         ),
         evidence=tuple(
-            CommandEvidence(
-                stage=str(item["stage"]),
-                command=tuple(str(part) for part in item["command"]),
-                returncode=int(item["returncode"]),
-                stdout=str(item["stdout"]),
-                stderr=str(item["stderr"]),
-                recorded_at=str(item["recorded_at"]),
-                duration_seconds=float(item.get("duration_seconds", 0)),
-                harness_profile=str(item.get("harness_profile", "")),
-                environment=str(item.get("environment", "")),
-                base_url=str(item.get("base_url", "")),
-                artifacts=tuple(str(path) for path in item.get("artifacts", [])),
-            )
+            _command_evidence_from_dict(item)
             for item in evidence_data
             if isinstance(item, dict)
         ),
         repair_commits=tuple(str(commit) for commit in repair_commits_data),
         stop=_stop_report_from_dict(value.get("stop")),
+    )
+
+
+def _command_evidence_from_dict(
+    value: Mapping[str, object],
+) -> CommandEvidence:
+    return CommandEvidence(
+        stage=str(value["stage"]),
+        command=tuple(str(part) for part in value["command"]),
+        returncode=int(value["returncode"]),
+        stdout=str(value.get("stdout", "")),
+        stderr=str(value.get("stderr", "")),
+        recorded_at=str(value["recorded_at"]),
+        duration_seconds=float(value.get("duration_seconds", 0)),
+        harness_profile=str(value.get("harness_profile", "")),
+        environment=str(value.get("environment", "")),
+        base_url=str(value.get("base_url", "")),
+        artifacts=tuple(str(path) for path in value.get("artifacts", [])),
+        stdout_ref=_optional_evidence_reference(value.get("stdout_ref")),
+        stderr_ref=_optional_evidence_reference(value.get("stderr_ref")),
+        artifact_refs=tuple(
+            _evidence_reference_from_dict(item)
+            for item in value.get("artifact_refs", [])
+            if isinstance(item, dict)
+        ),
+    )
+
+
+def _optional_evidence_reference(value: object) -> Optional[EvidenceReference]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("Evidence reference must be a mapping")
+    return _evidence_reference_from_dict(value)
+
+
+def _evidence_reference_from_dict(
+    value: Mapping[str, object],
+) -> EvidenceReference:
+    return EvidenceReference(
+        artifact_id=str(value["artifact_id"]),
+        sha256=str(value["sha256"]),
+        size_bytes=int(value["size_bytes"]),
+        media_type=str(value.get("media_type", "application/octet-stream")),
+        label=str(value.get("label", "")),
     )
 
 

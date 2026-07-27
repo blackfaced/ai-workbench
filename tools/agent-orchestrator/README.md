@@ -16,7 +16,7 @@ The public tool contains no organization-specific integrations. Projects expose 
 
 `GoalRunner.run(contract)` is the execution interface and test surface. It hides Contract validation, checkpoint persistence, Git worktree management, RED/GREEN machine gates, role prompts, Evidence capture, and recovery.
 
-`DaemonClient.submit/status/report` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, and process-restart recovery.
+`DaemonClient.submit/status/report/evidence` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, content-addressed Evidence retrieval, and process-restart recovery.
 
 `McpServer` is a thin stdio Adapter over that same control interface. It exposes daemon health plus Goal submit, status, and report tools; it does not own Runs or offer arbitrary command execution.
 
@@ -41,6 +41,7 @@ aiwb CLI ────┘                    ├── RunStore (SQLite)
                                  │   └── ClaudeCodeCliAdapter
                                  ├── CandidatePublisher
                                  ├── MergeConflictRepairer
+                                 ├── EvidenceStore (SHA-256 objects)
                                  ├── Project commands
                                  ├── Harness / ImageBuilder adapters
                                  └── KubernetesJanitor
@@ -151,7 +152,7 @@ The Kubernetes Harness tracer adds:
 The Agent interaction tracer adds:
 
 - a dependency-free stdio MCP server with `initialize`, `ping`, `tools/list`, and `tools/call` support;
-- seven narrow tools: `aiwb_daemon_status`, `aiwb_goal_intake`, `aiwb_goal_preflight`, `aiwb_goal_submit`, `aiwb_goal_status`, `aiwb_goal_report`, and `aiwb_goal_resume`;
+- eight narrow tools: `aiwb_daemon_status`, `aiwb_goal_evidence`, `aiwb_goal_intake`, `aiwb_goal_preflight`, `aiwb_goal_submit`, `aiwb_goal_status`, `aiwb_goal_report`, and `aiwb_goal_resume`;
 - immediate Goal submission so an Agent conversation never owns the Run lifetime;
 - structured operational errors inside MCP tool results and standard JSON-RPC protocol errors;
 - a bundled `run-approved-goal` Codex Skill that requires an already-approved Contract and interprets durable Evidence conservatively;
@@ -181,6 +182,21 @@ The cost-aware Goal intake tracer adds:
   explicit action through Python, CLI, MCP, and `$intake-aiwb-goal`;
 - no approval, submission, Run, worktree, Agent, Harness, project command, or
   permission side effect during inspection.
+
+The bounded Evidence tracer adds:
+
+- immutable SHA-256 objects for large stdout, stderr, browser captures, image
+  artifacts, and Kubernetes artifacts, with recorded byte length and media
+  type;
+- deterministic 4 KiB command summaries on routine status and report paths,
+  plus Run-scoped references for explicit full-content retrieval;
+- one integrity-verifying Evidence path shared by Python, daemon, CLI, and MCP;
+- append-only failed and passing Attempt Evidence, preserving earlier failures
+  and their resource consumption after a retry;
+- restart-safe references and retrieval, plus backward-compatible reads of old
+  inline-only Run reports;
+- indefinite default retention and an explicit, testable age-based prune
+  operation instead of automatic daemon deletion.
 
 The Claude Code provider tracer adds:
 
@@ -346,8 +362,21 @@ aiwb goal preflight --contract /path/to/contract.yaml
 aiwb goal submit --contract /path/to/contract.yaml
 aiwb goal status <run-id>
 aiwb goal report <run-id>
+aiwb goal evidence <run-id> <artifact-id>
 aiwb goal resume <run-id>
 ```
+
+Routine reports contain bounded summaries and immutable artifact references.
+Fetch full content only when diagnosing a specific artifact. Evidence is kept
+indefinitely by default; operators may deliberately reclaim old objects:
+
+```bash
+aiwb evidence prune --older-than-days 30
+```
+
+Pruning never rewrites historical Run metadata. A later read of a pruned
+reference fails explicitly, and every non-pruned read verifies its stored byte
+length and SHA-256 digest.
 
 The daemon sweeps Kubernetes cleanup leases at startup and every minute. A manual or independently scheduled sweep is also available:
 

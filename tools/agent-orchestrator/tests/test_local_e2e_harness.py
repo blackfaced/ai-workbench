@@ -88,7 +88,15 @@ def test_local_e2e_harness_runs_gate_collects_logs_and_cleans_up() -> None:
         assert all(item.environment == "local" for item in report.evidence)
         assert all(item.base_url.startswith("http://127.0.0.1:") for item in report.evidence)
         assert all(item.artifacts for item in report.evidence)
+        assert all(item.artifact_refs for item in report.evidence)
         assert all(Path(path).is_file() for item in report.evidence for path in item.artifacts)
+        first_reference = report.evidence[0].artifact_refs[0]
+        assert GoalRunner(
+            state_dir=root / "state",
+            agent=BrowserFeatureAgent(),
+        ).evidence(report.run_id, first_reference.artifact_id).reference == (
+            first_reference
+        )
 
         with pytest.raises(URLError):
             urlopen(report.evidence[-1].base_url, timeout=0.2)
@@ -209,6 +217,13 @@ def test_goal_runner_diagnoses_unexpected_browser_failure_but_not_red_gate() -> 
         assert (diagnostic_dir / "browser-screenshot.png").is_file()
         assert "Captured 5 browser observations" in str(failure.value)
         assert str(diagnostic_dir / "snapshot.json") in str(failure.value)
+        failed = runner.report(prepared.run_id)
+        green = next(item for item in failed.evidence if item.stage == "green")
+        assert green.artifact_refs
+        assert any(
+            "browser-screenshot.png" in reference.label
+            for reference in green.artifact_refs
+        )
 
 
 def _create_repository(root: Path, unready: bool = False) -> Path:

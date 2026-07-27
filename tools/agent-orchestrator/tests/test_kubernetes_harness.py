@@ -234,6 +234,7 @@ def test_goal_runner_uses_kubernetes_harness_for_every_candidate_gate() -> None:
 
         assert report.status == "merge_ready"
         assert report.evidence
+        assert all(item.artifact_refs for item in report.evidence)
         assert all(item.harness_profile == "dev-cluster" for item in report.evidence)
         assert all("/dev-context/aiwb-" in item.environment for item in report.evidence)
         assert all(item.base_url.startswith("https://aiwb-") for item in report.evidence)
@@ -246,6 +247,11 @@ def test_goal_runner_uses_kubernetes_harness_for_every_candidate_gate() -> None:
         ) == 5
         assert not (root / "cluster-resource").exists()
         assert not list((root / "state" / "kubernetes-leases").glob("*.json"))
+        reference = report.evidence[0].artifact_refs[0]
+        assert GoalRunner(
+            state_dir=root / "state",
+            agent=FailIfCalledAgent(),
+        ).evidence(report.run_id, reference.artifact_id).reference == reference
 
 
 def test_goal_runner_reports_cleanup_failure_separately() -> None:
@@ -285,6 +291,8 @@ def test_goal_runner_reports_cleanup_failure_separately() -> None:
         assert report.stop.reason == "cleanup_failure"
         assert report.stop.stage == "cleanup"
         assert report.stop.resumable is False
+        assert report.evidence
+        assert report.evidence[0].artifact_refs
 
 
 def test_janitor_retries_a_persisted_cleanup_failure() -> None:
