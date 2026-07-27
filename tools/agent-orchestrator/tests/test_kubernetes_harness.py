@@ -234,14 +234,65 @@ def test_goal_runner_uses_kubernetes_harness_for_every_candidate_gate() -> None:
 
         assert report.status == "merge_ready"
         assert report.evidence
+        assert all(item.artifact_refs for item in report.evidence)
         assert all(item.harness_profile == "dev-cluster" for item in report.evidence)
         assert all("/dev-context/aiwb-" in item.environment for item in report.evidence)
         assert all(item.base_url.startswith("https://aiwb-") for item in report.evidence)
         assert len({item.environment for item in report.evidence}) == len(report.evidence)
         events = (root / "events.log").read_text(encoding="utf-8").splitlines()
-        assert events == ["provision", "collect", "cleanup"] * 3
+        assert events == ["provision", "collect", "cleanup"] * 5
+        assert sum(
+            item["execution_count"]
+            for item in report.to_dict()["consumption"]["harnesses"]
+        ) == 5
         assert not (root / "cluster-resource").exists()
         assert not list((root / "state" / "kubernetes-leases").glob("*.json"))
+        reference = report.evidence[0].artifact_refs[0]
+        assert GoalRunner(
+            state_dir=root / "state",
+            agent=FailIfCalledAgent(),
+        ).evidence(report.run_id, reference.artifact_id).reference == reference
+
+
+def test_goal_runner_reports_cleanup_failure_separately() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = root / "project"
+        repository.mkdir()
+        _git(repository, "init", "-b", "main")
+        _git(repository, "config", "user.name", "AI Workbench Test")
+        _git(repository, "config", "user.email", "aiwb@example.test")
+        (repository / ".gitignore").write_text(
+            "__pycache__/\n*.pyc\n.pytest_cache/\n",
+            encoding="utf-8",
+        )
+        commands = _write_fixture_commands(
+            repository,
+            root,
+            fail_cleanup_once=True,
+        )
+        commands["gate"] = (sys.executable, "-m", "pytest", "-q")
+        _write_policy(repository, commands)
+        _git(repository, "add", ".")
+        _git(repository, "commit", "-m", "Initial fixture")
+        contract = _write_contract(root, repository, commands["gate"])
+        runner = GoalRunner(
+            state_dir=root / "state",
+            agent=KubernetesFeatureAgent(),
+        )
+        prepared = runner.prepare(contract)
+
+        with pytest.raises(HarnessError, match="cleanup failed with code 17"):
+            runner.run(contract)
+
+        report = runner.report(prepared.run_id)
+        assert report.status == "failed_cleanup"
+        assert report.stop is not None
+        assert report.stop.reason == "cleanup_failure"
+        assert report.stop.stage == "cleanup"
+        assert report.stop.resumable is False
+        assert report.evidence
+        assert report.evidence[0].artifact_refs
 
 
 def test_janitor_retries_a_persisted_cleanup_failure() -> None:

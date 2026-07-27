@@ -28,6 +28,15 @@ class TicketContractDraftResult:
 
 
 @dataclass(frozen=True)
+class TicketInspection:
+    title: str
+    requirement: str
+    ticket_count: int
+    acceptance_count: int
+    todo_dependencies: Tuple[Tuple[str, Tuple[str, ...]], ...]
+
+
+@dataclass(frozen=True)
 class _Ticket:
     title: str
     requirement: str
@@ -37,6 +46,29 @@ class _Ticket:
 
 class TicketContractDraftBuilder:
     """Convert a local `to-tickets` document into a deliberately unapproved Contract."""
+
+    def inspect(self, tickets_path: Path) -> TicketInspection:
+        tickets_path = Path(tickets_path).expanduser().resolve()
+        if not tickets_path.is_file():
+            raise TicketDraftError(f"tickets file is not readable: {tickets_path}")
+        title, requirement, tickets = _parse_tickets(tickets_path)
+        todo_ids = {
+            ticket.title: f"T-{index}"
+            for index, ticket in enumerate(tickets, start=1)
+        }
+        return TicketInspection(
+            title=title,
+            requirement=requirement,
+            ticket_count=len(tickets),
+            acceptance_count=sum(len(ticket.acceptance) for ticket in tickets),
+            todo_dependencies=tuple(
+                (
+                    todo_ids[ticket.title],
+                    tuple(todo_ids[blocker] for blocker in ticket.blocked_by),
+                )
+                for ticket in tickets
+            ),
+        )
 
     def create(
         self,

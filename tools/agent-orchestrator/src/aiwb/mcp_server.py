@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import IO, Dict, Mapping, Optional, Sequence
 
 from .daemon import DaemonClient, DaemonError
+from .intake import GoalIntake
+from .runner import preview_execution
 
 
 _PROTOCOL_VERSION = "2025-06-18"
@@ -61,8 +63,9 @@ class McpServer:
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "ai-workbench", "version": "0.1.0"},
                 "instructions": (
-                    "Submit only human-approved Contracts. Use status and report to "
-                    "observe Runs owned by the local ai-workbench daemon."
+                    "Use intake for read-only path and readiness advice. Submit only "
+                    "human-approved Contracts. Use status and report to observe Runs "
+                    "owned by the local ai-workbench daemon."
                 ),
             }
         if method == "ping":
@@ -88,6 +91,34 @@ class McpServer:
                     "socket": str(self._socket_path),
                     "status": "ok" if self._client.ping() else "unavailable",
                 }
+            elif name == "aiwb_goal_preflight":
+                contract_path = _string_argument(arguments, "contract_path")
+                value = preview_execution(Path(contract_path)).to_dict()
+            elif name == "aiwb_goal_intake":
+                repository = _string_argument(arguments, "repository")
+                contract_path = arguments.get("contract_path")
+                tickets_path = arguments.get("tickets_path")
+                if (contract_path is None) == (tickets_path is None):
+                    raise ValueError(
+                        "intake requires exactly one contract_path or tickets_path"
+                    )
+                task = arguments.get("task", "")
+                if not isinstance(task, str):
+                    raise ValueError("task must be a string")
+                value = GoalIntake(daemon_probe=self._client.ping).inspect(
+                    repository=Path(repository),
+                    contract_path=(
+                        Path(contract_path)
+                        if isinstance(contract_path, str) and contract_path
+                        else None
+                    ),
+                    tickets_path=(
+                        Path(tickets_path)
+                        if isinstance(tickets_path, str) and tickets_path
+                        else None
+                    ),
+                    task=task,
+                ).to_dict()
             elif name == "aiwb_goal_submit":
                 contract_path = _string_argument(arguments, "contract_path")
                 value = self._client.submit(Path(contract_path)).__dict__
@@ -97,6 +128,13 @@ class McpServer:
             elif name == "aiwb_goal_report":
                 run_id = _string_argument(arguments, "run_id")
                 value = self._client.report(run_id).to_dict()
+            elif name == "aiwb_goal_evidence":
+                run_id = _string_argument(arguments, "run_id")
+                artifact_id = _string_argument(arguments, "artifact_id")
+                value = self._client.evidence(run_id, artifact_id).to_dict()
+            elif name == "aiwb_goal_resume":
+                run_id = _string_argument(arguments, "run_id")
+                value = self._client.resume(run_id).__dict__
             else:
                 return _tool_result(
                     {"error": "unknown_tool", "message": f"unknown tool: {name}"},
@@ -122,8 +160,68 @@ def _tools():
             "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         },
         {
+            "name": "aiwb_goal_evidence",
+            "description": (
+                "Explicitly fetch one full immutable Evidence artifact referenced "
+                "by a Run report and verify its integrity metadata."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "run_id": string_argument,
+                    "artifact_id": string_argument,
+                },
+                "required": ["run_id", "artifact_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "aiwb_goal_intake",
+            "description": (
+                "Inspect accepted tickets or a draft Contract and recommend the "
+                "cheapest viable interactive or unattended path without taking action."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repository": string_argument,
+                    "contract_path": string_argument,
+                    "tickets_path": string_argument,
+                    "task": {"type": "string"},
+                },
+                "required": ["repository"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "aiwb_goal_preflight",
+            "description": (
+                "Preview the deterministic and conditional execution envelope "
+                "for a draft or approved Contract without creating a Run."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"contract_path": string_argument},
+                "required": ["contract_path"],
+                "additionalProperties": False,
+            },
+        },
+        {
             "name": "aiwb_goal_report",
             "description": "Read the durable Evidence report for an existing Run.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"run_id": string_argument},
+                "required": ["run_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "aiwb_goal_resume",
+            "description": (
+                "Resume a Run paused at a durable resource, deadline, or "
+                "provider-quota checkpoint without changing provider or model."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {"run_id": string_argument},

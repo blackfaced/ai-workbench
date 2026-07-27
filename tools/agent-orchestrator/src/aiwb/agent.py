@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Optional, Protocol
 
 
@@ -22,6 +22,20 @@ class AgentRequest:
 class AgentResult:
     session_id: str
     final_output: str
+    usage: Mapping[str, int] = field(default_factory=dict)
+
+
+class ProviderQuotaError(RuntimeError):
+    def __init__(
+        self,
+        provider: str,
+        detail: str,
+        usage: Optional[Mapping[str, int]] = None,
+    ) -> None:
+        super().__init__(detail)
+        self.provider = provider
+        self.detail = detail
+        self.usage = dict(usage) if usage else None
 
 
 class AgentAdapter(Protocol):
@@ -78,6 +92,11 @@ class CodexCliAdapter:
         )
         if completed.returncode != 0:
             detail = completed.stderr.strip() or completed.stdout.strip()
+            if _is_provider_quota(detail):
+                raise ProviderQuotaError(
+                    provider=request.provider,
+                    detail=detail,
+                )
             raise RuntimeError(
                 f"Codex role {request.role!r} failed with exit code "
                 f"{completed.returncode}: {detail}"
@@ -85,6 +104,7 @@ class CodexCliAdapter:
 
         session_id = ""
         final_output = ""
+        usage: Mapping[str, int] = {}
         for line in completed.stdout.splitlines():
             try:
                 event = json.loads(line)
@@ -97,6 +117,9 @@ class CodexCliAdapter:
             message = _agent_message(event)
             if message:
                 final_output = message
+            reported_usage = _normalize_usage(event.get("usage"))
+            if reported_usage:
+                usage = reported_usage
 
         if not session_id:
             raise RuntimeError("Codex JSONL output did not include a session identifier")
@@ -104,6 +127,7 @@ class CodexCliAdapter:
         return AgentResult(
             session_id=session_id,
             final_output=final_output or completed.stdout.strip(),
+            usage=usage,
         )
 
 
@@ -149,6 +173,11 @@ class ClaudeCodeCliAdapter:
         )
         if completed.returncode != 0:
             detail = completed.stderr.strip() or completed.stdout.strip()
+            if _is_provider_quota(detail):
+                raise ProviderQuotaError(
+                    provider=request.provider,
+                    detail=detail,
+                )
             raise RuntimeError(
                 f"Claude Code role {request.role!r} failed with exit code "
                 f"{completed.returncode}: {detail}"
@@ -161,8 +190,15 @@ class ClaudeCodeCliAdapter:
         if not isinstance(result, dict):
             raise RuntimeError("Claude Code JSON output must be an object")
         if result.get("is_error") is True:
+            detail = str(result.get("result", ""))
+            if _is_provider_quota(detail):
+                raise ProviderQuotaError(
+                    provider=request.provider,
+                    detail=detail,
+                    usage=_normalize_usage(result.get("usage")),
+                )
             raise RuntimeError(
-                f"Claude Code role {request.role!r} failed: {result.get('result', '')}"
+                f"Claude Code role {request.role!r} failed: {detail}"
             )
         session_id = result.get("session_id")
         final_output = result.get("result")
@@ -171,6 +207,7 @@ class ClaudeCodeCliAdapter:
         return AgentResult(
             session_id=session_id,
             final_output=final_output if isinstance(final_output, str) else "",
+            usage=_normalize_usage(result.get("usage")),
         )
 
 
@@ -200,3 +237,34 @@ def _agent_message(event: object) -> str:
         return ""
     text = item.get("text")
     return text if isinstance(text, str) else ""
+
+
+def _normalize_usage(value: object) -> Mapping[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    usage = {
+        str(key): item
+        for key, item in value.items()
+        if isinstance(key, str)
+        and key.endswith("_tokens")
+        and isinstance(item, int)
+        and not isinstance(item, bool)
+        and item >= 0
+    }
+    if usage and "total_tokens" not in usage:
+        usage["total_tokens"] = sum(usage.values())
+    return usage
+
+
+def _is_provider_quota(detail: str) -> bool:
+    lowered = detail.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "usage limit",
+            "quota",
+            "rate limit",
+            "too many requests",
+            "credit balance",
+        )
+    )

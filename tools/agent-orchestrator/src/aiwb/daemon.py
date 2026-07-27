@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 from .agent import AgentAdapter
+from .evidence import EvidencePayload, EvidencePruneReport
 from .runner import GoalRunner, RunReport
 
 
@@ -21,6 +22,14 @@ class RunStatus:
     run_id: str
     status: str
     error: str = ""
+    reason: str = ""
+    boundary: str = ""
+    todo_id: str = ""
+    role: str = ""
+    stage: str = ""
+    provider: str = ""
+    model: str = ""
+    resumable: bool = False
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> "RunStatus":
@@ -28,6 +37,14 @@ class RunStatus:
             run_id=str(value["run_id"]),
             status=str(value["status"]),
             error=str(value.get("error", "")),
+            reason=str(value.get("reason", "")),
+            boundary=str(value.get("boundary", "")),
+            todo_id=str(value.get("todo_id", "")),
+            role=str(value.get("role", "")),
+            stage=str(value.get("stage", "")),
+            provider=str(value.get("provider", "")),
+            model=str(value.get("model", "")),
+            resumable=bool(value.get("resumable", False)),
         )
 
 
@@ -61,8 +78,32 @@ class DaemonClient:
     def status(self, run_id: str) -> RunStatus:
         return RunStatus.from_dict(self._request("status", run_id=run_id))
 
+    def resume(self, run_id: str) -> RunStatus:
+        return RunStatus.from_dict(self._request("resume", run_id=run_id))
+
     def report(self, run_id: str) -> RunReport:
         return RunReport.from_dict(self._request("report", run_id=run_id))
+
+    def evidence(self, run_id: str, artifact_id: str) -> EvidencePayload:
+        return EvidencePayload.from_dict(
+            self._request(
+                "evidence",
+                run_id=run_id,
+                artifact_id=artifact_id,
+            )
+        )
+
+    def prune_evidence(self, older_than_days: int) -> EvidencePruneReport:
+        value = self._request(
+            "evidence_prune",
+            older_than_days=older_than_days,
+        )
+        return EvidencePruneReport(
+            scanned=int(value["scanned"]),
+            deleted=int(value["deleted"]),
+            retained=int(value["retained"]),
+            older_than_days=int(value["older_than_days"]),
+        )
 
     def _request(self, method: str, **parameters: object) -> Mapping[str, object]:
         request = json.dumps({"method": method, "params": parameters}) + "\n"
@@ -199,10 +240,17 @@ class AgentDaemon:
             contract_path = _required_parameter(parameters, "contract_path")
             prepared = self._runner.prepare(Path(contract_path))
             status = self._jobs.submit(prepared.run_id, Path(contract_path))
-            self._schedule(prepared.run_id)
+            if status.status in {"queued", "running"}:
+                self._schedule(prepared.run_id)
             return asdict(status)
         if method == "status":
             return asdict(self._jobs.status(_required_parameter(parameters, "run_id")))
+        if method == "resume":
+            run_id = _required_parameter(parameters, "run_id")
+            self._runner.resume(run_id)
+            self._jobs.mark_queued(run_id)
+            self._schedule(run_id)
+            return asdict(self._jobs.status(run_id))
         if method == "report":
             run_id = _required_parameter(parameters, "run_id")
             report = self._jobs.report(run_id)
@@ -214,6 +262,25 @@ class AgentDaemon:
                         "report_not_ready", f"Run {run_id!r} has no report yet"
                     ) from error
             return report.to_dict()
+        if method == "evidence":
+            run_id = _required_parameter(parameters, "run_id")
+            artifact_id = _required_parameter(parameters, "artifact_id")
+            try:
+                return self._runner.evidence(run_id, artifact_id).to_dict()
+            except KeyError as error:
+                raise DaemonError("evidence_not_found", str(error)) from error
+        if method == "evidence_prune":
+            older_than_days = parameters.get("older_than_days")
+            if (
+                isinstance(older_than_days, bool)
+                or not isinstance(older_than_days, int)
+                or older_than_days <= 0
+            ):
+                raise DaemonError(
+                    "invalid_request",
+                    "older_than_days must be a positive integer",
+                )
+            return asdict(self._runner.prune_evidence(older_than_days))
         raise DaemonError("method_not_found", f"unknown daemon method: {method!r}")
 
     def _schedule(self, run_id: str) -> None:
@@ -233,13 +300,24 @@ class AgentDaemon:
         try:
             report = self._runner.run(Path(job["contract_path"]))
         except Exception as error:
-            self._jobs.mark_blocked(run_id, str(error))
+            try:
+                report = self._runner.report(run_id)
+            except KeyError:
+                self._jobs.mark_blocked(run_id, str(error))
+            else:
+                self._jobs.stop(run_id, report, str(error))
             return
         self._jobs.complete(run_id, report)
 
     def _forget(self, run_id: str) -> None:
         with self._futures_lock:
             self._futures.pop(run_id, None)
+        try:
+            queued = self._jobs.get(run_id)["status"] == "queued"
+        except DaemonError:
+            queued = False
+        if queued:
+            self._schedule(run_id)
 
     def _recover_jobs(self) -> None:
         for run_id in self._jobs.recoverable_run_ids():
@@ -337,10 +415,25 @@ class _JobStore:
 
     def status(self, run_id: str) -> RunStatus:
         record = self.get(run_id)
+        stop = None
+        if record["report_json"]:
+            value = json.loads(record["report_json"])
+            if isinstance(value, dict):
+                stop = value.get("stop")
+        if not isinstance(stop, dict):
+            stop = {}
         return RunStatus(
             run_id=run_id,
             status=record["status"],
             error=record["error"] or "",
+            reason=str(stop.get("reason", "")),
+            boundary=str(stop.get("boundary", "")),
+            todo_id=str(stop.get("todo_id", "")),
+            role=str(stop.get("role", "")),
+            stage=str(stop.get("stage", "")),
+            provider=str(stop.get("provider", "")),
+            model=str(stop.get("model", "")),
+            resumable=bool(stop.get("resumable", False)),
         )
 
     def report(self, run_id: str) -> Optional[RunReport]:
@@ -360,13 +453,36 @@ class _JobStore:
         return [row["run_id"] for row in rows]
 
     def mark_queued(self, run_id: str) -> None:
-        self._update(run_id, status="queued", error=None)
+        self._update(
+            run_id,
+            status="queued",
+            error=None,
+            report_json=None,
+        )
 
     def mark_running(self, run_id: str) -> None:
-        self._update(run_id, status="running", error=None)
+        self._update(
+            run_id,
+            status="running",
+            error=None,
+            report_json=None,
+        )
 
     def mark_blocked(self, run_id: str, error: str) -> None:
         self._update(run_id, status="blocked", error=error)
+
+    def stop(self, run_id: str, report: RunReport, error: str) -> None:
+        status = (
+            report.status
+            if report.status != "running"
+            else "blocked"
+        )
+        self._update(
+            run_id,
+            status=status,
+            error=error,
+            report_json=json.dumps(report.to_dict()),
+        )
 
     def complete(self, run_id: str, report: RunReport) -> None:
         self._update(

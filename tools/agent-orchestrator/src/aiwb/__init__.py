@@ -7,6 +7,7 @@ from .agent import (
     AgentRouter,
     ClaudeCodeCliAdapter,
     CodexCliAdapter,
+    ProviderQuotaError,
 )
 from .browser import (
     BrowserDiagnosticAdapter,
@@ -16,6 +17,14 @@ from .browser import (
     McpBrowserDiagnosticAdapter,
 )
 from .daemon import AgentDaemon, DaemonClient, DaemonError, RunStatus
+from .evidence import (
+    EvidenceError,
+    EvidenceIntegrityError,
+    EvidencePayload,
+    EvidencePruneReport,
+    EvidenceReference,
+    EvidenceStore,
+)
 from .harness import (
     HarnessError,
     HarnessExecution,
@@ -23,6 +32,7 @@ from .harness import (
     LocalProcessHarness,
 )
 from .image import ImageBuildError
+from .intake import GoalIntake, GoalIntakeResult, IntakeBlocker
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
 from .project import (
     BrowserDiagnosticProfile,
@@ -37,7 +47,21 @@ from .project import (
     ProjectInitResult,
     ProjectPolicy,
 )
-from .runner import ContractError, GateError, GoalRunner, RunReport, TodoReport
+from .runner import (
+    AttemptReport,
+    CommandEvidence,
+    ContractError,
+    ExecutionEnvelope,
+    GateError,
+    GoalRunner,
+    RunPaused,
+    RunReport,
+    StopReport,
+    TodoExecutionEnvelope,
+    TodoReport,
+    preview_execution,
+    preview_todo_graph,
+)
 from .setup import SetupApplyResult, SetupInspection, WorkbenchSetup
 from .skills import (
     SkillCatalog,
@@ -57,6 +81,7 @@ __all__ = [
     "AgentRequest",
     "AgentResult",
     "AgentRouter",
+    "AttemptReport",
     "BrowserDiagnosticAdapter",
     "BrowserDiagnosticError",
     "BrowserDiagnosticProfile",
@@ -64,18 +89,29 @@ __all__ = [
     "BrowserDiagnosticResult",
     "ClaudeCodeCliAdapter",
     "CodexCliAdapter",
+    "CommandEvidence",
     "ContractError",
+    "ExecutionEnvelope",
+    "EvidenceError",
+    "EvidenceIntegrityError",
+    "EvidencePayload",
+    "EvidencePruneReport",
+    "EvidenceReference",
+    "EvidenceStore",
     "DaemonClient",
     "DaemonError",
     "DoctorCheck",
     "DoctorReport",
     "GoalRunner",
+    "GoalIntake",
+    "GoalIntakeResult",
     "GateError",
     "HarnessError",
     "HarnessExecution",
     "HarnessProfile",
     "HarnessRequest",
     "ImageBuildError",
+    "IntakeBlocker",
     "KubernetesHarness",
     "KubernetesJanitor",
     "JanitorReport",
@@ -89,12 +125,15 @@ __all__ = [
     "ProjectInitPreview",
     "ProjectInitResult",
     "ProjectPolicy",
+    "ProviderQuotaError",
     "ProjectConfigError",
     "ProjectDoctor",
     "RunReport",
+    "RunPaused",
     "RunStatus",
     "SetupApplyResult",
     "SetupInspection",
+    "StopReport",
     "SkillCatalog",
     "SkillCatalogSnapshot",
     "SkillDescriptor",
@@ -104,5 +143,8 @@ __all__ = [
     "SkillRecommendation",
     "SkillRecommendationResult",
     "TodoReport",
+    "TodoExecutionEnvelope",
     "WorkbenchSetup",
+    "preview_execution",
+    "preview_todo_graph",
 ]

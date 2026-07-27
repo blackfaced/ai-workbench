@@ -13,7 +13,7 @@ import yaml
 TOOL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_ROOT / "src"))
 
-from aiwb import AgentRequest, AgentResult, GoalRunner, RunReport  # noqa: E402
+from aiwb import AgentRequest, AgentResult, GateError, GoalRunner, RunReport  # noqa: E402
 
 
 class ParallelTodoAgent:
@@ -58,7 +58,7 @@ class ParallelTodoAgent:
                     "    return f'Goodbye, {name}!'\n",
                     encoding="utf-8",
                 )
-        elif request.role != "verifier":
+        elif request.role not in {"verifier", "candidate_verifier"}:
             raise AssertionError(f"unexpected role: {request.role}")
 
         return AgentResult(
@@ -120,6 +120,11 @@ class RecoveringDagAgent:
     def run(self, request: AgentRequest) -> AgentResult:
         self.calls.append((request.todo_id, request.role))
         worktree = Path(request.worktree)
+        if request.role == "candidate_verifier":
+            return AgentResult(
+                session_id="candidate-verifier-session",
+                final_output="completed",
+            )
         module, expected = self._modules[request.todo_id]
         if request.role == "test_designer":
             tests = worktree / "tests"
@@ -142,6 +147,80 @@ class RecoveringDagAgent:
             session_id=f"{request.todo_id}-{request.role}-session",
             final_output="completed",
         )
+
+
+class CrossTodoRegressionAgent:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def run(self, request: AgentRequest) -> AgentResult:
+        self.calls.append((request.todo_id, request.role))
+        worktree = Path(request.worktree)
+        tests = worktree / "tests"
+        if request.role == "test_designer":
+            tests.mkdir(exist_ok=True)
+            if request.todo_id == "T-1":
+                (tests / "test_greeting.py").write_text(
+                    "from greeting import greeting\n\n"
+                    "def test_greeting():\n"
+                    "    assert greeting('Ada') == 'Hello, Ada!'\n",
+                    encoding="utf-8",
+                )
+            else:
+                (tests / "test_farewell.py").write_text(
+                    "from farewell import farewell\n\n"
+                    "def test_farewell():\n"
+                    "    assert farewell('Ada') == 'Goodbye, Ada!'\n",
+                    encoding="utf-8",
+                )
+        elif request.role == "implementer":
+            if request.todo_id == "T-1":
+                (worktree / "greeting.py").write_text(
+                    "from settings import PREFIX\n\n"
+                    "def greeting(name):\n"
+                    "    return f'{PREFIX}, {name}!'\n",
+                    encoding="utf-8",
+                )
+            else:
+                (worktree / "settings.py").write_text(
+                    "PREFIX = 'Hola'\n",
+                    encoding="utf-8",
+                )
+                (worktree / "farewell.py").write_text(
+                    "def farewell(name):\n"
+                    "    return f'Goodbye, {name}!'\n",
+                    encoding="utf-8",
+                )
+        elif request.role not in {"verifier", "candidate_verifier"}:
+            raise AssertionError(f"unexpected role: {request.role}")
+        return AgentResult(
+            session_id=f"{request.todo_id}-{request.role}-session",
+            final_output="completed",
+        )
+
+
+class MutatingCandidateVerifierAgent(ParallelTodoAgent):
+    def run(self, request: AgentRequest) -> AgentResult:
+        if request.role == "candidate_verifier":
+            assert request.sandbox == "read-only"
+            self.calls.append((request.todo_id, request.role))
+            (Path(request.worktree) / "greeting.py").write_text(
+                "def greeting(name):\n"
+                "    return 'mutated'\n",
+                encoding="utf-8",
+            )
+            return AgentResult(
+                session_id="mutating-candidate-verifier",
+                final_output="completed",
+            )
+        return super().run(request)
+
+
+class InterruptingFinalAcceptanceRunner(GoalRunner):
+    def _run_gate(self, contract, todo, stage, cwd):
+        if stage == "candidate_acceptance:T-2":
+            raise PlannedInterruption("simulated final acceptance interruption")
+        return super()._run_gate(contract, todo, stage, cwd)
 
 
 def test_independent_todos_run_in_parallel_worktrees_and_integrate_candidate() -> None:
@@ -172,6 +251,7 @@ def test_independent_todos_run_in_parallel_worktrees_and_integrate_candidate() -
             ("T-2", "test_designer"),
             ("T-2", "implementer"),
             ("T-2", "verifier"),
+            ("candidate", "candidate_verifier"),
         }
         assert _git(repository, "show", f"{report.branch}:greeting.py").stdout.startswith(
             "def greeting"
@@ -205,6 +285,7 @@ def test_dependent_todo_starts_from_integrated_upstream_candidate() -> None:
             ("T-2", "test_designer"),
             ("T-2", "implementer"),
             ("T-2", "verifier"),
+            ("candidate", "candidate_verifier"),
         ]
         todos = {todo.todo_id: todo for todo in report.todos}
         assert _git(
@@ -278,6 +359,181 @@ def test_interruption_keeps_downstream_frozen_and_resumes_other_checkpoints() ->
             "test_designer",
             "implementer",
             "verifier",
+        ]
+
+
+def test_final_candidate_acceptance_rejects_a_cross_todo_regression() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        (repository / "settings.py").write_text("PREFIX = 'Hello'\n", encoding="utf-8")
+        workflow = repository / ".ai-workbench" / "workflow.yaml"
+        workflow_data = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+        workflow_data["capabilities"]["commands"] = {
+            "greeting": {
+                "argv": [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/test_greeting.py",
+                ],
+                "approved": True,
+            },
+            "farewell": {
+                "argv": [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/test_farewell.py",
+                ],
+                "approved": True,
+            },
+        }
+        workflow.write_text(
+            yaml.safe_dump(workflow_data, sort_keys=False),
+            encoding="utf-8",
+        )
+        _git(repository, "add", "settings.py", ".ai-workbench/workflow.yaml")
+        _git(repository, "commit", "-m", "Add shared greeting settings")
+        contract = _write_contract(root, repository)
+        data = yaml.safe_load(contract.read_text(encoding="utf-8"))
+        data["todos"][0]["test"]["command"] = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_greeting.py",
+        ]
+        data["todos"][1]["test"]["command"] = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "tests/test_farewell.py",
+        ]
+        contract.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+        agent = CrossTodoRegressionAgent()
+        runner = GoalRunner(
+            state_dir=root / "state",
+            agent=agent,
+            max_workers=2,
+        )
+        prepared = runner.prepare(contract)
+
+        try:
+            runner.run(contract)
+        except GateError as error:
+            assert "Final Candidate acceptance failed for T-1" in str(error)
+        else:
+            raise AssertionError("the integrated regression must reject acceptance")
+
+        report = runner.report(prepared.run_id)
+        assert report.status == "failed_acceptance"
+        assert report.stop is not None
+        assert report.stop.reason == "acceptance_failure"
+        assert report.stop.stage == "candidate_acceptance:T-1"
+        assert ("candidate", "candidate_verifier") in agent.calls
+        assert any(
+            attempt.role == "candidate_verifier"
+            and attempt.todo_id == "candidate"
+            and attempt.status == "succeeded"
+            for attempt in report.attempts
+        )
+        assert any(
+            item.stage == "candidate_acceptance:T-1"
+            and item.returncode != 0
+            for item in report.evidence
+        )
+
+
+def test_final_candidate_verifier_cannot_mutate_the_assembled_commit() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        agent = MutatingCandidateVerifierAgent()
+        runner = GoalRunner(
+            state_dir=root / "state",
+            agent=agent,
+            max_workers=2,
+        )
+        prepared = runner.prepare(contract)
+
+        try:
+            runner.run(contract)
+        except GateError as error:
+            assert "mutated the immutable Candidate" in str(error)
+        else:
+            raise AssertionError("a mutating final verifier must reject acceptance")
+
+        report = runner.report(prepared.run_id)
+        assert report.status == "failed_acceptance"
+        assert report.stop is not None
+        assert report.stop.reason == "acceptance_failure"
+        assert report.candidate_commit
+        assert report.attempts[-1].role == "candidate_verifier"
+        assert report.attempts[-1].status == "rejected"
+        assert _git(
+            repository,
+            "show",
+            f"{report.candidate_commit}:greeting.py",
+        ).stdout == "def greeting(name):\n    return f'Hello, {name}!'\n"
+        assert _git(
+            Path(report.worktree),
+            "status",
+            "--porcelain",
+        ).stdout == ""
+
+
+def test_final_candidate_acceptance_resumes_without_repeating_completed_work() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        interrupted_agent = ParallelTodoAgent()
+        runner = InterruptingFinalAcceptanceRunner(
+            state_dir=root / "state",
+            agent=interrupted_agent,
+            max_workers=2,
+        )
+        prepared = runner.prepare(contract)
+
+        try:
+            runner.run(contract)
+        except PlannedInterruption as error:
+            assert "final acceptance" in str(error)
+        else:
+            raise AssertionError("the first final acceptance must be interrupted")
+
+        interrupted = runner.report(prepared.run_id)
+        assert interrupted.status == "candidate_accepting"
+        assert [
+            item.stage
+            for item in interrupted.evidence
+            if item.stage.startswith("candidate_acceptance:")
+        ] == ["candidate_acceptance:T-1"]
+        assert interrupted_agent.calls.count(
+            ("candidate", "candidate_verifier")
+        ) == 1
+
+        resumed_agent = ParallelTodoAgent()
+        resumed = GoalRunner(
+            state_dir=root / "state",
+            agent=resumed_agent,
+            max_workers=2,
+        ).run(contract)
+
+        assert resumed.status == "merge_ready"
+        assert resumed_agent.calls == []
+        assert [
+            item.stage
+            for item in resumed.evidence
+            if item.stage.startswith("candidate_acceptance:")
+        ] == [
+            "candidate_acceptance:T-1",
+            "candidate_acceptance:T-2",
         ]
 
 

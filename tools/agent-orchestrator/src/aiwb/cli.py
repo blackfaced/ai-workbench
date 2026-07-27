@@ -8,6 +8,7 @@ from typing import Optional, Sequence, Tuple
 
 from .agent import AgentRouter, ClaudeCodeCliAdapter, CodexCliAdapter
 from .daemon import AgentDaemon, DaemonClient, DaemonError
+from .intake import GoalIntake
 from .kubernetes import KubernetesJanitor
 from .project import (
     ProjectConfigError,
@@ -15,7 +16,7 @@ from .project import (
     ProjectInitError,
     ProjectInitializer,
 )
-from .runner import GoalRunner
+from .runner import GoalRunner, preview_execution
 from .setup import WorkbenchSetup
 from .skills import SkillCatalog
 from .supervisor import LaunchdError, LaunchdService
@@ -32,6 +33,7 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
         "doctor": _run_doctor,
         "goal": _run_goal,
         "daemon": _run_daemon,
+        "evidence": _run_evidence,
         "janitor": _run_janitor,
     }
     try:
@@ -121,6 +123,26 @@ def _build_parser() -> argparse.ArgumentParser:
     report.add_argument("run_id")
     _add_control_options(report)
 
+    resume = goal_commands.add_parser("resume")
+    resume.add_argument("run_id")
+    _add_control_options(resume)
+
+    intake = goal_commands.add_parser("intake")
+    intake.add_argument("--repo", required=True, type=Path)
+    intake_source = intake.add_mutually_exclusive_group(required=True)
+    intake_source.add_argument("--contract", type=Path)
+    intake_source.add_argument("--tickets", type=Path)
+    intake.add_argument("--task", default="")
+    _add_control_options(intake)
+
+    goal_evidence = goal_commands.add_parser("evidence")
+    goal_evidence.add_argument("run_id")
+    goal_evidence.add_argument("artifact_id")
+    _add_control_options(goal_evidence)
+
+    preflight = goal_commands.add_parser("preflight")
+    preflight.add_argument("--contract", required=True, type=Path)
+
     draft = goal_commands.add_parser("draft")
     draft.add_argument("--repo", required=True, type=Path)
     draft.add_argument("--tickets", required=True, type=Path)
@@ -171,6 +193,15 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("~/.ai-workbench").expanduser(),
     )
+
+    evidence = commands.add_parser("evidence")
+    evidence_commands = evidence.add_subparsers(
+        dest="evidence_command",
+        required=True,
+    )
+    prune = evidence_commands.add_parser("prune")
+    prune.add_argument("--older-than-days", required=True, type=int)
+    _add_control_options(prune)
     return parser
 
 
@@ -257,6 +288,19 @@ def _run_goal(options: argparse.Namespace) -> int:
         )
         _print_json(result.__dict__)
         return 0
+    if options.goal_command == "preflight":
+        _print_json(preview_execution(options.contract).to_dict())
+        return 0
+    if options.goal_command == "intake":
+        client = DaemonClient(_socket_path(options))
+        result = GoalIntake(daemon_probe=client.ping).inspect(
+            repository=options.repo,
+            contract_path=options.contract,
+            tickets_path=options.tickets,
+            task=options.task,
+        )
+        _print_json(result.to_dict())
+        return 0
     if options.goal_command == "run":
         report = GoalRunner(
             state_dir=options.state_dir,
@@ -274,6 +318,12 @@ def _run_goal(options: argparse.Namespace) -> int:
         _print_json(client.status(options.run_id).__dict__)
     elif options.goal_command == "report":
         _print_json(client.report(options.run_id).to_dict())
+    elif options.goal_command == "resume":
+        _print_json(client.resume(options.run_id).__dict__)
+    elif options.goal_command == "evidence":
+        _print_json(
+            client.evidence(options.run_id, options.artifact_id).to_dict()
+        )
     else:
         raise ValueError(f"unsupported goal command: {options.goal_command}")
     return 0
@@ -323,6 +373,16 @@ def _run_janitor(options: argparse.Namespace) -> int:
     report = KubernetesJanitor(options.state_dir).sweep()
     _print_json(report.__dict__)
     return 0 if report.failed == 0 else 1
+
+
+def _run_evidence(options: argparse.Namespace) -> int:
+    if options.evidence_command != "prune":
+        raise ValueError(f"unsupported Evidence command: {options.evidence_command}")
+    report = DaemonClient(_socket_path(options)).prune_evidence(
+        options.older_than_days
+    )
+    _print_json(report.__dict__)
+    return 0
 
 
 def _add_control_options(parser: argparse.ArgumentParser) -> None:
