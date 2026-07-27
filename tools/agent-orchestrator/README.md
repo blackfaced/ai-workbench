@@ -16,7 +16,7 @@ The public tool contains no organization-specific integrations. Projects expose 
 
 `GoalRunner.run(contract)` is the execution interface and test surface. It hides Contract validation, checkpoint persistence, Git worktree management, RED/GREEN machine gates, role prompts, Evidence capture, and recovery.
 
-`DaemonClient.submit/status/report` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, and process-restart recovery.
+`DaemonClient.submit/status/report/evidence` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, content-addressed Evidence retrieval, and process-restart recovery.
 
 `McpServer` is a thin stdio Adapter over that same control interface. It exposes daemon health plus Goal submit, status, and report tools; it does not own Runs or offer arbitrary command execution.
 
@@ -41,6 +41,7 @@ aiwb CLI ────┘                    ├── RunStore (SQLite)
                                  │   └── ClaudeCodeCliAdapter
                                  ├── CandidatePublisher
                                  ├── MergeConflictRepairer
+                                 ├── EvidenceStore (SHA-256 objects)
                                  ├── Project commands
                                  ├── Harness / ImageBuilder adapters
                                  └── KubernetesJanitor
@@ -54,9 +55,10 @@ The Daemon can run in the foreground or as a macOS user LaunchAgent. Linux `syst
 draft → awaiting_approval → approved
 approved → running ─────────────────────────────→ merge_ready
                    └→ candidate_verified → waiting_image → merge_ready
-                   ├→ blocked
-                   ├→ provider_blocked
-                   └→ budget_exhausted
+                   ├→ paused_resource ───────resume──────→ running
+                   ├→ paused_deadline ───────resume──────→ running
+                   ├→ paused_provider_quota ─resume──────→ running
+                   └→ failed_harness | failed_acceptance | failed_cleanup
 ```
 
 Within each Todo, durable checkpoints advance through:
@@ -69,6 +71,25 @@ The Run becomes `merge_ready` only after every Todo is integrated into the
 Candidate and its affected gate passes there.
 
 Active Agent work is never itself a checkpoint. After interruption, the runner discards partial changes and resumes from the last durable Git commit.
+
+Optional Contract resource boundaries are subscription-first guardrails, not a
+cost model:
+
+```yaml
+resources:
+  agent_attempts: 12
+  wall_clock_seconds: 21600
+  harness_seconds: 3600
+  provider_tokens: 500000
+```
+
+Omit the block or any individual key to leave that boundary unset. The
+preflight output shows only configured boundaries. Checks occur before the next
+Agent or Harness operation. A pause is durable and is not auto-resumed after a
+daemon restart; `aiwb goal resume <run-id>` starts a new window from the same
+checkpoint. Provider and model remain fixed, and provider quota never triggers
+fallback. Provider tokens are counted only when the CLI reports them; monetary
+cost remains unknown.
 
 ## Implemented Tracer Bullets
 
@@ -131,11 +152,51 @@ The Kubernetes Harness tracer adds:
 The Agent interaction tracer adds:
 
 - a dependency-free stdio MCP server with `initialize`, `ping`, `tools/list`, and `tools/call` support;
-- four narrow tools: `aiwb_daemon_status`, `aiwb_goal_submit`, `aiwb_goal_status`, and `aiwb_goal_report`;
+- eight narrow tools: `aiwb_daemon_status`, `aiwb_goal_evidence`, `aiwb_goal_intake`, `aiwb_goal_preflight`, `aiwb_goal_submit`, `aiwb_goal_status`, `aiwb_goal_report`, and `aiwb_goal_resume`;
 - immediate Goal submission so an Agent conversation never owns the Run lifetime;
 - structured operational errors inside MCP tool results and standard JSON-RPC protocol errors;
 - a bundled `run-approved-goal` Codex Skill that requires an already-approved Contract and interprets durable Evidence conservatively;
 - no MCP tool for direct execution, permission expansion, target-branch merge, production access, or test weakening.
+
+The resource-policy tracer adds:
+
+- optional Agent Attempt, wall-clock, Harness-time, and provider-reported token
+  boundaries reviewed in the preflight envelope;
+- durable resource, deadline, and provider-quota pauses with an explicit
+  same-provider, same-model resume operation;
+- no code Attempt for a provider quota response that performed no code work;
+- restart preservation without automatic resume, while already-admitted
+  independent Todos may finish and blocked dependents remain frozen;
+- distinct structured reasons for quota, resource, deadline, Harness,
+  acceptance, and cleanup stops across CLI, MCP, and durable reports.
+
+The cost-aware Goal intake tracer adds:
+
+- one read-only readiness result for accepted tickets or a draft Contract;
+- a cheapest-path choice that keeps small work in the installed `$ask-matt`
+  interactive flow and reserves AI Workbench for durability, multiple Todos,
+  Harnesses, recovery, or unattended operation;
+- actionable acceptance, dependency, Harness, permissions, provider, resource,
+  and non-production blockers;
+- the same execution envelope, readiness, blockers, daemon state, and next
+  explicit action through Python, CLI, MCP, and `$intake-aiwb-goal`;
+- no approval, submission, Run, worktree, Agent, Harness, project command, or
+  permission side effect during inspection.
+
+The bounded Evidence tracer adds:
+
+- immutable SHA-256 objects for large stdout, stderr, browser captures, image
+  artifacts, and Kubernetes artifacts, with recorded byte length and media
+  type;
+- deterministic 4 KiB command summaries on routine status and report paths,
+  plus Run-scoped references for explicit full-content retrieval;
+- one integrity-verifying Evidence path shared by Python, daemon, CLI, and MCP;
+- append-only failed and passing Attempt Evidence, preserving earlier failures
+  and their resource consumption after a retry;
+- restart-safe references and retrieval, plus backward-compatible reads of old
+  inline-only Run reports;
+- indefinite default retention and an explicit, testable age-based prune
+  operation instead of automatic daemon deletion.
 
 The Claude Code provider tracer adds:
 
@@ -297,10 +358,25 @@ In another terminal:
 
 ```bash
 aiwb daemon status
+aiwb goal preflight --contract /path/to/contract.yaml
 aiwb goal submit --contract /path/to/contract.yaml
 aiwb goal status <run-id>
 aiwb goal report <run-id>
+aiwb goal evidence <run-id> <artifact-id>
+aiwb goal resume <run-id>
 ```
+
+Routine reports contain bounded summaries and immutable artifact references.
+Fetch full content only when diagnosing a specific artifact. Evidence is kept
+indefinitely by default; operators may deliberately reclaim old objects:
+
+```bash
+aiwb evidence prune --older-than-days 30
+```
+
+Pruning never rewrites historical Run metadata. A later read of a pruned
+reference fails explicitly, and every non-pruned read verifies its stored byte
+length and SHA-256 digest.
 
 The daemon sweeps Kubernetes cleanup leases at startup and every minute. A manual or independently scheduled sweep is also available:
 
@@ -317,7 +393,7 @@ codex mcp list
 
 Registration is intentionally a user action; the repository never edits global Codex configuration. The MCP server needs no network access or OpenAI API key. It connects only to the local `0600` daemon socket. Start or install the daemon separately before using the tools.
 
-The bundled interaction Skills live in [`skills/`](skills/): `run-approved-goal`, `draft-aiwb-contract`, `setup-ai-workbench`, and `ask-ai-workbench`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `run-approved-goal` submits an approved Contract and observes its durable Run; `draft-aiwb-contract` converts approved local `tickets.md` content into a non-runnable Contract draft; `$setup-ai-workbench` inspects first and requires explicit confirmation before project-local setup; `$ask-ai-workbench` is advisory and can return no recommendation.
+The bundled interaction Skills live in [`skills/`](skills/): `run-approved-goal`, `draft-aiwb-contract`, `setup-ai-workbench`, `ask-ai-workbench`, and `intake-aiwb-goal`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `run-approved-goal` submits an approved Contract and observes its durable Run; `draft-aiwb-contract` converts approved local `tickets.md` content into a non-runnable Contract draft; `$setup-ai-workbench` inspects first and requires explicit confirmation before project-local setup; `$ask-ai-workbench` is advisory and can return no recommendation; `$intake-aiwb-goal` chooses the interactive or unattended handoff and reports readiness without taking action.
 
 For direct CLI use, inspect first and add `--apply` only after reviewing the exact planned changes:
 
@@ -352,9 +428,25 @@ reference-only until separately reviewed.
 
 ## From Matt tickets to an AI Workbench Contract
 
-Use `$to-tickets` to agree and publish local `tickets.md` first. Then create a
-draft that preserves the vertical slices, blocking edges, and acceptance
-criteria without granting any execution authority:
+The daily workflow has two phases. Use `$ask-matt` and its selected upstream
+Skills for grilling, specification, ticket decomposition, TDD, architecture
+review, and small interactive implementation. AI Workbench begins only at
+accepted `tickets.md` or a draft Contract.
+
+Inspect accepted tickets before creating heavier orchestration:
+
+```bash
+aiwb goal intake --repo /path/to/project \
+  --tickets /path/to/project/tickets.md
+```
+
+An `interactive_matt` result stays in the upstream flow. An
+`ai_workbench_unattended` result explains why durability earns its extra
+Agent/Harness cost and names `create_contract_draft` as the next action. Intake
+does not write the draft.
+
+Create a draft that preserves the accepted vertical slices, blocking edges,
+and acceptance criteria without granting any execution authority:
 
 ```bash
 aiwb goal draft --repo /path/to/project \
@@ -364,8 +456,28 @@ aiwb goal draft --repo /path/to/project \
 
 The generated file has `approval.status: draft` and placeholder test commands.
 Review it against the project's workflow policy, replace every placeholder,
-and explicitly approve it before using `run-approved-goal`. The command does
-not fetch a tracker, configure a Harness, start a daemon, or submit a Goal.
+record an explicit provider and resource-policy choice, then run the shared
+readiness inspection:
+
+```bash
+aiwb goal intake --repo /path/to/project \
+  --contract /path/to/project/greeting.contract.yaml
+```
+
+Only a blocker-free `ready_for_approval` result should proceed to one explicit
+human approval. Approval still does not submit the Run. The lower-level
+side-effect-free envelope remains available separately:
+
+```bash
+aiwb goal preflight --contract /path/to/project/greeting.contract.yaml
+```
+
+The preview reports the deterministic Agent/Harness lower bound, parallel Todo
+layers, and conditional repair/diagnostic/retry/image/publication paths. Token
+usage and monetary cost remain unknown unless a provider reports them. After
+review, explicitly approve the Contract before using `run-approved-goal`. The
+draft command does not fetch a tracker, configure a Harness, start a daemon, or
+submit a Goal.
 
 For macOS background operation, inspect the plist without loading it:
 

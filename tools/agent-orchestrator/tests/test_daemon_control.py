@@ -49,7 +49,7 @@ class BlockingAgentAdapter:
                 "    return f'Hello, {name}!'\n",
                 encoding="utf-8",
             )
-        elif request.role != "verifier":
+        elif request.role not in {"verifier", "candidate_verifier"}:
             raise AssertionError(f"unexpected role: {request.role}")
         return AgentResult(
             session_id=f"daemon-{request.role}-session",
@@ -138,7 +138,7 @@ def test_daemon_accepts_a_goal_and_reports_background_completion() -> None:
             assert submitted.run_id.startswith("daemon-greeting-goal-")
             assert client.status(submitted.run_id).status == "running"
             live_report = client.report(submitted.run_id)
-            assert live_report.status == "approved"
+            assert live_report.status in {"approved", "running"}
             assert live_report.goal_id == "daemon-greeting-goal"
 
             adapter.release.set()
@@ -150,11 +150,17 @@ def test_daemon_accepts_a_goal_and_reports_background_completion() -> None:
 
             assert report.status == "merge_ready"
             assert report.goal_id == "daemon-greeting-goal"
-            assert adapter.roles == ["test_designer", "implementer", "verifier"]
+            assert adapter.roles == [
+                "test_designer",
+                "implementer",
+                "verifier",
+                "candidate_verifier",
+            ]
             assert set(report.sessions) == {
                 "test_designer",
                 "implementer",
                 "verifier",
+                "candidate_verifier",
             }
         finally:
             adapter.release.set()

@@ -13,7 +13,7 @@ import yaml
 TOOL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_ROOT / "src"))
 
-from aiwb import AgentRequest, AgentResult, GoalRunner  # noqa: E402
+from aiwb import AgentRequest, AgentResult, GoalRunner, RunReport  # noqa: E402
 
 
 class PlannedInterruption(RuntimeError):
@@ -52,12 +52,13 @@ class ScriptedAgentAdapter:
                 "    return f'Hello, {name}!'\n",
                 encoding="utf-8",
             )
-        elif request.role != "verifier":
+        elif request.role not in {"verifier", "candidate_verifier"}:
             raise AssertionError(f"unexpected role: {request.role}")
 
         return AgentResult(
             session_id=f"{request.role}-session",
             final_output=f"{request.role} completed",
+            usage={"input_tokens": 5} if request.role == "verifier" else {},
         )
 
 
@@ -158,12 +159,15 @@ class SingleTodoRunTest(unittest.TestCase):
 
             self.assertEqual(report.status, "merge_ready")
             self.assertEqual(report.goal_id, "greeting-goal")
-            self.assertEqual(resumed_adapter.roles, ["implementer", "verifier"])
+            self.assertEqual(
+                resumed_adapter.roles,
+                ["implementer", "verifier", "candidate_verifier"],
+            )
             self.assertEqual(
                 resumed_adapter.providers,
-                ["claude-code", "claude-code"],
+                ["claude-code", "claude-code", "claude-code"],
             )
-            self.assertEqual(resumed_adapter.models, ["sonnet", "sonnet"])
+            self.assertEqual(resumed_adapter.models, ["sonnet", "sonnet", "sonnet"])
             self.assertIn(
                 "Prefer the smallest accepted change.",
                 resumed_adapter.prompts[0][1],
@@ -173,6 +177,104 @@ class SingleTodoRunTest(unittest.TestCase):
                 resumed_adapter.prompts[1][1],
             )
             self.assertNotEqual(report.red_commit, report.code_commit)
+            self.assertEqual(len(report.todos), 1)
+            self.assertEqual(report.todos[0].todo_id, "T-1")
+            self.assertEqual(report.todos[0].status, "integrated")
+            self.assertEqual(report.todos[0].red_commit, report.red_commit)
+            self.assertEqual(report.todos[0].code_commit, report.code_commit)
+            self.assertEqual(
+                [(item.role, item.status) for item in report.attempts],
+                [
+                    ("test_designer", "succeeded"),
+                    ("implementer", "failed"),
+                    ("implementer", "succeeded"),
+                    ("verifier", "succeeded"),
+                    ("candidate_verifier", "succeeded"),
+                ],
+            )
+            self.assertTrue(
+                all(item.todo_id == "T-1" for item in report.attempts[:-1])
+            )
+            self.assertEqual(report.attempts[-1].todo_id, "candidate")
+            self.assertTrue(
+                all(item.provider == "claude-code" for item in report.attempts)
+            )
+            self.assertTrue(all(item.model == "sonnet" for item in report.attempts))
+            self.assertTrue(all(item.elapsed_seconds >= 0 for item in report.attempts))
+            self.assertEqual(report.attempts[1].session_id, "")
+            self.assertIn("simulated host restart", report.attempts[1].error)
+            self.assertTrue(report.evidence)
+            self.assertTrue(
+                all(item.duration_seconds >= 0 for item in report.evidence)
+            )
+            self.assertIsNone(report.attempts[0].usage)
+            consumption = report.to_dict()["consumption"]
+            comparison = report.to_dict()["consumption_comparison"]
+            self.assertEqual(
+                comparison,
+                {
+                    "planned": {
+                        "agent_attempts": 4,
+                        "harness_executions": 5,
+                    },
+                    "actual": {
+                        "agent_attempts": 5,
+                        "harness_executions": 5,
+                    },
+                    "variance": {
+                        "agent_attempts": 1,
+                        "harness_executions": 0,
+                    },
+                },
+            )
+            self.assertEqual(
+                report.execution_envelope["goal_id"],
+                "greeting-goal",
+            )
+            self.assertEqual(
+                [
+                    (item["todo_id"], item["role"], item["attempt_count"])
+                    for item in consumption["agents"]
+                ],
+                [
+                    ("T-1", "implementer", 2),
+                    ("T-1", "test_designer", 1),
+                    ("T-1", "verifier", 1),
+                    ("candidate", "candidate_verifier", 1),
+                ],
+            )
+            self.assertEqual(
+                {
+                    item["role"]: item["usage"]
+                    for item in consumption["agents"]
+                },
+                {
+                    "implementer": None,
+                    "test_designer": None,
+                    "verifier": {"input_tokens": 5},
+                    "candidate_verifier": None,
+                },
+            )
+            self.assertEqual(
+                consumption["harnesses"],
+                [
+                    {
+                        "todo_id": "T-1",
+                        "profile": "direct-command",
+                        "environment": "local",
+                        "execution_count": len(report.todos[0].evidence) + 1,
+                        "duration_seconds": sum(
+                            item.duration_seconds
+                            for item in report.todos[0].evidence
+                        )
+                        + sum(
+                            item.duration_seconds
+                            for item in report.evidence
+                            if item.stage.startswith("candidate_acceptance:")
+                        ),
+                    }
+                ],
+            )
             self.assertEqual(
                 self._git(repository, "show", f"{report.branch}:greeting.py").stdout,
                 "def greeting(name):\n    return f'Hello, {name}!'\n",
@@ -193,6 +295,25 @@ class SingleTodoRunTest(unittest.TestCase):
                 "Prefer a documented, small accepted change.",
                 changed_guidance_adapter.prompts[1][1],
             )
+
+    def test_old_report_without_consumption_fields_remains_readable(self) -> None:
+        report = RunReport.from_dict(
+            {
+                "run_id": "legacy-run",
+                "goal_id": "legacy-goal",
+                "status": "merge_ready",
+                "branch": "aiwb/legacy",
+                "worktree": "/tmp/legacy",
+                "contract_hash": "abc123",
+            }
+        )
+
+        self.assertEqual(report.attempts, ())
+        self.assertEqual(report.evidence, ())
+        self.assertEqual(
+            report.to_dict()["consumption"],
+            {"agents": [], "harnesses": []},
+        )
 
     @staticmethod
     def _git(repository: Path, *arguments: str) -> subprocess.CompletedProcess[str]:

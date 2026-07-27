@@ -110,7 +110,11 @@ def test_stdio_mcp_lists_tools_and_reports_daemon_status() -> None:
             )
             assert [tool["name"] for tool in listed["result"]["tools"]] == [
                 "aiwb_daemon_status",
+                "aiwb_goal_evidence",
+                "aiwb_goal_intake",
+                "aiwb_goal_preflight",
                 "aiwb_goal_report",
+                "aiwb_goal_resume",
                 "aiwb_goal_status",
                 "aiwb_goal_submit",
             ]
@@ -229,6 +233,18 @@ def test_stdio_mcp_submits_and_observes_a_complete_goal() -> None:
             )
             assert report["status"] == "merge_ready"
             assert report["goal_id"] == "mcp-greeting-goal"
+            assert {
+                item["role"]
+                for item in report["consumption"]["agents"]
+            } == {
+                "test_designer",
+                "implementer",
+                "verifier",
+                "candidate_verifier",
+            }
+            assert report["consumption"]["harnesses"][0][
+                "execution_count"
+            ] == 5
 
             invalid = _request(
                 server,
