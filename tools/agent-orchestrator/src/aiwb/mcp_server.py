@@ -101,6 +101,9 @@ class McpServer:
             elif name == "aiwb_goal_report":
                 run_id = _string_argument(arguments, "run_id")
                 value = self._client.report(run_id).to_dict()
+            elif name == "aiwb_goal_resume":
+                run_id = _string_argument(arguments, "run_id")
+                value = self._client.resume(run_id).__dict__
             else:
                 return _tool_result(
                     {"error": "unknown_tool", "message": f"unknown tool: {name}"},
@@ -141,6 +144,19 @@ def _tools():
         {
             "name": "aiwb_goal_report",
             "description": "Read the durable Evidence report for an existing Run.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"run_id": string_argument},
+                "required": ["run_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "aiwb_goal_resume",
+            "description": (
+                "Resume a Run paused at a durable resource, deadline, or "
+                "provider-quota checkpoint without changing provider or model."
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {"run_id": string_argument},

@@ -112,6 +112,7 @@ def test_stdio_mcp_lists_tools_and_reports_daemon_status() -> None:
                 "aiwb_daemon_status",
                 "aiwb_goal_preflight",
                 "aiwb_goal_report",
+                "aiwb_goal_resume",
                 "aiwb_goal_status",
                 "aiwb_goal_submit",
             ]

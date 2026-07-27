@@ -121,6 +121,10 @@ def _build_parser() -> argparse.ArgumentParser:
     report.add_argument("run_id")
     _add_control_options(report)
 
+    resume = goal_commands.add_parser("resume")
+    resume.add_argument("run_id")
+    _add_control_options(resume)
+
     preflight = goal_commands.add_parser("preflight")
     preflight.add_argument("--contract", required=True, type=Path)
 
@@ -280,6 +284,8 @@ def _run_goal(options: argparse.Namespace) -> int:
         _print_json(client.status(options.run_id).__dict__)
     elif options.goal_command == "report":
         _print_json(client.report(options.run_id).to_dict())
+    elif options.goal_command == "resume":
+        _print_json(client.resume(options.run_id).__dict__)
     else:
         raise ValueError(f"unsupported goal command: {options.goal_command}")
     return 0

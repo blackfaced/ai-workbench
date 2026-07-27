@@ -430,7 +430,10 @@ def test_final_candidate_acceptance_rejects_a_cross_todo_regression() -> None:
             raise AssertionError("the integrated regression must reject acceptance")
 
         report = runner.report(prepared.run_id)
-        assert report.status == "candidate_accepting"
+        assert report.status == "failed_acceptance"
+        assert report.stop is not None
+        assert report.stop.reason == "acceptance_failure"
+        assert report.stop.stage == "candidate_acceptance:T-1"
         assert ("candidate", "candidate_verifier") in agent.calls
         assert any(
             attempt.role == "candidate_verifier"
@@ -466,7 +469,9 @@ def test_final_candidate_verifier_cannot_mutate_the_assembled_commit() -> None:
             raise AssertionError("a mutating final verifier must reject acceptance")
 
         report = runner.report(prepared.run_id)
-        assert report.status == "candidate_accepting"
+        assert report.status == "failed_acceptance"
+        assert report.stop is not None
+        assert report.stop.reason == "acceptance_failure"
         assert report.candidate_commit
         assert report.attempts[-1].role == "candidate_verifier"
         assert report.attempts[-1].status == "rejected"
