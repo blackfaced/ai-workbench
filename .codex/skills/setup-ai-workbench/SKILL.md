@@ -94,3 +94,14 @@ configuration Skill automatically.
 The generated workflow remains a draft until the owner reviews and approves it.
 Use `aiwb doctor` only to validate an appropriate reviewed configuration. Setup
 does not submit Goals, start a daemon, weaken tests, or grant permissions.
+
+The resulting daily flow has two phases:
+
+1. use the installed Matt router and upstream Skills for normal interactive
+   engineering;
+2. at accepted tickets or a Contract draft, invoke `$intake-aiwb-goal` to
+   inspect the cheapest viable path and readiness before any approval or
+   submission.
+
+Setup does not create a second specification, ticket, TDD, review, or
+implementation workflow.

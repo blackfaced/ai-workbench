@@ -24,6 +24,7 @@ from .harness import (
     LocalProcessHarness,
 )
 from .image import ImageBuildError
+from .intake import GoalIntake, GoalIntakeResult, IntakeBlocker
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
 from .project import (
     BrowserDiagnosticProfile,
@@ -51,6 +52,7 @@ from .runner import (
     TodoExecutionEnvelope,
     TodoReport,
     preview_execution,
+    preview_todo_graph,
 )
 from .setup import SetupApplyResult, SetupInspection, WorkbenchSetup
 from .skills import (
@@ -87,12 +89,15 @@ __all__ = [
     "DoctorCheck",
     "DoctorReport",
     "GoalRunner",
+    "GoalIntake",
+    "GoalIntakeResult",
     "GateError",
     "HarnessError",
     "HarnessExecution",
     "HarnessProfile",
     "HarnessRequest",
     "ImageBuildError",
+    "IntakeBlocker",
     "KubernetesHarness",
     "KubernetesJanitor",
     "JanitorReport",
@@ -127,4 +132,5 @@ __all__ = [
     "TodoExecutionEnvelope",
     "WorkbenchSetup",
     "preview_execution",
+    "preview_todo_graph",
 ]

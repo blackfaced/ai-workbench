@@ -340,6 +340,41 @@ def preview_execution(contract_path: Path) -> ExecutionEnvelope:
     return _execution_envelope(contract)
 
 
+def preview_todo_graph(
+    *,
+    goal_id: str,
+    approval_status: str,
+    provider: str,
+    model: Optional[str],
+    todo_dependencies: Mapping[str, Sequence[str]],
+    resources: Optional[Mapping[str, object]] = None,
+    browser_diagnostics_configured: bool = False,
+    image_build_configured: bool = False,
+    candidate_publish_configured: bool = False,
+) -> ExecutionEnvelope:
+    """Estimate one Todo graph without creating a Contract or Run."""
+    normalized = {
+        str(todo_id): tuple(str(item) for item in dependencies)
+        for todo_id, dependencies in todo_dependencies.items()
+    }
+    if not normalized:
+        raise ContractError("execution preview requires at least one Todo")
+    known = set(normalized)
+    if any(set(dependencies) - known for dependencies in normalized.values()):
+        raise ContractError("execution preview has unknown Todo dependencies")
+    return _execution_envelope_from_graph(
+        goal_id=goal_id,
+        approval_status=approval_status,
+        provider=provider,
+        model=model,
+        todo_dependencies=normalized,
+        resources=_parse_resources(resources or {}),
+        browser_diagnostics_configured=browser_diagnostics_configured,
+        image_build_configured=image_build_configured,
+        candidate_publish_configured=candidate_publish_configured,
+    )
+
+
 class GoalRunner:
     """Execute and recover an approved Contract into one Candidate branch."""
 
@@ -2450,30 +2485,58 @@ def _validate_todo_dag(
 
 
 def _execution_envelope(contract: _Contract) -> ExecutionEnvelope:
+    return _execution_envelope_from_graph(
+        goal_id=contract.goal_id,
+        approval_status=contract.approval_status,
+        provider=contract.agent_provider,
+        model=contract.agent_model,
+        todo_dependencies={
+            todo.todo_id: todo.depends_on for todo in contract.todos
+        },
+        resources=contract.resources,
+        browser_diagnostics_configured=any(
+            todo.harness is not None
+            and todo.harness.browser_diagnostic is not None
+            for todo in contract.todos
+        ),
+        image_build_configured=contract.image_profile is not None,
+        candidate_publish_configured=contract.candidate_publish is not None,
+    )
+
+
+def _execution_envelope_from_graph(
+    *,
+    goal_id: str,
+    approval_status: str,
+    provider: str,
+    model: Optional[str],
+    todo_dependencies: Mapping[str, Sequence[str]],
+    resources: _ResourcePolicy,
+    browser_diagnostics_configured: bool,
+    image_build_configured: bool,
+    candidate_publish_configured: bool,
+) -> ExecutionEnvelope:
     completed: set[str] = set()
     layers: List[Tuple[str, ...]] = []
     todo_layers: Dict[str, int] = {}
-    while len(completed) < len(contract.todos):
+    while len(completed) < len(todo_dependencies):
         ready = tuple(
             sorted(
-                todo.todo_id
-                for todo in contract.todos
-                if todo.todo_id not in completed
-                and set(todo.depends_on) <= completed
+                todo_id
+                for todo_id, dependencies in todo_dependencies.items()
+                if todo_id not in completed
+                and set(dependencies) <= completed
             )
         )
+        if not ready:
+            raise ContractError("Todo dependencies must form an acyclic graph")
         layer_index = len(layers)
         layers.append(ready)
         for todo_id in ready:
             todo_layers[todo_id] = layer_index
         completed.update(ready)
 
-    todo_count = len(contract.todos)
-    browser_diagnostics_configured = any(
-        todo.harness is not None
-        and todo.harness.browser_diagnostic is not None
-        for todo in contract.todos
-    )
+    todo_count = len(todo_dependencies)
     conditional_paths: Tuple[Mapping[str, object], ...] = (
         {
             "name": "conflict_repair",
@@ -2497,29 +2560,29 @@ def _execution_envelope(contract: _Contract) -> ExecutionEnvelope:
             "name": "image_build",
             "unit": "external_operation",
             "trigger": "final Candidate acceptance succeeds",
-            "configured": contract.image_profile is not None,
+            "configured": image_build_configured,
         },
         {
             "name": "candidate_publish",
             "unit": "external_mutation",
             "trigger": "final Candidate acceptance and image promotion succeed",
-            "configured": contract.candidate_publish is not None,
+            "configured": candidate_publish_configured,
         },
     )
     return ExecutionEnvelope(
-        goal_id=contract.goal_id,
-        approval_status=contract.approval_status,
-        provider=contract.agent_provider,
-        model=contract.agent_model,
+        goal_id=goal_id,
+        approval_status=approval_status,
+        provider=provider,
+        model=model,
         layers=tuple(layers),
         todos=tuple(
             TodoExecutionEnvelope(
-                todo_id=todo.todo_id,
-                layer=todo_layers[todo.todo_id],
+                todo_id=todo_id,
+                layer=todo_layers[todo_id],
                 agent_attempts=3,
                 harness_executions=4,
             )
-            for todo in contract.todos
+            for todo_id in todo_dependencies
         ),
         deterministic={
             "agent_attempts": todo_count * 3 + 1,
@@ -2551,10 +2614,10 @@ def _execution_envelope(contract: _Contract) -> ExecutionEnvelope:
         resource_boundaries={
             name: value
             for name, value in {
-                "agent_attempts": contract.resources.agent_attempts,
-                "wall_clock_seconds": contract.resources.wall_clock_seconds,
-                "harness_seconds": contract.resources.harness_seconds,
-                "provider_tokens": contract.resources.provider_tokens,
+                "agent_attempts": resources.agent_attempts,
+                "wall_clock_seconds": resources.wall_clock_seconds,
+                "harness_seconds": resources.harness_seconds,
+                "provider_tokens": resources.provider_tokens,
             }.items()
             if value is not None
         },

@@ -31,6 +31,13 @@ an intentionally unapproved Contract with test placeholders. The owner must
 still choose approved commands, Harnesses, permissions, and approval before an
 unattended Run can begin.
 
+At that seam, one read-only Goal intake module chooses the cheapest viable
+path. Small tasks return to the installed `ask-matt` interactive router.
+Durable, multi-Todo, Harness, recovery, or unattended work receives an AI
+Workbench execution envelope plus actionable readiness blockers and one next
+action. CLI, MCP, and the project-local intake Skill adapt the same result; none
+may approve, submit, execute, or copy upstream engineering workflows.
+
 Do not invoke upstream `implement` inside the durable Runner: it owns its own
 interactive commit and review loop, while the Runner owns worktrees,
 checkpoints, integration, and Evidence.

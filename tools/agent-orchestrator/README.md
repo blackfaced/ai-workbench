@@ -151,7 +151,7 @@ The Kubernetes Harness tracer adds:
 The Agent interaction tracer adds:
 
 - a dependency-free stdio MCP server with `initialize`, `ping`, `tools/list`, and `tools/call` support;
-- six narrow tools: `aiwb_daemon_status`, `aiwb_goal_preflight`, `aiwb_goal_submit`, `aiwb_goal_status`, `aiwb_goal_report`, and `aiwb_goal_resume`;
+- seven narrow tools: `aiwb_daemon_status`, `aiwb_goal_intake`, `aiwb_goal_preflight`, `aiwb_goal_submit`, `aiwb_goal_status`, `aiwb_goal_report`, and `aiwb_goal_resume`;
 - immediate Goal submission so an Agent conversation never owns the Run lifetime;
 - structured operational errors inside MCP tool results and standard JSON-RPC protocol errors;
 - a bundled `run-approved-goal` Codex Skill that requires an already-approved Contract and interprets durable Evidence conservatively;
@@ -168,6 +168,19 @@ The resource-policy tracer adds:
   independent Todos may finish and blocked dependents remain frozen;
 - distinct structured reasons for quota, resource, deadline, Harness,
   acceptance, and cleanup stops across CLI, MCP, and durable reports.
+
+The cost-aware Goal intake tracer adds:
+
+- one read-only readiness result for accepted tickets or a draft Contract;
+- a cheapest-path choice that keeps small work in the installed `$ask-matt`
+  interactive flow and reserves AI Workbench for durability, multiple Todos,
+  Harnesses, recovery, or unattended operation;
+- actionable acceptance, dependency, Harness, permissions, provider, resource,
+  and non-production blockers;
+- the same execution envelope, readiness, blockers, daemon state, and next
+  explicit action through Python, CLI, MCP, and `$intake-aiwb-goal`;
+- no approval, submission, Run, worktree, Agent, Harness, project command, or
+  permission side effect during inspection.
 
 The Claude Code provider tracer adds:
 
@@ -351,7 +364,7 @@ codex mcp list
 
 Registration is intentionally a user action; the repository never edits global Codex configuration. The MCP server needs no network access or OpenAI API key. It connects only to the local `0600` daemon socket. Start or install the daemon separately before using the tools.
 
-The bundled interaction Skills live in [`skills/`](skills/): `run-approved-goal`, `draft-aiwb-contract`, `setup-ai-workbench`, and `ask-ai-workbench`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `run-approved-goal` submits an approved Contract and observes its durable Run; `draft-aiwb-contract` converts approved local `tickets.md` content into a non-runnable Contract draft; `$setup-ai-workbench` inspects first and requires explicit confirmation before project-local setup; `$ask-ai-workbench` is advisory and can return no recommendation.
+The bundled interaction Skills live in [`skills/`](skills/): `run-approved-goal`, `draft-aiwb-contract`, `setup-ai-workbench`, `ask-ai-workbench`, and `intake-aiwb-goal`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `run-approved-goal` submits an approved Contract and observes its durable Run; `draft-aiwb-contract` converts approved local `tickets.md` content into a non-runnable Contract draft; `$setup-ai-workbench` inspects first and requires explicit confirmation before project-local setup; `$ask-ai-workbench` is advisory and can return no recommendation; `$intake-aiwb-goal` chooses the interactive or unattended handoff and reports readiness without taking action.
 
 For direct CLI use, inspect first and add `--apply` only after reviewing the exact planned changes:
 
@@ -386,9 +399,25 @@ reference-only until separately reviewed.
 
 ## From Matt tickets to an AI Workbench Contract
 
-Use `$to-tickets` to agree and publish local `tickets.md` first. Then create a
-draft that preserves the vertical slices, blocking edges, and acceptance
-criteria without granting any execution authority:
+The daily workflow has two phases. Use `$ask-matt` and its selected upstream
+Skills for grilling, specification, ticket decomposition, TDD, architecture
+review, and small interactive implementation. AI Workbench begins only at
+accepted `tickets.md` or a draft Contract.
+
+Inspect accepted tickets before creating heavier orchestration:
+
+```bash
+aiwb goal intake --repo /path/to/project \
+  --tickets /path/to/project/tickets.md
+```
+
+An `interactive_matt` result stays in the upstream flow. An
+`ai_workbench_unattended` result explains why durability earns its extra
+Agent/Harness cost and names `create_contract_draft` as the next action. Intake
+does not write the draft.
+
+Create a draft that preserves the accepted vertical slices, blocking edges,
+and acceptance criteria without granting any execution authority:
 
 ```bash
 aiwb goal draft --repo /path/to/project \
@@ -398,7 +427,17 @@ aiwb goal draft --repo /path/to/project \
 
 The generated file has `approval.status: draft` and placeholder test commands.
 Review it against the project's workflow policy, replace every placeholder,
-then inspect the side-effect-free execution envelope:
+record an explicit provider and resource-policy choice, then run the shared
+readiness inspection:
+
+```bash
+aiwb goal intake --repo /path/to/project \
+  --contract /path/to/project/greeting.contract.yaml
+```
+
+Only a blocker-free `ready_for_approval` result should proceed to one explicit
+human approval. Approval still does not submit the Run. The lower-level
+side-effect-free envelope remains available separately:
 
 ```bash
 aiwb goal preflight --contract /path/to/project/greeting.contract.yaml
