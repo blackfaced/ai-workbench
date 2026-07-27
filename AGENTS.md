@@ -15,3 +15,17 @@ This repository is a personal AI development workbench knowledge base.
 - Do not create new top-level directories without adding or updating an ADR.
 - Keep entries concise and practical: when to use, setup notes, evaluation status, and personal observations.
 - Treat engineering skills as lightweight and opt-in; do not impose a heavyweight process framework by default.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub repository `blackfaced/ai-workbench`; external pull requests are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five configured canonical triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository: use root `CONTEXT.md` and `decisions/`. See `docs/agents/domain.md`.
