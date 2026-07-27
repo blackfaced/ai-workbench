@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import IO, Dict, Mapping, Optional, Sequence
 
 from .daemon import DaemonClient, DaemonError
+from .intake import GoalIntake
 from .runner import preview_execution
 
 
@@ -62,8 +63,9 @@ class McpServer:
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": "ai-workbench", "version": "0.1.0"},
                 "instructions": (
-                    "Submit only human-approved Contracts. Use status and report to "
-                    "observe Runs owned by the local ai-workbench daemon."
+                    "Use intake for read-only path and readiness advice. Submit only "
+                    "human-approved Contracts. Use status and report to observe Runs "
+                    "owned by the local ai-workbench daemon."
                 ),
             }
         if method == "ping":
@@ -92,6 +94,31 @@ class McpServer:
             elif name == "aiwb_goal_preflight":
                 contract_path = _string_argument(arguments, "contract_path")
                 value = preview_execution(Path(contract_path)).to_dict()
+            elif name == "aiwb_goal_intake":
+                repository = _string_argument(arguments, "repository")
+                contract_path = arguments.get("contract_path")
+                tickets_path = arguments.get("tickets_path")
+                if (contract_path is None) == (tickets_path is None):
+                    raise ValueError(
+                        "intake requires exactly one contract_path or tickets_path"
+                    )
+                task = arguments.get("task", "")
+                if not isinstance(task, str):
+                    raise ValueError("task must be a string")
+                value = GoalIntake(daemon_probe=self._client.ping).inspect(
+                    repository=Path(repository),
+                    contract_path=(
+                        Path(contract_path)
+                        if isinstance(contract_path, str) and contract_path
+                        else None
+                    ),
+                    tickets_path=(
+                        Path(tickets_path)
+                        if isinstance(tickets_path, str) and tickets_path
+                        else None
+                    ),
+                    task=task,
+                ).to_dict()
             elif name == "aiwb_goal_submit":
                 contract_path = _string_argument(arguments, "contract_path")
                 value = self._client.submit(Path(contract_path)).__dict__
@@ -127,6 +154,24 @@ def _tools():
             "name": "aiwb_daemon_status",
             "description": "Check whether the local AI Workbench daemon is reachable.",
             "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+        {
+            "name": "aiwb_goal_intake",
+            "description": (
+                "Inspect accepted tickets or a draft Contract and recommend the "
+                "cheapest viable interactive or unattended path without taking action."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repository": string_argument,
+                    "contract_path": string_argument,
+                    "tickets_path": string_argument,
+                    "task": {"type": "string"},
+                },
+                "required": ["repository"],
+                "additionalProperties": False,
+            },
         },
         {
             "name": "aiwb_goal_preflight",

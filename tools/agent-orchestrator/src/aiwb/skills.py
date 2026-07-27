@@ -94,6 +94,14 @@ class SkillCatalog:
             source="bundled",
             path="skills/ask-ai-workbench/SKILL.md",
         ),
+        SkillDescriptor(
+            name="intake-aiwb-goal",
+            description=(
+                "Inspect ticket or draft handoff readiness and the cheapest viable path."
+            ),
+            source="bundled",
+            path="skills/intake-aiwb-goal/SKILL.md",
+        ),
     )
 
     def recommend(
@@ -114,6 +122,8 @@ class SkillCatalog:
         task_terms = _terms(task)
         ranked = []
         for skill in snapshot.skills:
+            if skill.name == "intake-aiwb-goal" and not _is_intake_task(task_terms):
+                continue
             matches = sorted(task_terms & _terms(f"{skill.name} {skill.description}"))
             if len(matches) >= 2:
                 ranked.append((len(matches), skill, matches))
@@ -238,6 +248,20 @@ def _is_aiwb_task(task_terms: set[str]) -> bool:
             "goal",
             "harness",
             "unattended",
+        }
+    )
+
+
+def _is_intake_task(task_terms: set[str]) -> bool:
+    return bool(
+        task_terms
+        & {
+            "cheapest",
+            "draft",
+            "handoff",
+            "intake",
+            "readiness",
+            "tickets",
         }
     )
 

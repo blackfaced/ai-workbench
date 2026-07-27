@@ -8,6 +8,7 @@ from typing import Optional, Sequence, Tuple
 
 from .agent import AgentRouter, ClaudeCodeCliAdapter, CodexCliAdapter
 from .daemon import AgentDaemon, DaemonClient, DaemonError
+from .intake import GoalIntake
 from .kubernetes import KubernetesJanitor
 from .project import (
     ProjectConfigError,
@@ -124,6 +125,14 @@ def _build_parser() -> argparse.ArgumentParser:
     resume = goal_commands.add_parser("resume")
     resume.add_argument("run_id")
     _add_control_options(resume)
+
+    intake = goal_commands.add_parser("intake")
+    intake.add_argument("--repo", required=True, type=Path)
+    intake_source = intake.add_mutually_exclusive_group(required=True)
+    intake_source.add_argument("--contract", type=Path)
+    intake_source.add_argument("--tickets", type=Path)
+    intake.add_argument("--task", default="")
+    _add_control_options(intake)
 
     preflight = goal_commands.add_parser("preflight")
     preflight.add_argument("--contract", required=True, type=Path)
@@ -266,6 +275,16 @@ def _run_goal(options: argparse.Namespace) -> int:
         return 0
     if options.goal_command == "preflight":
         _print_json(preview_execution(options.contract).to_dict())
+        return 0
+    if options.goal_command == "intake":
+        client = DaemonClient(_socket_path(options))
+        result = GoalIntake(daemon_probe=client.ping).inspect(
+            repository=options.repo,
+            contract_path=options.contract,
+            tickets_path=options.tickets,
+            task=options.task,
+        )
+        _print_json(result.to_dict())
         return 0
     if options.goal_command == "run":
         report = GoalRunner(

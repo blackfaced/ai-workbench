@@ -78,6 +78,19 @@ def test_catalog_prefers_a_project_copy_of_a_bundled_skill() -> None:
         assert [item.name for item in result.recommendations] == ["ask-ai-workbench"]
 
 
+def test_catalog_routes_draft_readiness_to_goal_intake() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+
+        result = SkillCatalog().recommend(
+            repository,
+            "inspect draft contract readiness and cheapest handoff",
+        )
+
+        assert result.recommendations[0].name == "intake-aiwb-goal"
+
+
 def test_catalog_recommends_installed_ask_matt_before_recreating_its_router() -> None:
     with tempfile.TemporaryDirectory() as directory:
         repository = Path(directory) / "project"
@@ -102,7 +115,12 @@ def test_catalog_recommends_installed_ask_matt_before_recreating_its_router() ->
 
 def test_project_local_skill_mirrors_match_the_bundled_sources() -> None:
     repository = TOOL_ROOT.parents[1]
-    for name in ("ask-ai-workbench", "setup-ai-workbench", "draft-aiwb-contract"):
+    for name in (
+        "ask-ai-workbench",
+        "setup-ai-workbench",
+        "draft-aiwb-contract",
+        "intake-aiwb-goal",
+    ):
         bundled = TOOL_ROOT / "skills" / name / "SKILL.md"
         mirrored = repository / ".codex" / "skills" / name / "SKILL.md"
         assert mirrored.read_text(encoding="utf-8") == bundled.read_text(encoding="utf-8")
