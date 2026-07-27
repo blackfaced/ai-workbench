@@ -181,6 +181,46 @@ def test_project_policy_loads_explicit_local_role_skills() -> None:
         }
 
 
+def test_malformed_candidate_command_does_not_block_approved_policy() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        command = [sys.executable, "-m", "pytest", "-q"]
+        workflow = repository / ".ai-workbench" / "workflow.yaml"
+        workflow.parent.mkdir()
+        workflow.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "suggestions": {
+                        "commands": {
+                            "malformed": {
+                                "argv": "pytest -q",
+                                "reason": ["not", "a", "string"],
+                            }
+                        }
+                    },
+                    "capabilities": {
+                        "commands": {
+                            "unit": {"argv": command, "approved": True},
+                        },
+                        "skills": {},
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        policy = ProjectPolicy.load(workflow)
+
+        assert policy.candidate_commands == ()
+        assert policy.approved_commands == (tuple(command),)
+
+
 @pytest.mark.parametrize(
     ("skills", "message"),
     [

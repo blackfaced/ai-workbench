@@ -173,6 +173,9 @@ The resource-policy tracer adds:
 The cost-aware Goal intake tracer adds:
 
 - one read-only readiness result for accepted tickets or a draft Contract;
+- a versioned generic planning handoff plus bare issue JSON normalization that
+  preserves source facts without inventing acceptance, Todo, command, or path
+  decisions;
 - a cheapest-path choice that keeps small work in the installed `$ask-matt`
   interactive flow and reserves AI Workbench for durability, multiple Todos,
   Harnesses, recovery, or unattended operation;
@@ -182,6 +185,17 @@ The cost-aware Goal intake tracer adds:
   explicit action through Python, CLI, MCP, and `$intake-aiwb-goal`;
 - no approval, submission, Run, worktree, Agent, Harness, project command, or
   permission side effect during inspection.
+
+The explicit preflight policy tracer adds:
+
+- `--workflow` and `--policy` aliases for a reviewed policy artifact outside
+  the target repository, with matching MCP inputs;
+- separate candidate commands from `suggestions.commands` and approved
+  commands from `capabilities.commands`;
+- exact approved-command matching, with candidate commands remaining advisory;
+- actionable blockers for missing command approval, policy-root mismatch,
+  unapproved policy state, and production targets;
+- the existing repository-local `.ai-workbench/workflow.yaml` default.
 
 The bounded Evidence tracer adds:
 
@@ -273,7 +287,7 @@ Create and activate a Python 3.9+ environment, then install the tool:
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -e .
+python -m pip install -e ".[test]"
 ```
 
 Discover an existing project's capabilities first:
@@ -286,9 +300,73 @@ Review `.ai-workbench/workflow.yaml`, move accepted suggestions into `capabiliti
 
 ```bash
 aiwb doctor --config /path/to/project/.ai-workbench/workflow.yaml
+aiwb goal preflight --contract /path/to/contract.yaml
+aiwb goal preflight --contract /path/to/contract.yaml \
+  --policy /path/to/reviewed-policy.yaml
 ```
 
 `doctor` is not advisory: both direct and Daemon execution load the same project policy before creating a worktree or starting an Agent. The Contract test command must exactly match one approved command, and any production Harness profile is rejected.
+
+Preflight may read an explicit reviewed policy outside the target repository.
+It never writes a repo-local workflow. Candidate commands are reported
+separately and never authorize execution. An unattended Run still uses the
+policy fixed by its Contract.
+
+## Planning Handoff
+
+Planning systems can call the read-only intake boundary without first creating
+AI Workbench-local tickets or a Contract:
+
+```bash
+aiwb goal intake --repo /path/to/project --handoff /path/to/handoff.json
+```
+
+The version 1 envelope is:
+
+```json
+{
+  "schema_version": 1,
+  "kind": "aiwb.planning-handoff",
+  "provenance": {
+    "system": "github",
+    "repository": "owner/repository",
+    "issue": 14
+  },
+  "goal": {
+    "id": "goal-14",
+    "title": "Accept a planning handoff",
+    "requirement": "Preserve the reviewed planning boundary.",
+    "acceptance": [
+      {
+        "id": "AC-1",
+        "statement": "Source provenance is preserved."
+      }
+    ]
+  },
+  "todos": [
+    {
+      "id": "T-1",
+      "title": "Normalize the handoff",
+      "depends_on": [],
+      "acceptance_ids": ["AC-1"]
+    }
+  ]
+}
+```
+
+`provenance` identifies the source system and stable source reference.
+`goal.acceptance` contains only reviewed acceptance statements. `todos` is
+optional planning structure; when present, each Todo declares `depends_on` and
+may map to `acceptance_ids`.
+
+A bare GitHub issue JSON document is also accepted. Intake maps its number,
+title, body, repository URL, and HTML URL into source-preserving Goal fields.
+It leaves acceptance and Todos empty. Intake never invents test commands,
+allowed paths, providers, resources, permissions, or Harness profiles.
+
+Unsupported envelope versions return `unsupported_handoff_schema`. Supported
+but incomplete handoffs return ordinary readiness blockers and warnings.
+Intake remains read-only and does not require a Daemon.
 
 Candidate publication is off by default. To let an overnight Run publish its merge-ready Candidate, review and add this project-owned policy:
 

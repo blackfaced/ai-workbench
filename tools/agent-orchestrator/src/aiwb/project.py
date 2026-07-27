@@ -85,6 +85,7 @@ class CandidatePublishProfile:
 @dataclass(frozen=True)
 class ProjectPolicy:
     repository: Path
+    candidate_commands: Tuple[Mapping[str, object], ...]
     approved_commands: Tuple[Tuple[str, ...], ...]
     role_skill_texts: Mapping[str, Tuple[Tuple[str, str], ...]]
     harness_profiles: Mapping[str, HarnessProfile]
@@ -118,6 +119,7 @@ class ProjectPolicy:
         capabilities = data.get("capabilities")
         if not isinstance(capabilities, dict):
             raise ProjectConfigError("project policy capabilities must be a mapping")
+        candidate_commands = _load_candidate_commands(data)
         commands = capabilities.get("commands")
         if not isinstance(commands, dict) or not commands:
             raise ProjectConfigError("project policy requires an approved command")
@@ -145,6 +147,7 @@ class ProjectPolicy:
         candidate_publish = _load_candidate_publish_profile(data)
         return cls(
             repository=repository,
+            candidate_commands=candidate_commands,
             approved_commands=tuple(approved_commands),
             role_skill_texts=role_skill_texts,
             harness_profiles=harness_profiles,
@@ -211,6 +214,33 @@ class ProjectPolicy:
                 f"Candidate publishing remote is not configured: {profile.remote}"
             )
         return profile
+
+
+def _load_candidate_commands(
+    data: Mapping[str, object],
+) -> Tuple[Mapping[str, object], ...]:
+    suggestions = data.get("suggestions", {})
+    if not isinstance(suggestions, dict):
+        raise ProjectConfigError("suggestions must be a mapping")
+    commands = suggestions.get("commands", {})
+    if not isinstance(commands, dict):
+        return ()
+    result = []
+    for name, definition in commands.items():
+        if not isinstance(name, str) or not name or not isinstance(definition, dict):
+            continue
+        argv = definition.get("argv")
+        if (
+            not isinstance(argv, list)
+            or not argv
+            or not all(isinstance(item, str) and item for item in argv)
+        ):
+            continue
+        reason = definition.get("reason", "")
+        if not isinstance(reason, str):
+            continue
+        result.append({"name": name, "argv": list(argv), "reason": reason})
+    return tuple(result)
 
 
 def _load_role_skill_texts(
