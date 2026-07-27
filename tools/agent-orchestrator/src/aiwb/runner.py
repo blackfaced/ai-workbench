@@ -16,9 +16,9 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import yaml
 
-from .agent import AgentAdapter, AgentRequest, AgentResult
+from .agent import AgentAdapter, AgentRequest, AgentResult, ProviderQuotaError
 from .browser import McpBrowserDiagnosticAdapter
-from .harness import HarnessAdapter, HarnessRequest, LocalProcessHarness
+from .harness import HarnessAdapter, HarnessError, HarnessRequest, LocalProcessHarness
 from .image import CommandImageBuilder, ImageBuildRequest
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
 from .project import (
@@ -38,6 +38,15 @@ class ContractError(ValueError):
 
 class GateError(RuntimeError):
     pass
+
+
+class RunPaused(RuntimeError):
+    def __init__(self, stop: "StopReport") -> None:
+        super().__init__(
+            f"Run paused for {stop.reason}"
+            + (f" at {stop.boundary}" if stop.boundary else "")
+        )
+        self.stop = stop
 
 
 @dataclass(frozen=True)
@@ -60,6 +69,14 @@ class _Todo:
 
 
 @dataclass(frozen=True)
+class _ResourcePolicy:
+    agent_attempts: Optional[int] = None
+    wall_clock_seconds: Optional[float] = None
+    harness_seconds: Optional[float] = None
+    provider_tokens: Optional[int] = None
+
+
+@dataclass(frozen=True)
 class _Contract:
     contract_hash: str
     approval_status: str
@@ -72,6 +89,7 @@ class _Contract:
     repository: Path
     base_ref: str
     todos: Tuple[_Todo, ...]
+    resources: _ResourcePolicy
     image_profile_name: str
     image_profile: Optional[ImageProfile]
     candidate_publish: Optional[CandidatePublishProfile]
@@ -110,6 +128,21 @@ class CommandEvidence:
 
 
 @dataclass(frozen=True)
+class StopReport:
+    reason: str
+    detail: str
+    recorded_at: str
+    resumable: bool
+    boundary: str = ""
+    todo_id: str = ""
+    role: str = ""
+    stage: str = ""
+    provider: str = ""
+    model: str = ""
+    known_usage: Optional[Mapping[str, int]] = None
+
+
+@dataclass(frozen=True)
 class AttemptReport:
     role: str
     todo_id: str
@@ -143,6 +176,7 @@ class ExecutionEnvelope:
     conditional_paths: Tuple[Mapping[str, object], ...]
     provider_usage: Mapping[str, object]
     monetary_cost: Mapping[str, object]
+    resource_boundaries: Mapping[str, object]
     concurrency_explanation: str
 
     def to_dict(self) -> Dict[str, object]:
@@ -159,6 +193,7 @@ class ExecutionEnvelope:
             ],
             "provider_usage": dict(self.provider_usage),
             "monetary_cost": dict(self.monetary_cost),
+            "resource_boundaries": dict(self.resource_boundaries),
             "concurrency_explanation": self.concurrency_explanation,
         }
 
@@ -176,6 +211,7 @@ class TodoReport:
     attempts: Tuple[AttemptReport, ...] = field(default_factory=tuple)
     evidence: Tuple[CommandEvidence, ...] = field(default_factory=tuple)
     repair_commits: Tuple[str, ...] = field(default_factory=tuple)
+    stop: Optional[StopReport] = None
 
 
 @dataclass(frozen=True)
@@ -192,6 +228,7 @@ class RunReport:
     attempts: Tuple[AttemptReport, ...] = field(default_factory=tuple)
     evidence: Tuple[CommandEvidence, ...] = field(default_factory=tuple)
     todos: Tuple[TodoReport, ...] = field(default_factory=tuple)
+    stop: Optional[StopReport] = None
     execution_envelope: Mapping[str, object] = field(default_factory=dict)
     candidate_commit: str = ""
     image_profile: str = ""
@@ -278,6 +315,7 @@ class RunReport:
             ),
             evidence=evidence,
             todos=tuple(_todo_report_from_dict(item) for item in todos_data),
+            stop=_stop_report_from_dict(value.get("stop")),
             execution_envelope=dict(execution_envelope),
             candidate_commit=str(value.get("candidate_commit", "")),
             image_profile=str(value.get("image_profile", "")),
@@ -340,12 +378,75 @@ class GoalRunner:
     def report(self, run_id: str) -> RunReport:
         return self._report(self._store.get(run_id))
 
+    def resume(self, run_id: str) -> RunReport:
+        self._store.resume(run_id)
+        return self.report(run_id)
+
     def sweep_kubernetes(self) -> JanitorReport:
         return self._kubernetes_janitor.sweep()
 
     def run(self, contract_path: Path) -> RunReport:
         contract, workspace, record = self._prepare(Path(contract_path))
-        return self._run_dag(contract, workspace, record)
+        try:
+            return self._run_dag(contract, workspace, record)
+        except RunPaused:
+            raise
+        except Exception as error:
+            self._record_failure(contract, error)
+            raise
+
+    def _record_failure(
+        self,
+        contract: _Contract,
+        error: Exception,
+    ) -> None:
+        record = self._store.get(contract.run_id)
+        detail = str(error)
+        lowered = detail.lower()
+        stage = _failure_stage(detail, str(record["active_stage"]))
+        if isinstance(error, HarnessError) and "cleanup" in lowered:
+            reason = "cleanup_failure"
+            status = "failed_cleanup"
+        elif (
+            isinstance(error, GateError)
+            and (
+                str(record["status"]) == "candidate_accepting"
+                or "final candidate" in lowered
+            )
+        ):
+            reason = "acceptance_failure"
+            status = "failed_acceptance"
+        elif isinstance(error, (GateError, HarnessError)):
+            reason = "harness_failure"
+            status = "failed_harness"
+        else:
+            self._store.record_interruption(contract.run_id, detail)
+            return
+
+        todo_id = ""
+        for todo in self._store.get_todos(contract.run_id):
+            if todo["active_stage"] == stage:
+                todo_id = str(todo["todo_id"])
+                break
+        if stage.startswith("candidate_acceptance:"):
+            todo_id = stage.split(":", 1)[1]
+        elif stage == "candidate_verifier":
+            todo_id = "candidate"
+
+        self._store.fail(
+            contract.run_id,
+            status,
+            StopReport(
+                reason=reason,
+                detail=detail,
+                recorded_at=_now(),
+                resumable=False,
+                todo_id=todo_id,
+                stage=stage,
+                provider=contract.agent_provider,
+                model=contract.agent_model or "",
+            ),
+        )
 
     def _run_dag(
         self,
@@ -465,6 +566,7 @@ class GoalRunner:
         conflict_paths: Tuple[str, ...],
     ) -> None:
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "conflict_repairer")
+        self._admit_agent(contract, todo.todo_id, "conflict_repairer")
         started = time.monotonic()
         try:
             result = self._conflict_repairer.repair(
@@ -477,6 +579,13 @@ class GoalRunner:
                     model=contract.agent_model,
                     timeout_seconds=todo.timeout_seconds,
                 )
+            )
+        except ProviderQuotaError as error:
+            self._pause_for_provider_quota(
+                contract,
+                todo.todo_id,
+                "conflict_repairer",
+                error,
             )
         except Exception as error:
             self._store.record_todo_attempt(
@@ -589,6 +698,7 @@ class GoalRunner:
         prompt: str,
         worktree: Path,
     ) -> AgentResult:
+        self._admit_agent(contract, todo.todo_id, role)
         started = time.monotonic()
         try:
             result = self._agent.run(
@@ -601,6 +711,13 @@ class GoalRunner:
                     model=contract.agent_model,
                     timeout_seconds=todo.timeout_seconds,
                 )
+            )
+        except ProviderQuotaError as error:
+            self._pause_for_provider_quota(
+                contract,
+                todo.todo_id,
+                role,
+                error,
             )
         except Exception as error:
             self._store.record_todo_attempt(
@@ -918,6 +1035,7 @@ class GoalRunner:
         contract: _Contract,
         workspace: "_GitWorkspace",
     ) -> Tuple[AgentResult, float]:
+        self._admit_agent(contract, "candidate", "candidate_verifier")
         started = time.monotonic()
         try:
             result = self._agent.run(
@@ -933,6 +1051,13 @@ class GoalRunner:
                         todo.timeout_seconds for todo in contract.todos
                     ),
                 )
+            )
+        except ProviderQuotaError as error:
+            self._pause_for_provider_quota(
+                contract,
+                "candidate",
+                "candidate_verifier",
+                error,
             )
         except Exception as error:
             self._store.record_run_attempt(
@@ -952,6 +1077,153 @@ class GoalRunner:
             self._store.record_interruption(contract.run_id, str(error))
             raise
         return result, time.monotonic() - started
+
+    def _pause_for_provider_quota(
+        self,
+        contract: _Contract,
+        todo_id: str,
+        role: str,
+        error: ProviderQuotaError,
+    ) -> None:
+        stop = StopReport(
+            reason="provider_quota",
+            detail=error.detail,
+            recorded_at=_now(),
+            resumable=True,
+            boundary="provider_quota",
+            todo_id=todo_id,
+            role=role,
+            provider=contract.agent_provider,
+            model=contract.agent_model or "",
+            known_usage=error.usage,
+        )
+        self._store.pause(contract.run_id, stop)
+        raise RunPaused(stop)
+
+    def _admit_agent(
+        self,
+        contract: _Contract,
+        todo_id: str,
+        role: str,
+    ) -> None:
+        self._admit_deadline(
+            contract,
+            todo_id=todo_id,
+            role=role,
+        )
+        record = self._store.get(contract.run_id)
+        attempts, _, tokens = self._store.resource_totals(contract.run_id)
+        attempt_limit = contract.resources.agent_attempts
+        attempt_consumed = attempts - int(record["resource_attempt_baseline"])
+        if attempt_limit is not None and attempt_consumed >= attempt_limit:
+            self._pause_for_boundary(
+                contract,
+                boundary="agent_attempts",
+                consumed=attempt_consumed,
+                limit=attempt_limit,
+                todo_id=todo_id,
+                role=role,
+            )
+        token_limit = contract.resources.provider_tokens
+        token_consumed = tokens - int(record["resource_token_baseline"])
+        if token_limit is not None and token_consumed >= token_limit:
+            self._pause_for_boundary(
+                contract,
+                boundary="provider_tokens",
+                consumed=token_consumed,
+                limit=token_limit,
+                todo_id=todo_id,
+                role=role,
+            )
+
+    def _admit_harness(
+        self,
+        contract: _Contract,
+        todo_id: str,
+        stage: str,
+    ) -> None:
+        self._admit_deadline(
+            contract,
+            todo_id=todo_id,
+            stage=stage,
+        )
+        limit = contract.resources.harness_seconds
+        if limit is None:
+            return
+        record = self._store.get(contract.run_id)
+        _, harness_seconds, _ = self._store.resource_totals(contract.run_id)
+        consumed = harness_seconds - float(record["resource_harness_baseline"])
+        if consumed >= limit:
+            self._pause_for_boundary(
+                contract,
+                boundary="harness_seconds",
+                consumed=consumed,
+                limit=limit,
+                todo_id=todo_id,
+                stage=stage,
+            )
+
+    def _admit_deadline(
+        self,
+        contract: _Contract,
+        *,
+        todo_id: str,
+        role: str = "",
+        stage: str = "",
+    ) -> None:
+        limit = contract.resources.wall_clock_seconds
+        if limit is None:
+            return
+        record = self._store.get(contract.run_id)
+        started = datetime.fromisoformat(record["resource_window_started_at"])
+        elapsed = (datetime.now(timezone.utc) - started).total_seconds()
+        if elapsed < limit:
+            return
+        stop = StopReport(
+            reason="deadline",
+            detail=(
+                f"Wall-clock boundary reached: {elapsed:.6f}/{limit} seconds"
+            ),
+            recorded_at=_now(),
+            resumable=True,
+            boundary="wall_clock_seconds",
+            todo_id=todo_id,
+            role=role,
+            stage=stage,
+            provider=contract.agent_provider,
+            model=contract.agent_model or "",
+        )
+        self._store.pause(contract.run_id, stop)
+        raise RunPaused(stop)
+
+    def _pause_for_boundary(
+        self,
+        contract: _Contract,
+        *,
+        boundary: str,
+        consumed: float,
+        limit: float,
+        todo_id: str,
+        role: str = "",
+        stage: str = "",
+    ) -> None:
+        stop = StopReport(
+            reason="resource_boundary",
+            detail=(
+                f"{boundary} boundary reached: {consumed}/{limit}; "
+                f"next action is {role or stage}"
+            ),
+            recorded_at=_now(),
+            resumable=True,
+            boundary=boundary,
+            todo_id=todo_id,
+            role=role,
+            stage=stage,
+            provider=contract.agent_provider,
+            model=contract.agent_model or "",
+        )
+        self._store.pause(contract.run_id, stop)
+        raise RunPaused(stop)
 
     def _await_image(
         self,
@@ -1022,6 +1294,7 @@ class GoalRunner:
         stage: str,
         cwd: Path,
     ) -> CommandEvidence:
+        self._admit_harness(contract, todo.todo_id, stage)
         if todo.harness is None:
             return _run_command(
                 stage=stage,
@@ -1134,6 +1407,7 @@ class GoalRunner:
             attempts=attempts,
             evidence=evidence,
             todos=todos,
+            stop=_stop_report_from_dict(json.loads(record["stop_json"])),
             execution_envelope=json.loads(record["execution_envelope_json"]),
             candidate_commit=record["candidate_commit"],
             image_profile=record["image_profile"],
@@ -1168,6 +1442,11 @@ class _RunStore:
                     sessions_json TEXT NOT NULL,
                     attempts_json TEXT NOT NULL DEFAULT '[]',
                     evidence_json TEXT NOT NULL,
+                    stop_json TEXT NOT NULL DEFAULT 'null',
+                    resource_window_started_at TEXT NOT NULL DEFAULT '',
+                    resource_attempt_baseline INTEGER NOT NULL DEFAULT 0,
+                    resource_harness_baseline REAL NOT NULL DEFAULT 0,
+                    resource_token_baseline INTEGER NOT NULL DEFAULT 0,
                     execution_envelope_json TEXT NOT NULL DEFAULT '{}',
                     candidate_commit TEXT NOT NULL DEFAULT '',
                     candidate_verifier_completed INTEGER NOT NULL DEFAULT 0,
@@ -1203,6 +1482,8 @@ class _RunStore:
                     attempts_json TEXT NOT NULL DEFAULT '[]',
                     evidence_json TEXT NOT NULL,
                     repair_commits_json TEXT NOT NULL DEFAULT '[]',
+                    resume_status TEXT NOT NULL DEFAULT '',
+                    stop_json TEXT NOT NULL DEFAULT 'null',
                     last_error TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
@@ -1229,6 +1510,11 @@ class _RunStore:
                         sort_keys=True,
                     ),
                 )
+            if not existing["resource_window_started_at"]:
+                self._update(
+                    contract.run_id,
+                    resource_window_started_at=existing["created_at"],
+                )
             self._ensure_todos(contract)
             return self.get(contract.run_id)
         now = _now()
@@ -1238,9 +1524,10 @@ class _RunStore:
                 INSERT INTO runs (
                     run_id, contract_hash, goal_id, status, active_stage,
                     repository, worktree, branch, sessions_json, evidence_json,
-                    execution_envelope_json, image_profile, created_at, updated_at
+                    resource_window_started_at, execution_envelope_json,
+                    image_profile, created_at, updated_at
                 ) VALUES (
-                    ?, ?, ?, 'approved', '', ?, ?, ?, '{}', '[]', ?, ?, ?, ?
+                    ?, ?, ?, 'approved', '', ?, ?, ?, '{}', '[]', ?, ?, ?, ?, ?
                 )
                 """,
                 (
@@ -1250,6 +1537,7 @@ class _RunStore:
                     str(contract.repository),
                     str(worktree),
                     contract.branch,
+                    now,
                     json.dumps(
                         _execution_envelope(contract).to_dict(),
                         sort_keys=True,
@@ -1299,6 +1587,123 @@ class _RunStore:
 
     def set_run_status(self, run_id: str, status: str) -> None:
         self._update(run_id, status=status)
+
+    def pause(
+        self,
+        run_id: str,
+        stop: StopReport,
+    ) -> None:
+        status = {
+            "resource_boundary": "paused_resource",
+            "deadline": "paused_deadline",
+            "provider_quota": "paused_provider_quota",
+        }[stop.reason]
+        if stop.todo_id and stop.todo_id != "candidate":
+            todo = self.get_todo(run_id, stop.todo_id)
+            resume_status = (
+                todo["resume_status"]
+                if todo["status"] == "paused"
+                else todo["status"]
+            )
+            self._update_todo(
+                run_id,
+                stop.todo_id,
+                status="paused",
+                resume_status=resume_status,
+                stop_json=json.dumps(asdict(stop), sort_keys=True),
+                last_error=stop.detail,
+            )
+        self._update(
+            run_id,
+            status=status,
+            active_stage=stop.stage or stop.role,
+            stop_json=json.dumps(asdict(stop), sort_keys=True),
+            last_error=stop.detail,
+        )
+
+    def resume(self, run_id: str) -> None:
+        record = self.get(run_id)
+        if not str(record["status"]).startswith("paused_"):
+            raise ValueError(f"Run {run_id!r} is not paused")
+        attempts, harness_seconds, tokens = self.resource_totals(run_id)
+        for todo in self.get_todos(run_id):
+            if todo["status"] != "paused":
+                continue
+            self._update_todo(
+                run_id,
+                todo["todo_id"],
+                status=todo["resume_status"],
+                resume_status="",
+                stop_json="null",
+                last_error=None,
+            )
+        self._update(
+            run_id,
+            status="running",
+            active_stage="",
+            stop_json="null",
+            last_error=None,
+            resource_window_started_at=_now(),
+            resource_attempt_baseline=attempts,
+            resource_harness_baseline=harness_seconds,
+            resource_token_baseline=tokens,
+        )
+
+    def fail(
+        self,
+        run_id: str,
+        status: str,
+        stop: StopReport,
+    ) -> None:
+        if stop.todo_id and stop.todo_id != "candidate":
+            try:
+                self._update_todo(
+                    run_id,
+                    stop.todo_id,
+                    stop_json=json.dumps(asdict(stop), sort_keys=True),
+                    last_error=stop.detail,
+                )
+            except KeyError:
+                pass
+        self._update(
+            run_id,
+            status=status,
+            active_stage=stop.stage,
+            stop_json=json.dumps(asdict(stop), sort_keys=True),
+            last_error=stop.detail,
+        )
+
+    def resource_totals(self, run_id: str) -> Tuple[int, float, int]:
+        run = self.get(run_id)
+        todo_records = self.get_todos(run_id)
+        attempts = [
+            *json.loads(run["attempts_json"]),
+            *(
+                item
+                for todo in todo_records
+                for item in json.loads(todo["attempts_json"])
+            ),
+        ]
+        evidence = [
+            *json.loads(run["evidence_json"]),
+            *(
+                item
+                for todo in todo_records
+                for item in json.loads(todo["evidence_json"])
+            ),
+        ]
+        token_total = 0
+        for attempt in attempts:
+            usage = attempt.get("usage")
+            if isinstance(usage, dict):
+                value = usage.get("total_tokens")
+                if isinstance(value, int):
+                    token_total += value
+        return (
+            len(attempts),
+            sum(float(item.get("duration_seconds", 0)) for item in evidence),
+            token_total,
+        )
 
     def start_candidate_acceptance(
         self,
@@ -1627,6 +2032,11 @@ class _RunStore:
         }
         columns = {
             "attempts_json": "TEXT NOT NULL DEFAULT '[]'",
+            "stop_json": "TEXT NOT NULL DEFAULT 'null'",
+            "resource_window_started_at": "TEXT NOT NULL DEFAULT ''",
+            "resource_attempt_baseline": "INTEGER NOT NULL DEFAULT 0",
+            "resource_harness_baseline": "REAL NOT NULL DEFAULT 0",
+            "resource_token_baseline": "INTEGER NOT NULL DEFAULT 0",
             "execution_envelope_json": "TEXT NOT NULL DEFAULT '{}'",
             "candidate_commit": "TEXT NOT NULL DEFAULT ''",
             "candidate_verifier_completed": "INTEGER NOT NULL DEFAULT 0",
@@ -1651,6 +2061,8 @@ class _RunStore:
         columns = {
             "attempts_json": "TEXT NOT NULL DEFAULT '[]'",
             "repair_commits_json": "TEXT NOT NULL DEFAULT '[]'",
+            "resume_status": "TEXT NOT NULL DEFAULT ''",
+            "stop_json": "TEXT NOT NULL DEFAULT 'null'",
         }
         for name, definition in columns.items():
             if name not in existing:
@@ -1863,6 +2275,7 @@ def _load_contract(
         todos,
         image_profile_name,
     )
+    resources = _parse_resources(data.get("resources", {}))
 
     return _Contract(
         contract_hash=_contract_hash(raw, role_skill_texts),
@@ -1876,10 +2289,38 @@ def _load_contract(
         repository=repository,
         base_ref=_text(project, "base_ref"),
         todos=todos,
+        resources=resources,
         image_profile_name=image_profile_name,
         image_profile=image_profile,
         candidate_publish=candidate_publish,
         role_skill_texts=role_skill_texts,
+    )
+
+
+def _parse_resources(value: object) -> _ResourcePolicy:
+    resources = _as_mapping(value, "resources")
+
+    def optional_positive_number(name: str) -> Optional[float]:
+        item = resources.get(name)
+        if item is None:
+            return None
+        if isinstance(item, bool) or not isinstance(item, (int, float)) or item <= 0:
+            raise ContractError(f"resources.{name} must be a positive number")
+        return float(item)
+
+    def optional_positive_integer(name: str) -> Optional[int]:
+        item = resources.get(name)
+        if item is None:
+            return None
+        if isinstance(item, bool) or not isinstance(item, int) or item <= 0:
+            raise ContractError(f"resources.{name} must be a positive integer")
+        return item
+
+    return _ResourcePolicy(
+        agent_attempts=optional_positive_integer("agent_attempts"),
+        wall_clock_seconds=optional_positive_number("wall_clock_seconds"),
+        harness_seconds=optional_positive_number("harness_seconds"),
+        provider_tokens=optional_positive_integer("provider_tokens"),
     )
 
 
@@ -2107,6 +2548,16 @@ def _execution_envelope(contract: _Contract) -> ExecutionEnvelope:
             "unit": "provider_reported_tokens",
         },
         monetary_cost={"status": "unknown", "currency": None},
+        resource_boundaries={
+            name: value
+            for name, value in {
+                "agent_attempts": contract.resources.agent_attempts,
+                "wall_clock_seconds": contract.resources.wall_clock_seconds,
+                "harness_seconds": contract.resources.harness_seconds,
+                "provider_tokens": contract.resources.provider_tokens,
+            }.items()
+            if value is not None
+        },
         concurrency_explanation=(
             "Independent Todo layers may reduce elapsed wall-clock time; "
             "concurrency does not reduce total consumption."
@@ -2360,6 +2811,7 @@ def _todo_report(record: Mapping[str, Any]) -> TodoReport:
         ),
         evidence=evidence,
         repair_commits=tuple(json.loads(record["repair_commits_json"])),
+        stop=_stop_report_from_dict(json.loads(record["stop_json"])),
     )
 
 
@@ -2411,6 +2863,34 @@ def _todo_report_from_dict(value: object) -> TodoReport:
             if isinstance(item, dict)
         ),
         repair_commits=tuple(str(commit) for commit in repair_commits_data),
+        stop=_stop_report_from_dict(value.get("stop")),
+    )
+
+
+def _stop_report_from_dict(value: object) -> Optional[StopReport]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("Run stop must be a mapping")
+    known_usage = value.get("known_usage")
+    if known_usage is not None and not isinstance(known_usage, dict):
+        raise ValueError("Run stop known_usage must be a mapping")
+    return StopReport(
+        reason=str(value["reason"]),
+        detail=str(value.get("detail", "")),
+        recorded_at=str(value["recorded_at"]),
+        resumable=bool(value.get("resumable", False)),
+        boundary=str(value.get("boundary", "")),
+        todo_id=str(value.get("todo_id", "")),
+        role=str(value.get("role", "")),
+        stage=str(value.get("stage", "")),
+        provider=str(value.get("provider", "")),
+        model=str(value.get("model", "")),
+        known_usage=(
+            {str(key): int(item) for key, item in known_usage.items()}
+            if isinstance(known_usage, dict)
+            else None
+        ),
     )
 
 
@@ -2439,6 +2919,29 @@ def _attempt_report_from_dict(value: Mapping[str, object]) -> AttemptReport:
 def _reported_usage(result: AgentResult) -> Optional[Mapping[str, int]]:
     usage = getattr(result, "usage", {})
     return dict(usage) if usage else None
+
+
+def _failure_stage(detail: str, fallback: str) -> str:
+    candidate_match = re.search(
+        r"Final Candidate acceptance failed for ([^:\n]+)",
+        detail,
+    )
+    if candidate_match:
+        return f"candidate_acceptance:{candidate_match.group(1)}"
+    lowered = detail.lower()
+    if "final candidate verifier" in lowered:
+        return "candidate_verifier"
+    if "green gate" in lowered:
+        return "green"
+    if "red gate" in lowered:
+        return "red"
+    if "verification gate" in lowered:
+        return "verify"
+    if "candidate integration failed" in lowered:
+        return "integrate"
+    if "cleanup" in lowered:
+        return "cleanup"
+    return fallback
 
 
 def _consumption_dict(

@@ -54,9 +54,10 @@ The Daemon can run in the foreground or as a macOS user LaunchAgent. Linux `syst
 draft → awaiting_approval → approved
 approved → running ─────────────────────────────→ merge_ready
                    └→ candidate_verified → waiting_image → merge_ready
-                   ├→ blocked
-                   ├→ provider_blocked
-                   └→ budget_exhausted
+                   ├→ paused_resource ───────resume──────→ running
+                   ├→ paused_deadline ───────resume──────→ running
+                   ├→ paused_provider_quota ─resume──────→ running
+                   └→ failed_harness | failed_acceptance | failed_cleanup
 ```
 
 Within each Todo, durable checkpoints advance through:
@@ -69,6 +70,25 @@ The Run becomes `merge_ready` only after every Todo is integrated into the
 Candidate and its affected gate passes there.
 
 Active Agent work is never itself a checkpoint. After interruption, the runner discards partial changes and resumes from the last durable Git commit.
+
+Optional Contract resource boundaries are subscription-first guardrails, not a
+cost model:
+
+```yaml
+resources:
+  agent_attempts: 12
+  wall_clock_seconds: 21600
+  harness_seconds: 3600
+  provider_tokens: 500000
+```
+
+Omit the block or any individual key to leave that boundary unset. The
+preflight output shows only configured boundaries. Checks occur before the next
+Agent or Harness operation. A pause is durable and is not auto-resumed after a
+daemon restart; `aiwb goal resume <run-id>` starts a new window from the same
+checkpoint. Provider and model remain fixed, and provider quota never triggers
+fallback. Provider tokens are counted only when the CLI reports them; monetary
+cost remains unknown.
 
 ## Implemented Tracer Bullets
 
@@ -131,11 +151,23 @@ The Kubernetes Harness tracer adds:
 The Agent interaction tracer adds:
 
 - a dependency-free stdio MCP server with `initialize`, `ping`, `tools/list`, and `tools/call` support;
-- four narrow tools: `aiwb_daemon_status`, `aiwb_goal_submit`, `aiwb_goal_status`, and `aiwb_goal_report`;
+- six narrow tools: `aiwb_daemon_status`, `aiwb_goal_preflight`, `aiwb_goal_submit`, `aiwb_goal_status`, `aiwb_goal_report`, and `aiwb_goal_resume`;
 - immediate Goal submission so an Agent conversation never owns the Run lifetime;
 - structured operational errors inside MCP tool results and standard JSON-RPC protocol errors;
 - a bundled `run-approved-goal` Codex Skill that requires an already-approved Contract and interprets durable Evidence conservatively;
 - no MCP tool for direct execution, permission expansion, target-branch merge, production access, or test weakening.
+
+The resource-policy tracer adds:
+
+- optional Agent Attempt, wall-clock, Harness-time, and provider-reported token
+  boundaries reviewed in the preflight envelope;
+- durable resource, deadline, and provider-quota pauses with an explicit
+  same-provider, same-model resume operation;
+- no code Attempt for a provider quota response that performed no code work;
+- restart preservation without automatic resume, while already-admitted
+  independent Todos may finish and blocked dependents remain frozen;
+- distinct structured reasons for quota, resource, deadline, Harness,
+  acceptance, and cleanup stops across CLI, MCP, and durable reports.
 
 The Claude Code provider tracer adds:
 
@@ -301,6 +333,7 @@ aiwb goal preflight --contract /path/to/contract.yaml
 aiwb goal submit --contract /path/to/contract.yaml
 aiwb goal status <run-id>
 aiwb goal report <run-id>
+aiwb goal resume <run-id>
 ```
 
 The daemon sweeps Kubernetes cleanup leases at startup and every minute. A manual or independently scheduled sweep is also available:

@@ -25,6 +25,19 @@ class AgentResult:
     usage: Mapping[str, int] = field(default_factory=dict)
 
 
+class ProviderQuotaError(RuntimeError):
+    def __init__(
+        self,
+        provider: str,
+        detail: str,
+        usage: Optional[Mapping[str, int]] = None,
+    ) -> None:
+        super().__init__(detail)
+        self.provider = provider
+        self.detail = detail
+        self.usage = dict(usage) if usage else None
+
+
 class AgentAdapter(Protocol):
     """The only seam between orchestration and an external Agent CLI."""
 
@@ -79,6 +92,11 @@ class CodexCliAdapter:
         )
         if completed.returncode != 0:
             detail = completed.stderr.strip() or completed.stdout.strip()
+            if _is_provider_quota(detail):
+                raise ProviderQuotaError(
+                    provider=request.provider,
+                    detail=detail,
+                )
             raise RuntimeError(
                 f"Codex role {request.role!r} failed with exit code "
                 f"{completed.returncode}: {detail}"
@@ -155,6 +173,11 @@ class ClaudeCodeCliAdapter:
         )
         if completed.returncode != 0:
             detail = completed.stderr.strip() or completed.stdout.strip()
+            if _is_provider_quota(detail):
+                raise ProviderQuotaError(
+                    provider=request.provider,
+                    detail=detail,
+                )
             raise RuntimeError(
                 f"Claude Code role {request.role!r} failed with exit code "
                 f"{completed.returncode}: {detail}"
@@ -167,8 +190,15 @@ class ClaudeCodeCliAdapter:
         if not isinstance(result, dict):
             raise RuntimeError("Claude Code JSON output must be an object")
         if result.get("is_error") is True:
+            detail = str(result.get("result", ""))
+            if _is_provider_quota(detail):
+                raise ProviderQuotaError(
+                    provider=request.provider,
+                    detail=detail,
+                    usage=_normalize_usage(result.get("usage")),
+                )
             raise RuntimeError(
-                f"Claude Code role {request.role!r} failed: {result.get('result', '')}"
+                f"Claude Code role {request.role!r} failed: {detail}"
             )
         session_id = result.get("session_id")
         final_output = result.get("result")
@@ -224,3 +254,17 @@ def _normalize_usage(value: object) -> Mapping[str, int]:
     if usage and "total_tokens" not in usage:
         usage["total_tokens"] = sum(usage.values())
     return usage
+
+
+def _is_provider_quota(detail: str) -> bool:
+    lowered = detail.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "usage limit",
+            "quota",
+            "rate limit",
+            "too many requests",
+            "credit balance",
+        )
+    )

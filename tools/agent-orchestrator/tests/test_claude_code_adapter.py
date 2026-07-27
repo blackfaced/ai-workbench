@@ -16,6 +16,7 @@ from aiwb.agent import (  # noqa: E402
     AgentRouter,
     ClaudeCodeCliAdapter,
     CodexCliAdapter,
+    ProviderQuotaError,
 )
 
 
@@ -134,6 +135,64 @@ def test_codex_adapter_preserves_reported_token_usage() -> None:
             "cached_input_tokens": 20,
             "output_tokens": 10,
             "total_tokens": 110,
+        }
+
+
+def test_codex_adapter_classifies_subscription_quota_separately() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        executable = root / "fake-codex"
+        executable.write_text(
+            "#!/bin/sh\n"
+            "echo 'You have hit your usage limit' >&2\n"
+            "exit 42\n",
+            encoding="utf-8",
+        )
+        executable.chmod(0o700)
+
+        with pytest.raises(ProviderQuotaError, match="usage limit") as raised:
+            CodexCliAdapter(str(executable)).run(
+                AgentRequest(
+                    role="implementer",
+                    prompt="Implement",
+                    worktree=str(root),
+                )
+            )
+
+        assert raised.value.provider == "codex"
+
+
+def test_claude_adapter_classifies_reported_quota_and_retains_usage() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        executable = root / "fake-claude"
+        executable.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json\n"
+            "print(json.dumps({"
+            "'is_error': True, "
+            "'result': 'subscription usage limit reached', "
+            "'usage': {'input_tokens': 3, 'output_tokens': 2}"
+            "}))\n",
+            encoding="utf-8",
+        )
+        executable.chmod(0o700)
+
+        with pytest.raises(ProviderQuotaError, match="usage limit") as raised:
+            ClaudeCodeCliAdapter(str(executable)).run(
+                AgentRequest(
+                    role="implementer",
+                    prompt="Implement",
+                    worktree=str(root),
+                    provider="claude-code",
+                )
+            )
+
+        assert raised.value.provider == "claude-code"
+        assert raised.value.usage == {
+            "input_tokens": 3,
+            "output_tokens": 2,
+            "total_tokens": 5,
         }
 
 
