@@ -203,6 +203,616 @@ def test_accepted_tickets_choose_interactive_or_contract_handoff_by_shape() -> N
         ] == 7
 
 
+def test_multi_todo_planning_handoff_preserves_source_and_planning_boundaries() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {
+                        "system": "github",
+                        "repository": "blackfaced/ai-workbench",
+                        "issue": 14,
+                    },
+                    "goal": {
+                        "id": "goal-14",
+                        "title": "Accept generic planning handoffs",
+                        "requirement": "Preserve a reviewed planning handoff.",
+                        "acceptance": [
+                            {
+                                "id": "AC-1",
+                                "statement": "The source provenance is preserved.",
+                            },
+                            {
+                                "id": "AC-2",
+                                "statement": "Todo dependencies are preserved.",
+                            },
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Normalize the handoff",
+                            "depends_on": [],
+                            "acceptance_ids": ["AC-1"],
+                        },
+                        {
+                            "id": "T-2",
+                            "title": "Expose intake semantics",
+                            "depends_on": ["T-1"],
+                            "acceptance_ids": ["AC-2"],
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        before = _tree(root)
+
+        result = GoalIntake(
+            daemon_probe=lambda: (_ for _ in ()).throw(
+                AssertionError("planning handoff intake must not require a daemon")
+            )
+        ).inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert _tree(root) == before
+        assert result.source == "handoff"
+        assert result.readiness == "blocked"
+        assert result.cheapest_viable_path == "ai_workbench_unattended"
+        assert result.next_action == "create_contract_draft"
+        assert result.daemon_status == "not_required"
+        assert result.planning_handoff == {
+            "schema_version": 1,
+            "kind": "aiwb.planning-handoff",
+            "format": "versioned",
+            "provenance": {
+                "system": "github",
+                "repository": "blackfaced/ai-workbench",
+                "issue": 14,
+            },
+            "goal": {
+                "id": "goal-14",
+                "title": "Accept generic planning handoffs",
+                "requirement": "Preserve a reviewed planning handoff.",
+            },
+            "acceptance": [
+                {
+                    "id": "AC-1",
+                    "statement": "The source provenance is preserved.",
+                },
+                {
+                    "id": "AC-2",
+                    "statement": "Todo dependencies are preserved.",
+                },
+            ],
+            "todos": [
+                {
+                    "id": "T-1",
+                    "title": "Normalize the handoff",
+                    "depends_on": [],
+                    "acceptance_ids": ["AC-1"],
+                },
+                {
+                    "id": "T-2",
+                    "title": "Expose intake semantics",
+                    "depends_on": ["T-1"],
+                    "acceptance_ids": ["AC-2"],
+                },
+            ],
+        }
+        assert result.warnings == ()
+        assert {item.code for item in result.blockers} == {"contract_draft"}
+        assert result.execution_envelope["layers"] == [["T-1"], ["T-2"]]
+
+
+def test_bare_issue_json_is_normalized_without_inventing_planning_details() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        issue = root / "issue.json"
+        issue.write_text(
+            json.dumps(
+                {
+                    "number": 14,
+                    "title": "Accept generic planning handoffs at Goal intake",
+                    "body": "Preserve this issue as planning source material.",
+                    "html_url": (
+                        "https://github.com/blackfaced/ai-workbench/issues/14"
+                    ),
+                    "repository_url": (
+                        "https://api.github.com/repos/blackfaced/ai-workbench"
+                    ),
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=issue,
+        )
+
+        assert result.planning_handoff == {
+            "schema_version": 1,
+            "kind": "aiwb.planning-handoff",
+            "format": "bare_issue",
+            "provenance": {
+                "system": "github",
+                "repository": "blackfaced/ai-workbench",
+                "issue": 14,
+                "url": "https://github.com/blackfaced/ai-workbench/issues/14",
+            },
+            "goal": {
+                "id": "github:blackfaced/ai-workbench#14",
+                "title": "Accept generic planning handoffs at Goal intake",
+                "requirement": "Preserve this issue as planning source material.",
+            },
+            "acceptance": [],
+            "todos": [],
+        }
+        assert {item.code for item in result.blockers} == {
+            "acceptance_boundary",
+            "contract_draft",
+        }
+        assert result.execution_envelope["layers"] == [["T-1"]]
+
+
+def test_gh_cli_issue_json_preserves_repository_provenance_from_url() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        issue = root / "gh-issue.json"
+        issue.write_text(
+            json.dumps(
+                {
+                    "number": 15,
+                    "title": "Use an explicit reviewed policy",
+                    "body": "Preflight against a reviewed policy artifact.",
+                    "url": "https://github.com/blackfaced/ai-workbench/issues/15",
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=issue,
+        )
+
+        assert result.planning_handoff["provenance"] == {
+            "system": "github",
+            "repository": "blackfaced/ai-workbench",
+            "issue": 15,
+            "url": "https://github.com/blackfaced/ai-workbench/issues/15",
+        }
+        assert result.planning_handoff["goal"]["id"] == (
+            "github:blackfaced/ai-workbench#15"
+        )
+
+
+def test_small_planning_handoff_stays_in_the_installed_matt_flow() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        _install_ask_matt(repository)
+        handoff = root / "small-handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {"system": "local", "reference": "note-1"},
+                    "goal": {
+                        "id": "small-goal",
+                        "title": "Correct one label",
+                        "requirement": "Correct one label in the CLI output.",
+                        "acceptance": [
+                            {
+                                "id": "AC-1",
+                                "statement": "The corrected label is shown.",
+                            }
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Correct the label",
+                            "depends_on": [],
+                            "acceptance_ids": ["AC-1"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake(
+            daemon_probe=lambda: (_ for _ in ()).throw(
+                AssertionError("interactive handoff intake must not require a daemon")
+            )
+        ).inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert result.readiness == "interactive"
+        assert result.cheapest_viable_path == "interactive_matt"
+        assert result.blockers == ()
+        assert result.next_action == "invoke_ask_matt"
+        assert result.daemon_status == "not_required"
+        assert result.approval_required is False
+        assert result.submission_required is False
+        assert result.planning_handoff["goal"]["id"] == "small-goal"
+
+
+def test_small_planning_handoff_can_omit_todo_structure() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        _install_ask_matt(repository)
+        handoff = root / "small-goal-only-handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {"system": "local", "reference": "note-2"},
+                    "goal": {
+                        "id": "small-goal-only",
+                        "title": "Correct one label",
+                        "requirement": "Correct one label in the CLI output.",
+                        "acceptance": [
+                            {
+                                "id": "AC-1",
+                                "statement": "The corrected label is shown.",
+                            }
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert result.readiness == "interactive"
+        assert result.next_action == "invoke_ask_matt"
+        assert result.blockers == ()
+        assert result.planning_handoff["todos"] == []
+
+
+def test_unsupported_planning_handoff_schema_returns_an_actionable_blocker() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "future-handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 2,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {"system": "planner", "reference": "future-1"},
+                    "goal": {
+                        "id": "future-goal",
+                        "title": "Use a future handoff",
+                        "requirement": "Exercise a future schema.",
+                        "acceptance": [
+                            {"id": "AC-1", "statement": "The handoff is accepted."}
+                        ],
+                    },
+                    "todos": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.next_action == "use_supported_handoff_schema"
+        assert result.planning_handoff == {}
+        assert result.warnings == ()
+        assert [item.code for item in result.blockers] == [
+            "unsupported_handoff_schema"
+        ]
+        assert result.blockers[0].action == (
+            "Provide aiwb.planning-handoff schema_version 1 or a bare issue JSON document."
+        )
+
+
+def test_incomplete_planning_handoff_returns_readiness_blockers_and_warnings() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "incomplete-handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "goal": {
+                        "id": "incomplete-goal",
+                        "title": "Incomplete planning handoff",
+                        "requirement": "Retain the known planning facts.",
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Known Todo",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.next_action == "resolve_handoff_blockers"
+        assert {item.code for item in result.blockers} == {
+            "acceptance_boundary",
+            "contract_draft",
+            "handoff_provenance",
+            "todo_dependencies",
+        }
+        assert result.warnings == (
+            "Todo T-1 has no acceptance_ids mapping.",
+        )
+        assert result.planning_handoff["goal"]["id"] == "incomplete-goal"
+        assert result.planning_handoff["acceptance"] == []
+        assert result.planning_handoff["todos"] == [
+            {"id": "T-1", "title": "Known Todo"}
+        ]
+
+
+def test_invalid_small_handoff_does_not_bypass_readiness_for_interactive_path() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        _install_ask_matt(repository)
+        handoff = root / "invalid-small-handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "goal": {
+                        "id": "small-invalid",
+                        "title": "Small but incomplete",
+                        "requirement": "Make one small change.",
+                        "acceptance": [
+                            {"id": "AC-1", "statement": "The change works."}
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Make the change",
+                            "acceptance_ids": ["AC-1"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.next_action == "resolve_handoff_blockers"
+        assert {item.code for item in result.blockers} >= {
+            "handoff_provenance",
+            "todo_dependencies",
+        }
+
+
+def test_cyclic_handoff_returns_a_dependency_blocker() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "cyclic-handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {"system": "planner", "reference": "cycle"},
+                    "goal": {
+                        "id": "cyclic-goal",
+                        "title": "Cyclic planning handoff",
+                        "requirement": "Run two planned Todos unattended.",
+                        "acceptance": [
+                            {"id": "AC-1", "statement": "First behavior works."},
+                            {"id": "AC-2", "statement": "Second behavior works."},
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "First",
+                            "depends_on": ["T-2"],
+                            "acceptance_ids": ["AC-1"],
+                        },
+                        {
+                            "id": "T-2",
+                            "title": "Second",
+                            "depends_on": ["T-1"],
+                            "acceptance_ids": ["AC-2"],
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.next_action == "resolve_handoff_blockers"
+        assert {item.code for item in result.blockers} >= {
+            "todo_dependencies"
+        }
+
+
+def test_malformed_handoff_returns_an_actionable_validation_blocker() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "malformed-handoff.json"
+        handoff.write_text(
+            json.dumps({"unexpected": True}),
+            encoding="utf-8",
+        )
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.next_action == "resolve_handoff_blockers"
+        assert result.planning_handoff == {}
+        assert result.execution_envelope == {}
+        assert [item.code for item in result.blockers] == [
+            "handoff_validation"
+        ]
+        assert result.blockers[0].action == (
+            "Provide aiwb.planning-handoff schema_version 1 or a bare issue "
+            "JSON document with number, title, and body."
+        )
+
+
+def test_invalid_json_handoff_returns_an_actionable_validation_blocker() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "invalid.json"
+        handoff.write_text('{"schema_version": 1,', encoding="utf-8")
+
+        result = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=handoff,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.next_action == "resolve_handoff_blockers"
+        assert [item.code for item in result.blockers] == [
+            "handoff_validation"
+        ]
+        assert "cannot read planning handoff" in result.blockers[0].message
+
+
+def test_cli_mcp_and_skill_share_planning_handoff_intake_semantics() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {"system": "planner", "reference": "plan-14"},
+                    "goal": {
+                        "id": "goal-14",
+                        "title": "Accept a planning handoff",
+                        "requirement": "Run two planned Todos unattended.",
+                        "acceptance": [
+                            {"id": "AC-1", "statement": "First behavior works."},
+                            {"id": "AC-2", "statement": "Second behavior works."},
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "First behavior",
+                            "depends_on": [],
+                            "acceptance_ids": ["AC-1"],
+                        },
+                        {
+                            "id": "T-2",
+                            "title": "Second behavior",
+                            "depends_on": ["T-1"],
+                            "acceptance_ids": ["AC-2"],
+                        },
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        expected = GoalIntake().inspect(
+            repository=repository,
+            handoff_path=handoff,
+        ).to_dict()
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = str(TOOL_ROOT / "src")
+        missing_socket = root / "missing-daemon.sock"
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "aiwb",
+                "goal",
+                "intake",
+                "--repo",
+                str(repository),
+                "--handoff",
+                str(handoff),
+                "--socket",
+                str(missing_socket),
+            ],
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+        )
+        cli_value = json.loads(completed.stdout)
+
+        result = McpServer(missing_socket)._call_tool(
+            "aiwb_goal_intake",
+            {
+                "repository": str(repository),
+                "handoff_path": str(handoff),
+            },
+        )
+        assert result["isError"] is False
+        mcp_value = json.loads(result["content"][0]["text"])
+
+        skill_text = (
+            TOOL_ROOT / "skills" / "intake-aiwb-goal" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        assert cli_value == expected
+        assert mcp_value == expected
+        assert "--handoff" in skill_text
+        assert "handoff_path" in skill_text
+        assert "reimplement" in skill_text
+
+
 def test_cli_and_mcp_share_the_same_intake_result() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)

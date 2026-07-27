@@ -5,17 +5,18 @@ description: Inspect ticket or draft handoff readiness and the cheapest viable p
 
 # Intake AI Workbench Goal
 
-Use this Skill only at the handoff from accepted tickets or a draft Contract.
-Do not replace `$ask-matt`, grilling, specification, ticket decomposition, TDD,
-architecture review, or small interactive implementation.
+Use this Skill only at the handoff from accepted tickets, a generic planning
+handoff, or a draft Contract. Do not replace `$ask-matt`, grilling,
+specification, ticket decomposition, TDD, architecture review, or small
+interactive implementation.
 
 ## Inspect
 
-Require a repository plus exactly one accepted tickets file or Contract draft.
-Prefer the shared MCP tool:
+Require a repository plus exactly one accepted tickets file, planning handoff,
+or Contract draft. Prefer the shared MCP tool:
 
-- call `aiwb_goal_intake` with `repository` and either `tickets_path` or
-  `contract_path`;
+- call `aiwb_goal_intake` with `repository` and exactly one of `tickets_path`,
+  `handoff_path`, or `contract_path`;
 - optionally include a short task statement when durability or overnight intent
   is not visible in the artifact.
 
@@ -23,8 +24,12 @@ The equivalent local CLI commands are:
 
 ```bash
 aiwb goal intake --repo /path/to/project --tickets /path/to/tickets.md
+aiwb goal intake --repo /path/to/project --handoff /path/to/handoff.json
 aiwb goal intake --repo /path/to/project --contract /path/to/contract.yaml
 ```
+
+Pass the handoff to the shared interface. Do not reimplement schema validation,
+normalization, readiness blockers, or cheapest-path selection in this Skill.
 
 ## Interpret
 
