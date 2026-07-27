@@ -93,14 +93,43 @@ class McpServer:
                 }
             elif name == "aiwb_goal_preflight":
                 contract_path = _string_argument(arguments, "contract_path")
-                value = preview_execution(Path(contract_path)).to_dict()
+                workflow_path = arguments.get("workflow_path")
+                policy_path = arguments.get("policy_path")
+                if workflow_path is not None and policy_path is not None:
+                    raise ValueError(
+                        "preflight accepts only one workflow_path or policy_path"
+                    )
+                selected_path = (
+                    workflow_path if workflow_path is not None else policy_path
+                )
+                if selected_path is not None and (
+                    not isinstance(selected_path, str) or not selected_path
+                ):
+                    raise ValueError(
+                        "workflow_path or policy_path must be a non-empty string"
+                    )
+                value = preview_execution(
+                    Path(contract_path),
+                    workflow_path=(
+                        Path(selected_path)
+                        if isinstance(selected_path, str)
+                        else None
+                    ),
+                ).to_dict()
             elif name == "aiwb_goal_intake":
                 repository = _string_argument(arguments, "repository")
                 contract_path = arguments.get("contract_path")
                 tickets_path = arguments.get("tickets_path")
-                if (contract_path is None) == (tickets_path is None):
+                handoff_path = arguments.get("handoff_path")
+                sources = tuple(
+                    value
+                    for value in (contract_path, tickets_path, handoff_path)
+                    if value is not None
+                )
+                if len(sources) != 1:
                     raise ValueError(
-                        "intake requires exactly one contract_path or tickets_path"
+                        "intake requires exactly one contract_path, tickets_path, "
+                        "or handoff_path"
                     )
                 task = arguments.get("task", "")
                 if not isinstance(task, str):
@@ -115,6 +144,11 @@ class McpServer:
                     tickets_path=(
                         Path(tickets_path)
                         if isinstance(tickets_path, str) and tickets_path
+                        else None
+                    ),
+                    handoff_path=(
+                        Path(handoff_path)
+                        if isinstance(handoff_path, str) and handoff_path
                         else None
                     ),
                     task=task,
@@ -178,8 +212,8 @@ def _tools():
         {
             "name": "aiwb_goal_intake",
             "description": (
-                "Inspect accepted tickets or a draft Contract and recommend the "
-                "cheapest viable interactive or unattended path without taking action."
+                "Inspect accepted tickets, a planning handoff, or a draft Contract "
+                "and recommend the cheapest viable path without taking action."
             ),
             "inputSchema": {
                 "type": "object",
@@ -187,6 +221,7 @@ def _tools():
                     "repository": string_argument,
                     "contract_path": string_argument,
                     "tickets_path": string_argument,
+                    "handoff_path": string_argument,
                     "task": {"type": "string"},
                 },
                 "required": ["repository"],
@@ -197,11 +232,16 @@ def _tools():
             "name": "aiwb_goal_preflight",
             "description": (
                 "Preview the deterministic and conditional execution envelope "
-                "for a draft or approved Contract without creating a Run."
+                "for a Contract against its repository policy or an explicit "
+                "reviewed policy artifact without creating a Run."
             ),
             "inputSchema": {
                 "type": "object",
-                "properties": {"contract_path": string_argument},
+                "properties": {
+                    "contract_path": string_argument,
+                    "workflow_path": string_argument,
+                    "policy_path": string_argument,
+                },
                 "required": ["contract_path"],
                 "additionalProperties": False,
             },
