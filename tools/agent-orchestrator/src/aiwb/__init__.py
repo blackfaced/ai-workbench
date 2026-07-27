@@ -17,6 +17,14 @@ from .browser import (
     McpBrowserDiagnosticAdapter,
 )
 from .daemon import AgentDaemon, DaemonClient, DaemonError, RunStatus
+from .evidence import (
+    EvidenceError,
+    EvidenceIntegrityError,
+    EvidencePayload,
+    EvidencePruneReport,
+    EvidenceReference,
+    EvidenceStore,
+)
 from .harness import (
     HarnessError,
     HarnessExecution,
@@ -84,6 +92,12 @@ __all__ = [
     "CommandEvidence",
     "ContractError",
     "ExecutionEnvelope",
+    "EvidenceError",
+    "EvidenceIntegrityError",
+    "EvidencePayload",
+    "EvidencePruneReport",
+    "EvidenceReference",
+    "EvidenceStore",
     "DaemonClient",
     "DaemonError",
     "DoctorCheck",

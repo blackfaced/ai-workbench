@@ -111,6 +111,7 @@ def test_candidate_waits_for_async_image_and_records_immutable_digest() -> None:
         assert report.image_status == "succeeded"
         assert report.image_digest == "sha256:" + "a" * 64
         assert report.image_artifacts
+        assert report.image_artifact_refs
         events = next(
             Path(path)
             for path in report.image_artifacts
@@ -123,6 +124,17 @@ def test_candidate_waits_for_async_image_and_records_immutable_digest() -> None:
             "result",
         ]
         assert RunReport.from_dict(report.to_dict()) == report
+        image_reference = next(
+            reference
+            for reference in report.image_artifact_refs
+            if "events.log" in reference.label
+        )
+        assert GoalRunner(
+            state_dir=root / "state",
+            agent=ImageFeatureAgent(),
+        ).evidence(report.run_id, image_reference.artifact_id).reference == (
+            image_reference
+        )
 
 
 def test_status_interruption_resumes_the_same_external_image_build() -> None:
@@ -148,6 +160,7 @@ def test_status_interruption_resumes_the_same_external_image_build() -> None:
         assert interrupted.status == "waiting_image"
         assert interrupted.image_operation_id == "build-123"
         assert interrupted.image_digest == ""
+        assert interrupted.image_artifact_refs
 
         resumed = GoalRunner(
             state_dir=root / "state",

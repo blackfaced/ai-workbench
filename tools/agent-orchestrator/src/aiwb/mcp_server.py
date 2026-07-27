@@ -128,6 +128,10 @@ class McpServer:
             elif name == "aiwb_goal_report":
                 run_id = _string_argument(arguments, "run_id")
                 value = self._client.report(run_id).to_dict()
+            elif name == "aiwb_goal_evidence":
+                run_id = _string_argument(arguments, "run_id")
+                artifact_id = _string_argument(arguments, "artifact_id")
+                value = self._client.evidence(run_id, artifact_id).to_dict()
             elif name == "aiwb_goal_resume":
                 run_id = _string_argument(arguments, "run_id")
                 value = self._client.resume(run_id).__dict__
@@ -154,6 +158,22 @@ def _tools():
             "name": "aiwb_daemon_status",
             "description": "Check whether the local AI Workbench daemon is reachable.",
             "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        },
+        {
+            "name": "aiwb_goal_evidence",
+            "description": (
+                "Explicitly fetch one full immutable Evidence artifact referenced "
+                "by a Run report and verify its integrity metadata."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "run_id": string_argument,
+                    "artifact_id": string_argument,
+                },
+                "required": ["run_id", "artifact_id"],
+                "additionalProperties": False,
+            },
         },
         {
             "name": "aiwb_goal_intake",
