@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import IO, Dict, Mapping, Optional, Sequence
 
 from .daemon import DaemonClient, DaemonError
+from .harness_setup import HarnessSetup, HarnessSetupRequest
 from .intake import GoalIntake
 from .runner import preview_execution
 
@@ -91,6 +92,17 @@ class McpServer:
                     "socket": str(self._socket_path),
                     "status": "ok" if self._client.ping() else "unavailable",
                 }
+            elif name == "aiwb_harness_plan":
+                repository = _string_argument(arguments, "repository")
+                planning_mode = arguments.get("planning_mode", "python-l0")
+                if planning_mode != "python-l0":
+                    raise ValueError("planning_mode must be python-l0")
+                value = HarnessSetup().plan(
+                    HarnessSetupRequest(
+                        repository=Path(repository),
+                        planning_mode=planning_mode,
+                    )
+                ).to_dict()
             elif name == "aiwb_goal_preflight":
                 contract_path = _string_argument(arguments, "contract_path")
                 workflow_path = arguments.get("workflow_path")
@@ -206,6 +218,25 @@ def _tools():
                     "artifact_id": string_argument,
                 },
                 "required": ["run_id", "artifact_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "aiwb_harness_plan",
+            "description": (
+                "Inspect a repository and return a read-only Harness assessment "
+                "and unapproved Plan without applying changes."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repository": string_argument,
+                    "planning_mode": {
+                        "type": "string",
+                        "enum": ["python-l0"],
+                    },
+                },
+                "required": ["repository"],
                 "additionalProperties": False,
             },
         },

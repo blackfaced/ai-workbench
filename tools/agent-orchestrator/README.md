@@ -25,6 +25,29 @@ This interface is currently a compatibility prefactor. Recipe selection,
 dynamic probes, candidate worktrees, and pipeline verification remain later
 delivery slices rather than hidden behavior in setup callers.
 
+The read-only Python L0 planning mode deepens the same interface:
+
+```bash
+aiwb setup --repo /path/to/repository --planning-mode python-l0
+```
+
+It returns a Project Profile and unapproved Harness Plan with target purpose
+tags, L0 capability dispositions, command candidates, Recipe versions,
+coverage and owner decisions, bounded local Git history, pipeline metadata,
+and explicit unavailable evidence. An optional analysis Adapter can supply
+code-graph and remote-review evidence; filesystem and local Git inspection are
+the honest fallback. The equivalent MCP tool is `aiwb_harness_plan`.
+
+After review, Plan Approval is recorded outside the target repository:
+
+```bash
+aiwb setup --repo /path/to/repository --planning-mode python-l0 \
+  --approve-plan --approved-by owner \
+  --plan-artifact /path/outside/repository/approved-plan.json
+```
+
+Plan Approval does not authorize Apply, run probes, or create a Candidate.
+
 `GoalRunner.run(contract)` is the execution interface and test surface. It hides Contract validation, checkpoint persistence, Git worktree management, RED/GREEN machine gates, role prompts, Evidence capture, and recovery.
 
 `DaemonClient.submit/status/report/evidence` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, content-addressed Evidence retrieval, and process-restart recovery.
