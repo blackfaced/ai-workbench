@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Optional, Sequence, Tuple
@@ -17,6 +17,15 @@ from ._python_setup import (
     ProjectProfile,
     inspect_python_l0,
     planning_from_profile,
+)
+from ._harness_apply import (
+    HarnessApplyApproval,
+    HarnessApplyPreview,
+    HarnessApplyResult,
+    apply_python_l0,
+    approve_python_l0_apply,
+    load_python_l0_apply_approval,
+    preview_python_l0_apply,
 )
 from .project import DoctorReport, ProjectDoctor, ProjectInitializer
 from .skills import (
@@ -305,6 +314,88 @@ class HarnessSetup:
         )
         _write_json_atomically(artifact_path, approved.to_dict())
         return approved
+
+    def load_approved_plan(
+        self,
+        plan: HarnessPlan,
+        artifact_path: Path,
+    ) -> HarnessPlan:
+        artifact_path = Path(artifact_path).expanduser().resolve()
+        try:
+            data = json.loads(artifact_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError(f"cannot read Plan Approval: {error}") from error
+        if not isinstance(data, dict):
+            raise ValueError("Plan Approval must be a JSON object")
+        approval_data = data.get("approval")
+        if not isinstance(approval_data, dict):
+            raise ValueError("Plan Approval is missing approval metadata")
+        approved = replace(
+            plan,
+            approval=PlanApproval(
+                status=str(approval_data.get("status", "")),
+                approved_by=str(approval_data.get("approved_by", "")),
+                approved_at=str(approval_data.get("approved_at", "")),
+                artifact_path=str(approval_data.get("artifact_path", "")),
+            ),
+        )
+        if approved.approval.status != "approved":
+            raise ValueError("Plan Approval artifact is not approved")
+        if approved.approval.artifact_path != str(artifact_path):
+            raise ValueError("Plan Approval artifact path does not match its content")
+        if approved.to_dict() != data:
+            raise ValueError("Plan Approval artifact does not match the current Plan")
+        return approved
+
+    def preview_apply(
+        self,
+        plan: HarnessPlan,
+        *,
+        base_commit: str,
+        state_dir: Path,
+        command_names: Sequence[str],
+    ) -> HarnessApplyPreview:
+        return preview_python_l0_apply(
+            plan,
+            base_commit=base_commit,
+            state_dir=state_dir,
+            command_names=command_names,
+        )
+
+    def approve_apply(
+        self,
+        preview: HarnessApplyPreview,
+        *,
+        approved_by: str,
+        artifact_path: Path,
+        approved_at: Optional[datetime] = None,
+    ) -> HarnessApplyApproval:
+        return approve_python_l0_apply(
+            preview,
+            approved_by=approved_by,
+            artifact_path=artifact_path,
+            approved_at=approved_at,
+        )
+
+    def load_apply_approval(
+        self,
+        preview: HarnessApplyPreview,
+        artifact_path: Path,
+    ) -> HarnessApplyApproval:
+        return load_python_l0_apply_approval(preview, artifact_path)
+
+    def apply_approved(
+        self,
+        plan: HarnessPlan,
+        approval: HarnessApplyApproval,
+        *,
+        state_dir: Path,
+    ) -> HarnessApplyResult:
+        return apply_python_l0(
+            plan,
+            approval,
+            state_dir=state_dir,
+        )
 
     def apply(self, request: HarnessApplyRequest) -> HarnessCandidate:
         if request.plan.state != "planned":
