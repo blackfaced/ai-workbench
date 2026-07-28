@@ -82,6 +82,10 @@ def _build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--install-pack", action="append", default=[])
     setup.add_argument("--pack-skill", action="append", default=[])
     setup.add_argument("--pack-profile", action="append", default=[])
+    setup.add_argument("--planning-mode", choices=("python-l0",))
+    setup.add_argument("--approve-plan", action="store_true")
+    setup.add_argument("--approved-by")
+    setup.add_argument("--plan-artifact", type=Path)
     setup.add_argument("--apply", action="store_true")
 
     skills = commands.add_parser("skills")
@@ -252,8 +256,32 @@ def _run_setup(options: argparse.Namespace) -> int:
         HarnessSetupRequest(
             repository=options.repo,
             agent_targets=targets,
+            planning_mode=options.planning_mode or "",
         )
     )
+    if options.planning_mode:
+        if options.apply:
+            raise ValueError(
+                "planning mode is read-only and cannot be combined with --apply"
+            )
+        if options.approve_plan:
+            if not options.approved_by or options.plan_artifact is None:
+                raise ValueError(
+                    "Plan Approval requires --approved-by and --plan-artifact"
+                )
+            plan = setup.approve_plan(
+                plan,
+                approved_by=options.approved_by,
+                artifact_path=options.plan_artifact,
+            )
+        elif options.approved_by or options.plan_artifact is not None:
+            raise ValueError(
+                "--approved-by and --plan-artifact require --approve-plan"
+            )
+        _print_json(plan.to_dict())
+        return 0
+    if options.approve_plan or options.approved_by or options.plan_artifact is not None:
+        raise ValueError("Plan Approval requires --planning-mode")
     role_skills = _role_skills(options.role_skill)
     pack_skills = _pack_skills(options.install_pack, options.pack_skill)
     pack_profiles = _pack_profiles(options.install_pack, options.pack_profile)
