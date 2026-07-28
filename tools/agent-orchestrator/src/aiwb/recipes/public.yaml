@@ -1,0 +1,24 @@
+schema_version: 1
+kind: aiwb.recipe-catalog
+recipes:
+  - name: python-l0-baseline
+    version: 1
+    official_sources:
+      - https://docs.pytest.org/en/stable/
+      - https://docs.astral.sh/ruff/
+      - https://coverage.readthedocs.io/
+    reviewed_at: "2026-07-01"
+    applicability:
+      - language:python
+      - tier:l0
+    alternatives:
+      - preserve-project-tools
+    cost: low
+    migration_risk: low
+    report_formats:
+      - junit-xml
+      - coverage-xml
+    verification_state: verified
+    tool_versions:
+      pytest: "9.0"
+      ruff: "0.12.0"

@@ -28,6 +28,7 @@ from .project import (
     ProjectConfigError,
     ProjectInitError,
 )
+from .recipe_catalog import RecipeCatalog
 from .runner import GoalRunner, preview_execution
 from .skills import SkillCatalog
 from .supervisor import LaunchdError, LaunchdService
@@ -43,6 +44,7 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
         "skills": _run_skills,
         "doctor": _run_doctor,
         "pipeline": _run_pipeline,
+        "recipes": _run_recipes,
         "goal": _run_goal,
         "daemon": _run_daemon,
         "evidence": _run_evidence,
@@ -146,6 +148,17 @@ def _build_parser() -> argparse.ArgumentParser:
         default=[],
     )
     pipeline_verify.add_argument("--state-dir", required=True, type=Path)
+
+    recipes = commands.add_parser("recipes")
+    recipe_commands = recipes.add_subparsers(
+        dest="recipes_command",
+        required=True,
+    )
+    recipe_audit = recipe_commands.add_parser("audit")
+    recipe_audit.add_argument("--catalog", type=Path)
+    recipe_refresh = recipe_commands.add_parser("refresh")
+    recipe_refresh.add_argument("--proposed", required=True, type=Path)
+    recipe_refresh.add_argument("--output", required=True, type=Path)
 
     goal = commands.add_parser("goal")
     goal_commands = goal.add_subparsers(dest="goal_command", required=True)
@@ -494,6 +507,22 @@ def _run_pipeline(options: argparse.Namespace) -> int:
     )
     _print_json(result.to_dict())
     return 0 if result.status in {"pipeline_pending", "verified"} else 1
+
+
+def _run_recipes(options: argparse.Namespace) -> int:
+    catalog = RecipeCatalog()
+    if options.recipes_command == "audit":
+        result = catalog.audit(catalog_path=options.catalog)
+        _print_json(result.to_dict())
+        return 0 if result.status == "ok" else 1
+    if options.recipes_command == "refresh":
+        result = catalog.refresh_preview(
+            proposed_catalog=options.proposed,
+            output_path=options.output,
+        )
+        _print_json(result.to_dict())
+        return 0 if result.status in {"review_required", "unchanged"} else 1
+    raise ValueError(f"unsupported Recipes command: {options.recipes_command}")
 
 
 def _run_goal(options: argparse.Namespace) -> int:

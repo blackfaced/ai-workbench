@@ -104,6 +104,35 @@ This repository dogfoods the Adapter through
 `.github/workflows/aiwb-harness.yml`. The workflow uses pinned Actions commits,
 the stable `harness` check name, and uploads `harness-evidence`.
 
+## Recipe Catalog
+
+Harness planning resolves versioned Recipes in this order: project override,
+configured private Catalog, then bundled public Catalog. Every Recipe records
+official sources, review date, applicability, alternatives, cost, migration
+risk, report formats, verification state, and pinned tool versions. Only
+`verified` Recipes can authorize formal Harness gates; `plan_only` and
+`unsupported` remain advisory.
+
+Audit the bundled or an explicit Catalog:
+
+```bash
+aiwb recipes audit
+aiwb recipes audit --catalog /path/to/catalog.yaml
+```
+
+Preview a public refresh without mutating the bundled Catalog or any approved
+project:
+
+```bash
+aiwb recipes refresh \
+  --proposed /path/to/proposed-public-catalog.yaml \
+  --output /path/to/refresh-preview.json
+```
+
+The preview contains source-backed validation, deterministic version diffs, and
+a separate tool upgrade plan. Existing approved Harness Plans retain the Recipe
+versions already pinned in their approval artifacts.
+
 `GoalRunner.run(contract)` is the execution interface and test surface. It hides Contract validation, checkpoint persistence, Git worktree management, RED/GREEN machine gates, role prompts, Evidence capture, and recovery.
 
 `DaemonClient.submit/status/report/evidence` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, content-addressed Evidence retrieval, and process-restart recovery.

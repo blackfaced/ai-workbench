@@ -74,6 +74,14 @@ from .project import (
     ProjectInitResult,
     ProjectPolicy,
 )
+from .recipe_catalog import (
+    Recipe,
+    RecipeAudit,
+    RecipeCatalog,
+    RecipeFinding,
+    RecipeRefreshPreview,
+    RecipeResolution,
+)
 from .runner import (
     AttemptReport,
     CommandEvidence,
@@ -178,6 +186,12 @@ __all__ = [
     "ProviderQuotaError",
     "ProjectConfigError",
     "ProjectDoctor",
+    "Recipe",
+    "RecipeAudit",
+    "RecipeCatalog",
+    "RecipeFinding",
+    "RecipeRefreshPreview",
+    "RecipeResolution",
     "RunReport",
     "RunPaused",
     "RunStatus",
