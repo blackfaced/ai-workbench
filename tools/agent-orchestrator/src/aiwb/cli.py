@@ -86,6 +86,15 @@ def _build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--approve-plan", action="store_true")
     setup.add_argument("--approved-by")
     setup.add_argument("--plan-artifact", type=Path)
+    setup.add_argument("--approved-plan", type=Path)
+    apply_operation = setup.add_mutually_exclusive_group()
+    apply_operation.add_argument("--preview-apply", action="store_true")
+    apply_operation.add_argument("--approve-apply", action="store_true")
+    apply_operation.add_argument("--execute-apply", action="store_true")
+    setup.add_argument("--base-commit")
+    setup.add_argument("--state-dir", type=Path)
+    setup.add_argument("--apply-command", action="append", default=[])
+    setup.add_argument("--apply-artifact", type=Path)
     setup.add_argument("--apply", action="store_true")
 
     skills = commands.add_parser("skills")
@@ -264,6 +273,60 @@ def _run_setup(options: argparse.Namespace) -> int:
             raise ValueError(
                 "planning mode is read-only and cannot be combined with --apply"
             )
+        apply_requested = (
+            options.preview_apply
+            or options.approve_apply
+            or options.execute_apply
+        )
+        if apply_requested:
+            if (
+                options.approved_plan is None
+                or not options.base_commit
+                or options.state_dir is None
+                or not options.apply_command
+            ):
+                raise ValueError(
+                    "Harness Apply requires --approved-plan, --base-commit, "
+                    "--state-dir, and at least one --apply-command"
+                )
+            approved_plan = setup.load_approved_plan(
+                plan,
+                options.approved_plan,
+            )
+            preview = setup.preview_apply(
+                approved_plan,
+                base_commit=options.base_commit,
+                state_dir=options.state_dir,
+                command_names=tuple(options.apply_command),
+            )
+            if options.preview_apply:
+                _print_json(preview.to_dict())
+                return 0
+            if options.apply_artifact is None:
+                raise ValueError(
+                    "Apply Approval and execution require --apply-artifact"
+                )
+            if options.approve_apply:
+                if not options.approved_by:
+                    raise ValueError("Apply Approval requires --approved-by")
+                approval = setup.approve_apply(
+                    preview,
+                    approved_by=options.approved_by,
+                    artifact_path=options.apply_artifact,
+                )
+                _print_json(approval.to_dict())
+                return 0
+            approval = setup.load_apply_approval(
+                preview,
+                options.apply_artifact,
+            )
+            result = setup.apply_approved(
+                approved_plan,
+                approval,
+                state_dir=options.state_dir,
+            )
+            _print_json(result.to_dict())
+            return 0
         if options.approve_plan:
             if not options.approved_by or options.plan_artifact is None:
                 raise ValueError(
@@ -278,9 +341,31 @@ def _run_setup(options: argparse.Namespace) -> int:
             raise ValueError(
                 "--approved-by and --plan-artifact require --approve-plan"
             )
+        elif (
+            options.approved_plan is not None
+            or options.base_commit
+            or options.state_dir is not None
+            or options.apply_command
+            or options.apply_artifact is not None
+        ):
+            raise ValueError(
+                "Harness Apply arguments require an Apply operation"
+            )
         _print_json(plan.to_dict())
         return 0
-    if options.approve_plan or options.approved_by or options.plan_artifact is not None:
+    if (
+        options.approve_plan
+        or options.approved_by
+        or options.plan_artifact is not None
+        or options.approved_plan is not None
+        or options.preview_apply
+        or options.approve_apply
+        or options.execute_apply
+        or options.base_commit
+        or options.state_dir is not None
+        or options.apply_command
+        or options.apply_artifact is not None
+    ):
         raise ValueError("Plan Approval requires --planning-mode")
     role_skills = _role_skills(options.role_skill)
     pack_skills = _pack_skills(options.install_pack, options.pack_skill)
