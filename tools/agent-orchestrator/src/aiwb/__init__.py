@@ -31,6 +31,14 @@ from .harness import (
     HarnessRequest,
     LocalProcessHarness,
 )
+from ._harness_apply import (
+    HarnessApplyApproval,
+    HarnessApplyPreview,
+    HarnessApplyResult,
+    HarnessFileProjection,
+    HarnessProbeCommand,
+    HarnessProbeEvidence,
+)
 from .handoff_bridge import GoalHandoffBridge, HandoffBridgeResult
 from ._python_setup import CodeStructureEvidence, ExternalAnalysisEvidence
 from .harness_setup import (
@@ -124,9 +132,15 @@ __all__ = [
     "HarnessError",
     "HarnessExecution",
     "HarnessApplyRequest",
+    "HarnessApplyApproval",
+    "HarnessApplyPreview",
+    "HarnessApplyResult",
     "HarnessAssessment",
     "HarnessCandidate",
     "HarnessPlan",
+    "HarnessFileProjection",
+    "HarnessProbeCommand",
+    "HarnessProbeEvidence",
     "HarnessProfile",
     "HarnessRequest",
     "HarnessSetup",

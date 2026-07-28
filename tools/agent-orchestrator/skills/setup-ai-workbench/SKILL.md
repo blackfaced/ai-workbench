@@ -57,6 +57,21 @@ aiwb setup --repo /path/to/repository --planning-mode python-l0 \
 Plan Approval is durable planning state only. It does not authorize Apply,
 execute probes, or create a Candidate.
 
+## Apply an approved Python L0 Plan
+
+Apply requires a second exact approval. Use the approved Plan artifact, a full
+base commit SHA, an external state directory, and explicit `--apply-command`
+selections. Run `--preview-apply`, review every file digest, dependency,
+canonical command, side effect, branch, and worktree, then record
+`--approve-apply` to an external `--apply-artifact`. Execute only with
+`--execute-apply` and the unchanged arguments.
+
+Do not substitute Plan Approval for Apply Approval. Do not select `adopt` or
+`migrate_later` commands before the owner approves their dependencies and
+migration. Apply writes only an isolated candidate worktree, never the primary
+working tree or target branch. Preserve a failed candidate and its report for
+review. `configured_local` is not pipeline verification.
+
 ## Confirm before applying
 
 If the user wants a project-local draft workflow, state exactly what will be
