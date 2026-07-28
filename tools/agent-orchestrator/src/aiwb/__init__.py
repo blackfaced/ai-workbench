@@ -40,6 +40,13 @@ from ._harness_apply import (
     HarnessProbeEvidence,
 )
 from .handoff_bridge import GoalHandoffBridge, HandoffBridgeResult
+from .github_pipeline import (
+    GhApiGitHubSource,
+    GitHubActionsAdapter,
+    GitHubPipelineRequest,
+    PipelineEvidence,
+    PipelineVerification,
+)
 from ._python_setup import CodeStructureEvidence, ExternalAnalysisEvidence
 from .harness_setup import (
     HarnessApplyRequest,
@@ -128,6 +135,9 @@ __all__ = [
     "GoalHandoffBridge",
     "GoalIntake",
     "GoalIntakeResult",
+    "GhApiGitHubSource",
+    "GitHubActionsAdapter",
+    "GitHubPipelineRequest",
     "GateError",
     "HarnessError",
     "HarnessExecution",
@@ -163,6 +173,8 @@ __all__ = [
     "ProjectInitPreview",
     "ProjectInitResult",
     "ProjectPolicy",
+    "PipelineEvidence",
+    "PipelineVerification",
     "ProviderQuotaError",
     "ProjectConfigError",
     "ProjectDoctor",

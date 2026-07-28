@@ -77,6 +77,33 @@ state directory. Local success is `configured_local`, never `verified`. Failure
 preserves the candidate, first-failure Evidence, report, and cleanup status; the
 target branch and dirty primary working tree remain untouched.
 
+## GitHub Pipeline Verification
+
+After a `configured_local` candidate commit is published by an approved
+repository flow, read its GitHub Actions state without dispatching a workflow:
+
+```bash
+aiwb pipeline verify \
+  --candidate-report /path/to/configured-local-report.json \
+  --owner owner --repository repository \
+  --required-check harness \
+  --required-artifact harness-evidence \
+  --state-dir /path/outside/repository/state
+```
+
+The Adapter uses only authenticated `gh api -X GET` requests for commit-scoped
+runs, jobs, checks, and artifact references. It never reads secret values,
+dispatches workflows, or changes repository settings. `configured_local`
+becomes `pipeline_pending`; only successful required checks and artifacts for
+the exact candidate commit can become `verified`. Stale green commits,
+failures, cancellation, missing or expired artifacts, and missing terminal
+checks remain explicitly non-verified. Every observed retry and first failure
+stays in the append-only external report.
+
+This repository dogfoods the Adapter through
+`.github/workflows/aiwb-harness.yml`. The workflow uses pinned Actions commits,
+the stable `harness` check name, and uploads `harness-evidence`.
+
 `GoalRunner.run(contract)` is the execution interface and test surface. It hides Contract validation, checkpoint persistence, Git worktree management, RED/GREEN machine gates, role prompts, Evidence capture, and recovery.
 
 `DaemonClient.submit/status/report/evidence` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, content-addressed Evidence retrieval, and process-restart recovery.
