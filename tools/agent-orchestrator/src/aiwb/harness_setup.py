@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+import json
+import os
 import subprocess
+import tempfile
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Optional, Sequence, Tuple
 
 import yaml
 
+from ._python_setup import (
+    CommandCandidate,
+    ExternalAnalysisEvidence,
+    ProjectProfile,
+    inspect_python_l0,
+    planning_from_profile,
+)
 from .project import DoctorReport, ProjectDoctor, ProjectInitializer
 from .skills import (
     SkillCatalog,
@@ -22,6 +33,7 @@ class HarnessSetupRequest:
     agent_targets: Tuple[str, ...] = ()
     operation: str = "setup"
     output_path: Optional[Path] = None
+    planning_mode: str = ""
 
 
 @dataclass(frozen=True)
@@ -34,6 +46,38 @@ class HarnessAssessment:
     agent_targets: Tuple[str, ...]
     catalog: SkillCatalogSnapshot
     packs: Tuple[SkillPackDescriptor, ...]
+    project_profile: Optional[ProjectProfile] = None
+
+    def to_dict(self) -> Mapping[str, object]:
+        return {
+            "state": self.state,
+            "repository": self.repository,
+            "workflow_action": self.workflow_action,
+            "workflow_path": self.workflow_path,
+            "suggestions": self.suggestions,
+            "agent_targets": list(self.agent_targets),
+            "project_profile": (
+                self.project_profile.to_dict()
+                if self.project_profile is not None
+                else None
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class PlanApproval:
+    status: str
+    approved_by: str = ""
+    approved_at: str = ""
+    artifact_path: str = ""
+
+    def to_dict(self) -> Mapping[str, object]:
+        return {
+            "status": self.status,
+            "approved_by": self.approved_by,
+            "approved_at": self.approved_at,
+            "artifact_path": self.artifact_path,
+        }
 
 
 @dataclass(frozen=True)
@@ -41,6 +85,40 @@ class HarnessPlan:
     state: str
     request: HarnessSetupRequest
     assessment: HarnessAssessment
+    command_candidates: Tuple[CommandCandidate, ...] = ()
+    recipe_versions: Tuple[Tuple[str, int], ...] = ()
+    coverage_decision: str = ""
+    owner_decisions: Tuple[str, ...] = ()
+    non_goals: Tuple[str, ...] = ()
+    approval: PlanApproval = PlanApproval(status="unapproved")
+
+    def to_dict(self) -> Mapping[str, object]:
+        return {
+            "state": self.state,
+            "request": {
+                "repository": str(Path(self.request.repository).expanduser().resolve()),
+                "agent_targets": list(self.request.agent_targets),
+                "operation": self.request.operation,
+                "output_path": (
+                    str(Path(self.request.output_path).expanduser().resolve())
+                    if self.request.output_path is not None
+                    else None
+                ),
+                "planning_mode": self.request.planning_mode,
+            },
+            "assessment": self.assessment.to_dict(),
+            "command_candidates": [
+                candidate.to_dict() for candidate in self.command_candidates
+            ],
+            "recipe_versions": [
+                {"name": name, "version": version}
+                for name, version in self.recipe_versions
+            ],
+            "coverage_decision": self.coverage_decision,
+            "owner_decisions": list(self.owner_decisions),
+            "non_goals": list(self.non_goals),
+            "approval": self.approval.to_dict(),
+        }
 
 
 @dataclass(frozen=True)
@@ -90,15 +168,21 @@ class HarnessSetup:
         catalog: Optional[SkillCatalog] = None,
         pack_catalog: Optional[SkillPackCatalog] = None,
         command_runner: Optional[Callable[[Tuple[str, ...], Path], None]] = None,
+        analysis_provider: Optional[
+            Callable[[Path], ExternalAnalysisEvidence]
+        ] = None,
     ) -> None:
         self._catalog = catalog or SkillCatalog()
         self._pack_catalog = pack_catalog or SkillPackCatalog()
         self._command_runner = command_runner or _run_pack_command
+        self._analysis_provider = analysis_provider
         self._initializer = ProjectInitializer()
 
     def inspect(self, request: HarnessSetupRequest) -> HarnessAssessment:
         if request.operation not in {"setup", "initialize"}:
             raise ValueError("Harness setup operation must be setup or initialize")
+        if request.planning_mode not in {"", "python-l0"}:
+            raise ValueError("Harness planning mode must be python-l0")
         if any(
             target not in {"codex", "claude-code"}
             for target in request.agent_targets
@@ -106,6 +190,20 @@ class HarnessSetup:
             raise ValueError("agent targets must be codex or claude-code")
         repository = Path(request.repository).expanduser().resolve()
         preview = self._initializer.preview(repository, request.output_path)
+        planning = None
+        if request.planning_mode == "python-l0":
+            external_analysis = None
+            analysis_error = ""
+            if self._analysis_provider is not None:
+                try:
+                    external_analysis = self._analysis_provider(repository)
+                except Exception as error:
+                    analysis_error = str(error)
+            planning = inspect_python_l0(
+                repository,
+                external_analysis=external_analysis,
+                analysis_error=analysis_error,
+            )
         return HarnessAssessment(
             state="assessed",
             repository=str(repository),
@@ -119,14 +217,94 @@ class HarnessSetup:
             agent_targets=request.agent_targets,
             catalog=self._catalog.inspect(repository),
             packs=self._pack_catalog.inspect(),
+            project_profile=planning.profile if planning is not None else None,
         )
 
     def plan(self, request: HarnessSetupRequest) -> HarnessPlan:
+        assessment = self.inspect(request)
+        planning = (
+            planning_from_profile(assessment.project_profile)
+            if assessment.project_profile is not None
+            else None
+        )
         return HarnessPlan(
             state="planned",
             request=request,
-            assessment=self.inspect(request),
+            assessment=assessment,
+            command_candidates=(
+                planning.command_candidates if planning is not None else ()
+            ),
+            recipe_versions=(
+                (("python-l0-baseline", 1),)
+                if planning is not None
+                else ()
+            ),
+            coverage_decision=(
+                "measure_baseline_before_threshold"
+                if planning is not None
+                else ""
+            ),
+            owner_decisions=(
+                planning.owner_decisions if planning is not None else ()
+            ),
+            non_goals=(
+                (
+                    "Do not write or invent business tests.",
+                    "Do not apply tool migrations or Recipe upgrades.",
+                    "Do not execute project commands or pipeline workflows.",
+                    "Do not create candidate worktrees or modify the repository.",
+                )
+                if planning is not None
+                else ()
+            ),
         )
+
+    def approve_plan(
+        self,
+        plan: HarnessPlan,
+        approved_by: str,
+        approved_at: Optional[datetime] = None,
+        artifact_path: Optional[Path] = None,
+    ) -> HarnessPlan:
+        if plan.state != "planned":
+            raise ValueError("Plan Approval requires a planned Harness Plan")
+        if plan.approval.status != "unapproved":
+            raise ValueError("Harness Plan is already approved")
+        if not approved_by.strip():
+            raise ValueError("Plan Approval requires an approver")
+        if plan.assessment != self.inspect(plan.request):
+            raise ValueError("Harness Plan assessment is stale or has been modified")
+        if artifact_path is None:
+            raise ValueError("Plan Approval requires an explicit artifact path")
+        repository = Path(plan.request.repository).expanduser().resolve()
+        artifact_path = Path(artifact_path).expanduser().resolve()
+        try:
+            artifact_path.relative_to(repository)
+        except ValueError:
+            pass
+        else:
+            raise ValueError(
+                "Plan Approval artifact must stay outside the target repository"
+            )
+        approved_at = approved_at or datetime.now(timezone.utc)
+        approved = HarnessPlan(
+            state=plan.state,
+            request=plan.request,
+            assessment=plan.assessment,
+            command_candidates=plan.command_candidates,
+            recipe_versions=plan.recipe_versions,
+            coverage_decision=plan.coverage_decision,
+            owner_decisions=plan.owner_decisions,
+            non_goals=plan.non_goals,
+            approval=PlanApproval(
+                status="approved",
+                approved_by=approved_by.strip(),
+                approved_at=approved_at.astimezone(timezone.utc).isoformat(),
+                artifact_path=str(artifact_path),
+            ),
+        )
+        _write_json_atomically(artifact_path, approved.to_dict())
+        return approved
 
     def apply(self, request: HarnessApplyRequest) -> HarnessCandidate:
         if request.plan.state != "planned":
@@ -137,6 +315,11 @@ class HarnessSetup:
         assessment = plan.assessment
         if assessment.state != "assessed":
             raise ValueError("apply requires an assessed Harness Plan")
+        if plan.request.planning_mode:
+            raise ValueError(
+                "an approved Harness Plan does not authorize Apply; "
+                "candidate Apply is a separate lifecycle"
+            )
         repository = Path(plan.request.repository).expanduser().resolve()
         if assessment.repository != str(repository):
             raise ValueError("Harness Plan repository does not match its request")
@@ -308,3 +491,21 @@ def _run_pack_command(command: Tuple[str, ...], repository: Path) -> None:
         )
     except (OSError, subprocess.SubprocessError) as error:
         raise ValueError(f"Skill pack installation failed: {error}") from error
+
+
+def _write_json_atomically(path: Path, value: Mapping[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            json.dump(value, output, indent=2, sort_keys=True)
+            output.write("\n")
+        temporary_path.replace(path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise

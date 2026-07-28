@@ -32,6 +32,31 @@ suggestions, and optional Skill packs. The inspect command is read-only. Treat
 both Codex and Claude Code as choices the user may select; do not edit global
 Agent configuration.
 
+For a reviewable Python L0 Project Profile and Harness Plan, use:
+
+```bash
+aiwb setup --repo /path/to/repository --planning-mode python-l0
+```
+
+This planning path discovers Python targets, purpose tags, existing engineering
+tools, pipeline files, bounded local Git history, fallback code structure, and
+missing L0 capabilities. It does not execute project commands, query remote
+review history, persist a code graph, create a worktree, or modify the target
+repository. The equivalent MCP tool is `aiwb_harness_plan`; it always returns
+an unapproved Plan.
+
+After reviewing every command candidate, coverage decision, owner decision, and
+non-goal, record explicit Plan Approval outside the target repository:
+
+```bash
+aiwb setup --repo /path/to/repository --planning-mode python-l0 \
+  --approve-plan --approved-by owner \
+  --plan-artifact /path/outside/repository/approved-plan.json
+```
+
+Plan Approval is durable planning state only. It does not authorize Apply,
+execute probes, or create a Candidate.
+
 ## Confirm before applying
 
 If the user wants a project-local draft workflow, state exactly what will be

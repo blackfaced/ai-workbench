@@ -32,6 +32,7 @@ from .harness import (
     LocalProcessHarness,
 )
 from .handoff_bridge import GoalHandoffBridge, HandoffBridgeResult
+from ._python_setup import CodeStructureEvidence, ExternalAnalysisEvidence
 from .harness_setup import (
     HarnessApplyRequest,
     HarnessAssessment,
@@ -101,8 +102,10 @@ __all__ = [
     "ClaudeCodeCliAdapter",
     "CodexCliAdapter",
     "CommandEvidence",
+    "CodeStructureEvidence",
     "ContractError",
     "ExecutionEnvelope",
+    "ExternalAnalysisEvidence",
     "EvidenceError",
     "EvidenceIntegrityError",
     "EvidencePayload",
