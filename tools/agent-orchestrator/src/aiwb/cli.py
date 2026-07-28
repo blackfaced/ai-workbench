@@ -8,16 +8,19 @@ from typing import Optional, Sequence, Tuple
 
 from .agent import AgentRouter, ClaudeCodeCliAdapter, CodexCliAdapter
 from .daemon import AgentDaemon, DaemonClient, DaemonError
+from .harness_setup import (
+    HarnessApplyRequest,
+    HarnessSetup,
+    HarnessSetupRequest,
+    HarnessVerifyRequest,
+)
 from .intake import GoalIntake
 from .kubernetes import KubernetesJanitor
 from .project import (
     ProjectConfigError,
-    ProjectDoctor,
     ProjectInitError,
-    ProjectInitializer,
 )
 from .runner import GoalRunner, preview_execution
-from .setup import WorkbenchSetup
 from .skills import SkillCatalog
 from .supervisor import LaunchdError, LaunchdService
 from .tickets import TicketContractDraftBuilder
@@ -210,30 +213,53 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _run_init(options: argparse.Namespace) -> int:
-    result = ProjectInitializer().initialize(
-        repository=options.repo,
-        output_path=options.output,
-        force=options.force,
+    setup = HarnessSetup()
+    plan = setup.plan(
+        HarnessSetupRequest(
+            repository=options.repo,
+            operation="initialize",
+            output_path=options.output,
+        )
     )
-    _print_json(result.__dict__)
+    result = setup.apply(
+        HarnessApplyRequest(
+            plan=plan,
+            confirmed=True,
+            force=options.force,
+        )
+    )
+    _print_json(
+        {
+            "config": result.workflow_path,
+            "status": result.status,
+            "suggestions": result.suggestions,
+        }
+    )
     return 0
 
 
 def _run_setup(options: argparse.Namespace) -> int:
-    setup = WorkbenchSetup()
+    setup = HarnessSetup()
     targets = tuple(options.agent_target)
+    plan = setup.plan(
+        HarnessSetupRequest(
+            repository=options.repo,
+            agent_targets=targets,
+        )
+    )
     role_skills = _role_skills(options.role_skill)
     pack_skills = _pack_skills(options.install_pack, options.pack_skill)
     pack_profiles = _pack_profiles(options.install_pack, options.pack_profile)
     if options.apply:
         result = setup.apply(
-            repository=options.repo,
-            confirmed=True,
-            agent_targets=targets,
-            role_skills=role_skills,
-            install_skills=tuple(options.install_skill),
-            pack_skills=pack_skills,
-            pack_profiles=pack_profiles,
+            HarnessApplyRequest(
+                plan=plan,
+                confirmed=True,
+                role_skills=role_skills,
+                install_skills=tuple(options.install_skill),
+                pack_skills=pack_skills,
+                pack_profiles=pack_profiles,
+            )
         )
         _print_json(
             {
@@ -246,7 +272,7 @@ def _run_setup(options: argparse.Namespace) -> int:
             }
         )
     else:
-        result = setup.inspect(options.repo, targets)
+        result = plan.assessment
         _print_json(
             {
                 "workflow_path": result.workflow_path,
@@ -272,12 +298,15 @@ def _run_skills(options: argparse.Namespace) -> int:
 
 
 def _run_doctor(options: argparse.Namespace) -> int:
-    report = ProjectDoctor().inspect(
-        config_path=options.config,
-        codex_bin=options.codex_bin,
-        agent_provider=options.agent_provider,
-        claude_bin=options.claude_bin,
+    result = HarnessSetup().verify(
+        HarnessVerifyRequest(
+            config_path=options.config,
+            codex_bin=options.codex_bin,
+            agent_provider=options.agent_provider,
+            claude_bin=options.claude_bin,
+        )
     )
+    report = result.report
     _print_json(report.to_dict())
     return 0 if report.status == "ok" else 1
 

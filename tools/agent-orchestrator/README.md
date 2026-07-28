@@ -14,6 +14,17 @@ The public tool contains no organization-specific integrations. Projects expose 
 
 ## Module Shape
 
+`HarnessSetup.inspect/plan/apply/verify` is the project setup lifecycle interface
+and test surface. It owns structured assessment, Plan, Candidate, and
+Verification results while adapting the existing repository discovery,
+initialization, Skill setup, project policy, and doctor behavior. Read-only
+inspection and planning do not execute project commands or write configuration;
+Apply still requires explicit confirmation.
+
+This interface is currently a compatibility prefactor. Recipe selection,
+dynamic probes, candidate worktrees, and pipeline verification remain later
+delivery slices rather than hidden behavior in setup callers.
+
 `GoalRunner.run(contract)` is the execution interface and test surface. It hides Contract validation, checkpoint persistence, Git worktree management, RED/GREEN machine gates, role prompts, Evidence capture, and recovery.
 
 `DaemonClient.submit/status/report/evidence` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, content-addressed Evidence retrieval, and process-restart recovery.
