@@ -402,6 +402,24 @@ Unsupported envelope versions return `unsupported_handoff_schema`. Supported
 but incomplete handoffs return ordinary readiness blockers and warnings.
 Intake remains read-only and does not require a Daemon.
 
+To create the next safe artifact from a reviewed planning handoff:
+
+```bash
+aiwb goal bridge --repo /path/to/project \
+  --handoff /path/to/handoff.json \
+  --policy /path/to/reviewed-policy.yaml \
+  --output /path/outside/project/next-artifact.yaml
+```
+
+Executable v1 handoff Todos may declare `command_name`, which must exactly name
+an approved policy capability, plus a non-empty `allowed_paths` list. When every
+Todo is mapped, the bridge atomically writes an unapproved Contract and runs
+side-effect-free preflight against the explicit policy. Otherwise it writes
+only a clearly marked, non-executable policy draft with provenance, blockers,
+warnings, candidate commands, and review actions. The bridge never invents a
+command or path, writes inside the target repository, starts a Daemon or Agent,
+or submits a Run. The equivalent MCP tool is `aiwb_handoff_bridge`.
+
 Candidate publication is off by default. To let an overnight Run publish its merge-ready Candidate, review and add this project-owned policy:
 
 ```yaml

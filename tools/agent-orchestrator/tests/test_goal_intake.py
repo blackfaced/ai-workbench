@@ -8,13 +8,15 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
 import yaml
 
 
 TOOL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_ROOT / "src"))
 
-from aiwb import GoalIntake  # noqa: E402
+from aiwb import GoalHandoffBridge, GoalIntake  # noqa: E402
+from aiwb.cli import main as cli_main  # noqa: E402
 from aiwb.mcp_server import McpServer  # noqa: E402
 
 
@@ -310,6 +312,592 @@ def test_multi_todo_planning_handoff_preserves_source_and_planning_boundaries() 
         assert result.warnings == ()
         assert {item.code for item in result.blockers} == {"contract_draft"}
         assert result.execution_envelope["layers"] == [["T-1"], ["T-2"]]
+
+
+def test_handoff_bridge_writes_an_unapproved_preflighted_contract_outside_repo() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {
+                        "system": "github",
+                        "repository": "blackfaced/ai-workbench",
+                        "issue": 16,
+                    },
+                    "goal": {
+                        "id": "goal-16",
+                        "title": "Bridge planning handoffs",
+                        "requirement": "Create a safe next artifact.",
+                        "acceptance": [
+                            {
+                                "id": "AC-1",
+                                "statement": "The Contract remains unapproved.",
+                            }
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Create the bridge",
+                            "depends_on": [],
+                            "acceptance_ids": ["AC-1"],
+                            "command_name": "unit",
+                            "allowed_paths": ["tests/test_bridge.py"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        policy = root / "reviewed-policy.yaml"
+        policy.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {
+                                "argv": [sys.executable, "-m", "pytest", "-q"],
+                                "approved": True,
+                            }
+                        },
+                        "skills": {},
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        output = root / "artifacts" / "goal-16.contract.yaml"
+        before = _tree(repository)
+
+        result = GoalHandoffBridge().create(
+            repository=repository,
+            handoff_path=handoff,
+            policy_path=policy,
+            output_path=output,
+        )
+
+        assert result.readiness == "ready_for_contract_approval"
+        assert result.artifact_kind == "contract"
+        assert result.artifact_path == str(output.resolve())
+        assert result.blockers == ()
+        assert result.warnings == ()
+        contract = yaml.safe_load(output.read_text(encoding="utf-8"))
+        assert contract["approval"] == {
+            "status": "draft",
+            "approved_by": "",
+            "approved_at": "",
+        }
+        assert contract["todos"][0]["test"] == {
+            "command": [sys.executable, "-m", "pytest", "-q"],
+            "allowed_paths": ["tests/test_bridge.py"],
+            "timeout_seconds": 600,
+        }
+        assert contract["draft"]["source_provenance"]["issue"] == 16
+        assert result.preflight["readiness"] == "ready"
+        assert result.preflight["approval_status"] == "draft"
+        assert _tree(repository) == before
+
+
+def test_handoff_bridge_blocks_without_command_or_paths_and_writes_policy_draft() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {
+                        "system": "github",
+                        "repository": "blackfaced/ai-workbench",
+                        "issue": 16,
+                    },
+                    "goal": {
+                        "id": "goal-16",
+                        "title": "Bridge planning handoffs",
+                        "requirement": "Create a safe next artifact.",
+                        "acceptance": [
+                            {
+                                "id": "AC-1",
+                                "statement": "Missing execution data blocks.",
+                            }
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Create the bridge",
+                            "depends_on": [],
+                            "acceptance_ids": ["AC-1"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        policy = root / "reviewed-policy.yaml"
+        policy.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {
+                                "argv": [sys.executable, "-m", "pytest", "-q"],
+                                "approved": True,
+                            }
+                        },
+                        "skills": {},
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        output = root / "artifacts" / "workflow-draft.yaml"
+        before = _tree(repository)
+
+        result = GoalHandoffBridge().create(
+            repository=repository,
+            handoff_path=handoff,
+            policy_path=policy,
+            output_path=output,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.artifact_kind == "policy_draft"
+        assert result.preflight == {}
+        assert {blocker.code for blocker in result.blockers} == {
+            "approved_command_missing",
+            "allowed_paths_missing",
+        }
+        assert result.warnings == (
+            "Todo T-1 needs reviewed allowed_paths before execution.",
+        )
+        draft = yaml.safe_load(output.read_text(encoding="utf-8"))
+        assert draft["kind"] == "aiwb.workflow-policy-draft"
+        assert draft["status"] == "draft"
+        assert draft["executable"] is False
+        assert draft["project"]["trusted"] is False
+        assert draft["source"]["handoff_provenance"]["issue"] == 16
+        assert len(draft["review_actions"]) == 2
+        serialized = output.read_text(encoding="utf-8")
+        assert "REPLACE_WITH" not in serialized
+        assert "todos:" not in serialized
+        assert _tree(repository) == before
+
+
+def test_handoff_bridge_turns_unapproved_policy_into_actionable_draft() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {"system": "test", "id": "unapproved-policy"},
+                    "goal": {
+                        "id": "policy-goal",
+                        "title": "Review policy",
+                        "requirement": "Keep policy review explicit.",
+                        "acceptance": [
+                            {"id": "AC-1", "statement": "Policy stays unapproved."}
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Review",
+                            "depends_on": [],
+                            "acceptance_ids": ["AC-1"],
+                            "command_name": "unit",
+                            "allowed_paths": ["tests/test_policy.py"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        policy = root / "draft-policy.yaml"
+        policy.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "draft",
+                    "project": {"root": str(repository), "trusted": False},
+                    "suggestions": {
+                        "commands": {
+                            "unit": {
+                                "argv": [sys.executable, "-m", "pytest", "-q"],
+                                "reason": "pytest detected",
+                            }
+                        }
+                    },
+                    "capabilities": {"commands": {}, "skills": {}},
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        output = root / "policy-review.yaml"
+
+        result = GoalHandoffBridge().create(
+            repository=repository,
+            handoff_path=handoff,
+            policy_path=policy,
+            output_path=output,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.artifact_kind == "policy_draft"
+        assert {blocker.code for blocker in result.blockers} == {
+            "policy_not_approved",
+            "approved_command_missing",
+        }
+        draft = yaml.safe_load(output.read_text(encoding="utf-8"))
+        assert draft["candidate_commands"] == {
+            "unit": {
+                "argv": [sys.executable, "-m", "pytest", "-q"],
+                "reason": "pytest detected",
+            }
+        }
+        assert "candidate_policy" not in draft
+        assert draft["executable"] is False
+
+
+def test_handoff_bridge_writes_validation_failures_to_the_requested_artifact() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "unsupported-handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 99,
+                    "kind": "aiwb.planning-handoff",
+                    "goal": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        policy = root / "policy.yaml"
+        policy.write_text("not: inspected\n", encoding="utf-8")
+        output = root / "validation-result.yaml"
+
+        result = GoalHandoffBridge().create(
+            repository=repository,
+            handoff_path=handoff,
+            policy_path=policy,
+            output_path=output,
+        )
+
+        assert result.readiness == "blocked"
+        assert result.artifact_kind == "policy_draft"
+        assert result.artifact_path == str(output.resolve())
+        assert [blocker.code for blocker in result.blockers] == [
+            "unsupported_handoff_schema"
+        ]
+        draft = yaml.safe_load(output.read_text(encoding="utf-8"))
+        assert draft["kind"] == "aiwb.workflow-policy-draft"
+        assert draft["executable"] is False
+        assert draft["source"]["input_policy"] == str(policy.resolve())
+        assert draft["blockers"][0]["code"] == "unsupported_handoff_schema"
+
+
+def test_handoff_bridge_preserves_handoff_validation_blockers() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "incomplete-handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {},
+                    "goal": {
+                        "id": "incomplete",
+                        "title": "Incomplete",
+                        "requirement": "Do not create an executable Contract.",
+                        "acceptance": [],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Incomplete",
+                            "depends_on": ["missing"],
+                            "acceptance_ids": [],
+                            "command_name": "unit",
+                            "allowed_paths": ["tests/test_incomplete.py"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        policy = root / "policy.yaml"
+        policy.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {
+                                "argv": [sys.executable, "-m", "pytest", "-q"],
+                                "approved": True,
+                            }
+                        },
+                        "skills": {},
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        output = root / "incomplete-result.yaml"
+
+        result = GoalHandoffBridge().create(
+            repository=repository,
+            handoff_path=handoff,
+            policy_path=policy,
+            output_path=output,
+        )
+
+        assert result.artifact_kind == "policy_draft"
+        assert {blocker.code for blocker in result.blockers} >= {
+            "handoff_provenance",
+            "todo_dependencies",
+            "acceptance_boundary",
+        }
+        assert yaml.safe_load(output.read_text(encoding="utf-8"))["executable"] is False
+
+
+def test_handoff_bridge_rejects_output_inside_repository_before_writing() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "handoff.json"
+        handoff.write_text("{}", encoding="utf-8")
+        policy = root / "policy.yaml"
+        policy.write_text("{}", encoding="utf-8")
+        output = repository / "bridge.yaml"
+
+        with pytest.raises(ValueError, match="outside"):
+            GoalHandoffBridge().create(
+                repository=repository,
+                handoff_path=handoff,
+                policy_path=policy,
+                output_path=output,
+            )
+
+        assert not output.exists()
+
+
+def test_handoff_bridge_leaves_no_contract_when_preflight_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {"system": "test", "id": "atomic"},
+                    "goal": {
+                        "id": "atomic-goal",
+                        "title": "Atomic bridge",
+                        "requirement": "Do not leave partial artifacts.",
+                        "acceptance": [
+                            {"id": "AC-1", "statement": "No partial artifact."}
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Bridge",
+                            "depends_on": [],
+                            "acceptance_ids": ["AC-1"],
+                            "command_name": "unit",
+                            "allowed_paths": ["tests/test_bridge.py"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        policy = root / "policy.yaml"
+        policy.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {
+                                "argv": [sys.executable, "-m", "pytest", "-q"],
+                                "approved": True,
+                            }
+                        },
+                        "skills": {},
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        output = root / "contract.yaml"
+
+        monkeypatch.setattr(
+            "aiwb.handoff_bridge.preview_execution",
+            lambda *args, **kwargs: (_ for _ in ()).throw(
+                RuntimeError("simulated preflight failure")
+            ),
+        )
+
+        with pytest.raises(RuntimeError, match="simulated preflight"):
+            GoalHandoffBridge().create(
+                repository=repository,
+                handoff_path=handoff,
+                policy_path=policy,
+                output_path=output,
+            )
+
+        assert not output.exists()
+        assert not list(root.glob(".contract.yaml.*.tmp"))
+
+
+def test_cli_mcp_and_skill_share_handoff_bridge_semantics(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        handoff = root / "handoff.json"
+        handoff.write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "kind": "aiwb.planning-handoff",
+                    "provenance": {
+                        "system": "github",
+                        "repository": "blackfaced/ai-workbench",
+                        "issue": 16,
+                    },
+                    "goal": {
+                        "id": "goal-16",
+                        "title": "Bridge planning handoffs",
+                        "requirement": "Create a safe next artifact.",
+                        "acceptance": [
+                            {"id": "AC-1", "statement": "The bridge is safe."}
+                        ],
+                    },
+                    "todos": [
+                        {
+                            "id": "T-1",
+                            "title": "Create the bridge",
+                            "depends_on": [],
+                            "acceptance_ids": ["AC-1"],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        policy = root / "reviewed-policy.yaml"
+        policy.write_text(
+            yaml.safe_dump(
+                {
+                    "schema_version": 1,
+                    "status": "approved",
+                    "project": {"root": str(repository), "trusted": True},
+                    "capabilities": {
+                        "commands": {
+                            "unit": {
+                                "argv": [sys.executable, "-m", "pytest", "-q"],
+                                "approved": True,
+                            }
+                        },
+                        "skills": {},
+                    },
+                    "harness": {"profiles": {}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        cli_output = root / "cli-policy-draft.yaml"
+        mcp_output = root / "mcp-policy-draft.yaml"
+
+        returncode = cli_main(
+            [
+                "goal",
+                "bridge",
+                "--repo",
+                str(repository),
+                "--handoff",
+                str(handoff),
+                "--policy",
+                str(policy),
+                "--output",
+                str(cli_output),
+            ]
+        )
+        cli_value = json.loads(capsys.readouterr().out)
+        mcp_result = McpServer(root / "missing.sock")._call_tool(
+            "aiwb_handoff_bridge",
+            {
+                "repository": str(repository),
+                "handoff_path": str(handoff),
+                "policy_path": str(policy),
+                "output_path": str(mcp_output),
+            },
+        )
+        mcp_value = json.loads(mcp_result["content"][0]["text"])
+
+        assert returncode == 0
+        assert mcp_result["isError"] is False
+        assert cli_value["artifact_path"] == str(cli_output.resolve())
+        assert mcp_value["artifact_path"] == str(mcp_output.resolve())
+        assert {
+            key: value
+            for key, value in cli_value.items()
+            if key != "artifact_path"
+        } == {
+            key: value
+            for key, value in mcp_value.items()
+            if key != "artifact_path"
+        }
+        skill = (
+            TOOL_ROOT / "skills" / "intake-aiwb-goal" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        assert "aiwb goal bridge" in skill
+        assert "aiwb_handoff_bridge" in skill
+        assert "Do not invent" in skill
 
 
 def test_bare_issue_json_is_normalized_without_inventing_planning_details() -> None:
