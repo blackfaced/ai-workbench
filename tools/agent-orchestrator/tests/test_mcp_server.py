@@ -111,6 +111,7 @@ def test_stdio_mcp_lists_tools_and_reports_daemon_status() -> None:
             assert [tool["name"] for tool in listed["result"]["tools"]] == [
                 "aiwb_daemon_status",
                 "aiwb_goal_evidence",
+                "aiwb_handoff_bridge",
                 "aiwb_goal_intake",
                 "aiwb_goal_preflight",
                 "aiwb_goal_report",
