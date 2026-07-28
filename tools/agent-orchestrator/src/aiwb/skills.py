@@ -102,6 +102,14 @@ class SkillCatalog:
             source="bundled",
             path="skills/intake-aiwb-goal/SKILL.md",
         ),
+        SkillDescriptor(
+            name="refresh-harness-recipes",
+            description=(
+                "Audit and preview source-backed public Harness Recipe refreshes."
+            ),
+            source="bundled",
+            path="skills/refresh-harness-recipes/SKILL.md",
+        ),
     )
 
     def recommend(

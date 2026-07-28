@@ -34,6 +34,7 @@ from .github_pipeline import (
     append_pipeline_observation,
 )
 from .project import DoctorReport, ProjectDoctor, ProjectInitializer
+from .recipe_catalog import RecipeCatalog
 from .skills import (
     SkillCatalog,
     SkillCatalogSnapshot,
@@ -186,11 +187,15 @@ class HarnessSetup:
         analysis_provider: Optional[
             Callable[[Path], ExternalAnalysisEvidence]
         ] = None,
+        recipe_catalog: Optional[RecipeCatalog] = None,
+        project_recipe_catalog: Optional[Path] = None,
     ) -> None:
         self._catalog = catalog or SkillCatalog()
         self._pack_catalog = pack_catalog or SkillPackCatalog()
         self._command_runner = command_runner or _run_pack_command
         self._analysis_provider = analysis_provider
+        self._recipe_catalog = recipe_catalog or RecipeCatalog()
+        self._project_recipe_catalog = project_recipe_catalog
         self._initializer = ProjectInitializer()
 
     def inspect(self, request: HarnessSetupRequest) -> HarnessAssessment:
@@ -242,6 +247,14 @@ class HarnessSetup:
             if assessment.project_profile is not None
             else None
         )
+        recipe_versions = ()
+        if planning is not None:
+            resolution = self._recipe_catalog.resolve(
+                "python-l0-baseline",
+                project_catalog=self._project_recipe_catalog,
+            )
+            recipe = self._recipe_catalog.require_verified(resolution)
+            recipe_versions = ((recipe.name, recipe.version),)
         return HarnessPlan(
             state="planned",
             request=request,
@@ -250,9 +263,7 @@ class HarnessSetup:
                 planning.command_candidates if planning is not None else ()
             ),
             recipe_versions=(
-                (("python-l0-baseline", 1),)
-                if planning is not None
-                else ()
+                recipe_versions
             ),
             coverage_decision=(
                 "measure_baseline_before_threshold"
