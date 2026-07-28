@@ -133,6 +133,32 @@ class HarnessProbeEvidence:
             "stderr_ref": _reference_dict(self.stderr_ref),
         }
 
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> "HarnessProbeEvidence":
+        command = value.get("command", [])
+        artifacts = value.get("artifacts", [])
+        if not isinstance(command, list) or not all(
+            isinstance(item, str) for item in command
+        ):
+            raise ValueError("Harness Evidence command must be a string list")
+        if not isinstance(artifacts, list) or not all(
+            isinstance(item, str) for item in artifacts
+        ):
+            raise ValueError("Harness Evidence artifacts must be a string list")
+        return cls(
+            name=str(value.get("name", "")),
+            command=tuple(command),
+            working_directory=str(value.get("working_directory", "")),
+            returncode=int(value.get("returncode", 0)),
+            stdout=str(value.get("stdout", "")),
+            stderr=str(value.get("stderr", "")),
+            recorded_at=str(value.get("recorded_at", "")),
+            duration_seconds=float(value.get("duration_seconds", 0)),
+            artifacts=tuple(artifacts),
+            stdout_ref=_reference_from_dict(value.get("stdout_ref")),
+            stderr_ref=_reference_from_dict(value.get("stderr_ref")),
+        )
+
 
 @dataclass(frozen=True)
 class HarnessApplyResult:
@@ -162,6 +188,34 @@ class HarnessApplyResult:
             "report_path": self.report_path,
             "cleanup_status": self.cleanup_status,
         }
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, object]) -> "HarnessApplyResult":
+        evidence = value.get("evidence", [])
+        consumption = value.get("consumption", {})
+        if not isinstance(evidence, list) or not all(
+            isinstance(item, dict) for item in evidence
+        ):
+            raise ValueError("Harness Apply evidence must be an object list")
+        if not isinstance(consumption, dict):
+            raise ValueError("Harness Apply consumption must be an object")
+        return cls(
+            status=str(value.get("status", "")),
+            changed=bool(value.get("changed", False)),
+            repository=str(value.get("repository", "")),
+            branch=str(value.get("branch", "")),
+            worktree=str(value.get("worktree", "")),
+            base_commit=str(value.get("base_commit", "")),
+            candidate_commit=str(value.get("candidate_commit", "")),
+            evidence=tuple(
+                HarnessProbeEvidence.from_dict(item)
+                for item in evidence
+                if isinstance(item, dict)
+            ),
+            consumption=dict(consumption),
+            report_path=str(value.get("report_path", "")),
+            cleanup_status=str(value.get("cleanup_status", "")),
+        )
 
 
 def preview_python_l0_apply(
@@ -646,6 +700,20 @@ def _reference_dict(
         "media_type": reference.media_type,
         "label": reference.label,
     }
+
+
+def _reference_from_dict(value: object) -> Optional[EvidenceReference]:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise ValueError("Evidence reference must be an object")
+    return EvidenceReference(
+        artifact_id=str(value.get("artifact_id", "")),
+        sha256=str(value.get("sha256", "")),
+        size_bytes=int(value.get("size_bytes", 0)),
+        media_type=str(value.get("media_type", "")),
+        label=str(value.get("label", "")),
+    )
 
 
 def _ensure_candidate_worktree(

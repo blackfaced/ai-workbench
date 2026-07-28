@@ -27,6 +27,12 @@ from ._harness_apply import (
     load_python_l0_apply_approval,
     preview_python_l0_apply,
 )
+from .github_pipeline import (
+    GitHubActionsAdapter,
+    GitHubPipelineRequest,
+    PipelineVerification,
+    append_pipeline_observation,
+)
 from .project import DoctorReport, ProjectDoctor, ProjectInitializer
 from .skills import (
     SkillCatalog,
@@ -396,6 +402,21 @@ class HarnessSetup:
             approval,
             state_dir=state_dir,
         )
+
+    def verify_pipeline(
+        self,
+        request: GitHubPipelineRequest,
+        *,
+        adapter: GitHubActionsAdapter,
+        state_dir: Path,
+    ) -> PipelineVerification:
+        result = adapter.verify(request)
+        append_pipeline_observation(
+            request,
+            result,
+            state_dir=state_dir,
+        )
+        return result
 
     def apply(self, request: HarnessApplyRequest) -> HarnessCandidate:
         if request.plan.state != "planned":

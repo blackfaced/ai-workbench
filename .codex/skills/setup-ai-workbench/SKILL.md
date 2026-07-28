@@ -72,6 +72,16 @@ migration. Apply writes only an isolated candidate worktree, never the primary
 working tree or target branch. Preserve a failed candidate and its report for
 review. `configured_local` is not pipeline verification.
 
+## Verify the exact candidate commit
+
+Once an approved repository flow publishes the configured candidate, use
+`aiwb pipeline verify` with the candidate report, GitHub owner/repository,
+required check names, required artifact names, and an external state directory.
+This is read-only against GitHub. Do not dispatch a workflow, inspect secret
+values, change required checks, or accept a green result for another commit.
+Report `pipeline_pending`, `verification_failed`, or `verified` exactly as
+returned, preserving first failures and explicit retries.
+
 ## Confirm before applying
 
 If the user wants a project-local draft workflow, state exactly what will be

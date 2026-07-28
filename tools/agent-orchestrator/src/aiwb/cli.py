@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional, Sequence, Tuple
@@ -9,6 +10,12 @@ from typing import Optional, Sequence, Tuple
 from .agent import AgentRouter, ClaudeCodeCliAdapter, CodexCliAdapter
 from .daemon import AgentDaemon, DaemonClient, DaemonError
 from .handoff_bridge import GoalHandoffBridge
+from .github_pipeline import (
+    GhApiGitHubSource,
+    GitHubActionsAdapter,
+    GitHubPipelineRequest,
+)
+from ._harness_apply import HarnessApplyResult
 from .harness_setup import (
     HarnessApplyRequest,
     HarnessSetup,
@@ -35,6 +42,7 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
         "setup": _run_setup,
         "skills": _run_skills,
         "doctor": _run_doctor,
+        "pipeline": _run_pipeline,
         "goal": _run_goal,
         "daemon": _run_daemon,
         "evidence": _run_evidence,
@@ -112,6 +120,32 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     doctor.add_argument("--codex-bin", default="codex")
     doctor.add_argument("--claude-bin", default="claude")
+
+    pipeline = commands.add_parser("pipeline")
+    pipeline_commands = pipeline.add_subparsers(
+        dest="pipeline_command",
+        required=True,
+    )
+    pipeline_verify = pipeline_commands.add_parser("verify")
+    pipeline_verify.add_argument("--candidate-report", required=True, type=Path)
+    pipeline_verify.add_argument("--owner", required=True)
+    pipeline_verify.add_argument("--repository", required=True)
+    pipeline_verify.add_argument(
+        "--required-check",
+        action="append",
+        default=[],
+    )
+    pipeline_verify.add_argument(
+        "--required-artifact",
+        action="append",
+        default=[],
+    )
+    pipeline_verify.add_argument(
+        "--missing-variable",
+        action="append",
+        default=[],
+    )
+    pipeline_verify.add_argument("--state-dir", required=True, type=Path)
 
     goal = commands.add_parser("goal")
     goal_commands = goal.add_subparsers(dest="goal_command", required=True)
@@ -431,6 +465,37 @@ def _run_doctor(options: argparse.Namespace) -> int:
     return 0 if report.status == "ok" else 1
 
 
+def _run_pipeline(options: argparse.Namespace) -> int:
+    if options.pipeline_command != "verify":
+        raise ValueError(f"unsupported pipeline command: {options.pipeline_command}")
+    try:
+        value = json.loads(options.candidate_report.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"cannot read candidate report: {error}") from error
+    if not isinstance(value, dict):
+        raise ValueError("candidate report must be a JSON object")
+    request = GitHubPipelineRequest(
+        owner=options.owner,
+        repository=options.repository,
+        candidate=HarnessApplyResult.from_dict(value),
+        required_checks=tuple(options.required_check),
+        required_artifacts=tuple(options.required_artifact),
+        missing_variables=tuple(
+            _named_values(options.missing_variable, "missing variable")
+        ),
+    )
+    executable = os.environ.get("AIWB_GH_BIN", "/usr/bin/gh")
+    result = HarnessSetup().verify_pipeline(
+        request,
+        adapter=GitHubActionsAdapter(
+            GhApiGitHubSource(executable=executable)
+        ),
+        state_dir=options.state_dir,
+    )
+    _print_json(result.to_dict())
+    return 0 if result.status in {"pipeline_pending", "verified"} else 1
+
+
 def _run_goal(options: argparse.Namespace) -> int:
     if options.goal_command == "bridge":
         result = GoalHandoffBridge().create(
@@ -600,6 +665,19 @@ def _pack_profiles(
             raise ValueError("pack profiles require a matching --install-pack")
         selected[pack].append(profile)
     return {pack: tuple(profiles) for pack, profiles in selected.items() if profiles}
+
+
+def _named_values(
+    values: Sequence[str],
+    label: str,
+) -> Tuple[Tuple[str, str], ...]:
+    result = []
+    for value in values:
+        name, separator, purpose = value.partition("=")
+        if not separator or not name.strip() or not purpose.strip():
+            raise ValueError(f"{label} must use NAME=PURPOSE")
+        result.append((name.strip(), purpose.strip()))
+    return tuple(result)
 
 
 def _pack_to_dict(pack) -> dict[str, object]:
