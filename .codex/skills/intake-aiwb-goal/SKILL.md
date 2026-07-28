@@ -31,6 +31,23 @@ aiwb goal intake --repo /path/to/project --contract /path/to/contract.yaml
 Pass the handoff to the shared interface. Do not reimplement schema validation,
 normalization, readiness blockers, or cheapest-path selection in this Skill.
 
+## Create the next safe artifact
+
+After planning intake, use the bridge only with an explicit reviewed policy and
+caller-selected output outside the target repository:
+
+```bash
+aiwb goal bridge --repo /path/to/project \
+  --handoff /path/to/handoff.json \
+  --policy /path/to/reviewed-policy.yaml \
+  --output /path/outside/project/next-artifact.yaml
+```
+
+The equivalent MCP tool is `aiwb_handoff_bridge`. A fully mapped handoff creates
+an unapproved Contract and side-effect-free preflight result. Missing approved
+command mappings or `allowed_paths` creates only a non-executable policy draft.
+Do not invent commands, paths, approvals, provider changes, or placeholders.
+
 ## Interpret
 
 - `interactive` / `interactive_matt`: use the installed `$ask-matt` router, or

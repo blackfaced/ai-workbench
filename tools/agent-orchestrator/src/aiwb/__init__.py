@@ -31,6 +31,7 @@ from .harness import (
     HarnessRequest,
     LocalProcessHarness,
 )
+from .handoff_bridge import GoalHandoffBridge, HandoffBridgeResult
 from .harness_setup import (
     HarnessApplyRequest,
     HarnessAssessment,
@@ -113,6 +114,7 @@ __all__ = [
     "DoctorCheck",
     "DoctorReport",
     "GoalRunner",
+    "GoalHandoffBridge",
     "GoalIntake",
     "GoalIntakeResult",
     "GateError",
@@ -126,6 +128,7 @@ __all__ = [
     "HarnessRequest",
     "HarnessSetup",
     "HarnessSetupRequest",
+    "HandoffBridgeResult",
     "HarnessVerification",
     "HarnessVerifyRequest",
     "ImageBuildError",

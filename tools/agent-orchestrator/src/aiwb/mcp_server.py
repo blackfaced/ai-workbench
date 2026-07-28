@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import IO, Dict, Mapping, Optional, Sequence
 
 from .daemon import DaemonClient, DaemonError
+from .handoff_bridge import GoalHandoffBridge
 from .intake import GoalIntake
 from .runner import preview_execution
 
@@ -91,6 +92,15 @@ class McpServer:
                     "socket": str(self._socket_path),
                     "status": "ok" if self._client.ping() else "unavailable",
                 }
+            elif name == "aiwb_handoff_bridge":
+                value = GoalHandoffBridge().create(
+                    repository=Path(_string_argument(arguments, "repository")),
+                    handoff_path=Path(
+                        _string_argument(arguments, "handoff_path")
+                    ),
+                    policy_path=Path(_string_argument(arguments, "policy_path")),
+                    output_path=Path(_string_argument(arguments, "output_path")),
+                ).to_dict()
             elif name == "aiwb_goal_preflight":
                 contract_path = _string_argument(arguments, "contract_path")
                 workflow_path = arguments.get("workflow_path")
@@ -206,6 +216,29 @@ def _tools():
                     "artifact_id": string_argument,
                 },
                 "required": ["run_id", "artifact_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "aiwb_handoff_bridge",
+            "description": (
+                "Create an external unapproved Contract or non-executable "
+                "policy draft from a planning handoff and reviewed policy."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "repository": string_argument,
+                    "handoff_path": string_argument,
+                    "policy_path": string_argument,
+                    "output_path": string_argument,
+                },
+                "required": [
+                    "repository",
+                    "handoff_path",
+                    "policy_path",
+                    "output_path",
+                ],
                 "additionalProperties": False,
             },
         },

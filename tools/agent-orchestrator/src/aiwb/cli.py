@@ -8,6 +8,7 @@ from typing import Optional, Sequence, Tuple
 
 from .agent import AgentRouter, ClaudeCodeCliAdapter, CodexCliAdapter
 from .daemon import AgentDaemon, DaemonClient, DaemonError
+from .handoff_bridge import GoalHandoffBridge
 from .harness_setup import (
     HarnessApplyRequest,
     HarnessSetup,
@@ -155,6 +156,12 @@ def _build_parser() -> argparse.ArgumentParser:
     draft.add_argument("--tickets", required=True, type=Path)
     draft.add_argument("--output", required=True, type=Path)
     draft.add_argument("--force", action="store_true")
+
+    bridge = goal_commands.add_parser("bridge")
+    bridge.add_argument("--repo", required=True, type=Path)
+    bridge.add_argument("--handoff", required=True, type=Path)
+    bridge.add_argument("--policy", required=True, type=Path)
+    bridge.add_argument("--output", required=True, type=Path)
 
     daemon = commands.add_parser("daemon")
     daemon_commands = daemon.add_subparsers(dest="daemon_command", required=True)
@@ -312,6 +319,15 @@ def _run_doctor(options: argparse.Namespace) -> int:
 
 
 def _run_goal(options: argparse.Namespace) -> int:
+    if options.goal_command == "bridge":
+        result = GoalHandoffBridge().create(
+            repository=options.repo,
+            handoff_path=options.handoff,
+            policy_path=options.policy,
+            output_path=options.output,
+        )
+        _print_json(result.to_dict())
+        return 0
     if options.goal_command == "draft":
         result = TicketContractDraftBuilder().create(
             tickets_path=options.tickets,
