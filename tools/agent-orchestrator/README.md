@@ -48,6 +48,35 @@ aiwb setup --repo /path/to/repository --planning-mode python-l0 \
 
 Plan Approval does not authorize Apply, run probes, or create a Candidate.
 
+Python L0 Apply uses a separate exact approval envelope. First preview the
+candidate files, dependencies, canonical commands, side effects, base commit,
+branch, and worktree:
+
+```bash
+aiwb setup --repo /path/to/repository --planning-mode python-l0 \
+  --approved-plan /path/to/approved-plan.json \
+  --base-commit <full-commit-sha> --state-dir /path/to/state \
+  --apply-command unit --preview-apply
+```
+
+Record exact Apply Approval outside the target repository:
+
+```bash
+aiwb setup --repo /path/to/repository --planning-mode python-l0 \
+  --approved-plan /path/to/approved-plan.json \
+  --base-commit <full-commit-sha> --state-dir /path/to/state \
+  --apply-command unit --approve-apply --approved-by owner \
+  --apply-artifact /path/to/approved-apply.json
+```
+
+Then execute that unchanged envelope with `--execute-apply` and the same
+arguments. Apply creates and commits only an isolated candidate branch/worktree,
+generates one consistent policy/guide/Codex Skill/Claude Skill/pipeline draft,
+runs only approved project-owned probes, and writes reports under the external
+state directory. Local success is `configured_local`, never `verified`. Failure
+preserves the candidate, first-failure Evidence, report, and cleanup status; the
+target branch and dirty primary working tree remain untouched.
+
 `GoalRunner.run(contract)` is the execution interface and test surface. It hides Contract validation, checkpoint persistence, Git worktree management, RED/GREEN machine gates, role prompts, Evidence capture, and recovery.
 
 `DaemonClient.submit/status/report/evidence` is the control interface. It hides the Unix socket protocol, background queue, SQLite job state, thread pool, stale socket handling, content-addressed Evidence retrieval, and process-restart recovery.
