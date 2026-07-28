@@ -31,6 +31,16 @@ from .harness import (
     HarnessRequest,
     LocalProcessHarness,
 )
+from .harness_setup import (
+    HarnessApplyRequest,
+    HarnessAssessment,
+    HarnessCandidate,
+    HarnessPlan,
+    HarnessSetup,
+    HarnessSetupRequest,
+    HarnessVerification,
+    HarnessVerifyRequest,
+)
 from .image import ImageBuildError
 from .intake import GoalIntake, GoalIntakeResult, IntakeBlocker
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
@@ -108,8 +118,16 @@ __all__ = [
     "GateError",
     "HarnessError",
     "HarnessExecution",
+    "HarnessApplyRequest",
+    "HarnessAssessment",
+    "HarnessCandidate",
+    "HarnessPlan",
     "HarnessProfile",
     "HarnessRequest",
+    "HarnessSetup",
+    "HarnessSetupRequest",
+    "HarnessVerification",
+    "HarnessVerifyRequest",
     "ImageBuildError",
     "IntakeBlocker",
     "KubernetesHarness",
