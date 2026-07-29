@@ -477,7 +477,7 @@ def test_harness_setup_apply_requires_a_planned_explicitly_confirmed_request() -
 
         workflow = repository / ".ai-workbench" / "workflow.yaml"
         assert candidate.state == "candidate"
-        assert candidate.workflow_path == str(workflow)
+        assert Path(candidate.workflow_path) == workflow.resolve()
         assert candidate.workflow_action == "created"
         assert candidate.changed is True
         assert workflow.is_file()

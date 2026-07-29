@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import configparser
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional, Tuple
@@ -427,7 +426,7 @@ def _capabilities(
         _capability(
             "unit",
             "keep" if has_pytest else "adopt",
-            (sys.executable, "-m", "pytest", "-q"),
+            ("python3", "-m", "pytest", "-q"),
             "pytest project metadata" if has_pytest else "Python target structure",
             "high" if has_pytest else "medium",
             "Preserve the existing Pytest path."
@@ -438,9 +437,9 @@ def _capabilities(
             "lint",
             "keep" if has_flake8 or has_ruff else "adopt",
             (
-                (sys.executable, "-m", "flake8", ".")
+                ("python3", "-m", "flake8", ".")
                 if has_flake8
-                else (sys.executable, "-m", "ruff", "check", ".")
+                else ("python3", "-m", "ruff", "check", ".")
             ),
             (
                 "Flake8 project metadata"
@@ -460,9 +459,9 @@ def _capabilities(
             "format",
             "keep" if has_black or has_ruff else "adopt",
             (
-                (sys.executable, "-m", "black", "--check", ".")
+                ("python3", "-m", "black", "--check", ".")
                 if has_black
-                else (sys.executable, "-m", "ruff", "format", "--check", ".")
+                else ("python3", "-m", "ruff", "format", "--check", ".")
             ),
             (
                 "Black project metadata"
@@ -482,9 +481,9 @@ def _capabilities(
             "typecheck",
             "keep" if type_tool else "adopt",
             (
-                (sys.executable, "-m", type_tool, ".")
+                ("python3", "-m", type_tool, ".")
                 if type_tool
-                else (sys.executable, "-m", "mypy", ".")
+                else ("python3", "-m", "mypy", ".")
             ),
             f"{type_tool} project metadata" if type_tool else "Python target structure",
             "high" if type_tool else "low",
@@ -496,7 +495,7 @@ def _capabilities(
             "coverage",
             "augment" if has_coverage else "adopt",
             (
-                sys.executable,
+                "python3",
                 "-m",
                 "pytest",
                 "--cov",
@@ -521,7 +520,7 @@ def _capabilities(
             _capability(
                 "ruff_lint_migration",
                 "migrate_later",
-                (sys.executable, "-m", "ruff", "check", "."),
+                ("python3", "-m", "ruff", "check", "."),
                 "Flake8 and Ruff project metadata",
                 "high",
                 "Keep Flake8 working; evaluate Ruff consolidation separately.",
@@ -532,7 +531,7 @@ def _capabilities(
             _capability(
                 "ruff_format_migration",
                 "migrate_later",
-                (sys.executable, "-m", "ruff", "format", "--check", "."),
+                ("python3", "-m", "ruff", "format", "--check", "."),
                 "Black and Ruff project metadata",
                 "high",
                 "Keep Black working; evaluate Ruff consolidation separately.",

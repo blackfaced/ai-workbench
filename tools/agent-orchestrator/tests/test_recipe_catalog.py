@@ -202,12 +202,16 @@ def test_refresh_preview_is_reviewable_and_never_mutates_bundled_or_project() ->
                 },
             },
         )
-        assert json.loads(output.read_text(encoding="utf-8")) == result.to_dict()
+        artifact = json.loads(output.read_text(encoding="utf-8"))
+        assert artifact == result.artifact_dict()
+        assert result.output_path == str(output.resolve())
+        assert "output_path" not in artifact
+        assert "catalog_path" not in artifact["validation"]
         assert bundled.read_bytes() == before_bundled
         assert project_policy.read_bytes() == before_policy
         payload = output.read_text(encoding="utf-8")
         assert str(repository) not in payload
-        assert "private" not in payload.lower()
+        assert str(root.resolve()) not in payload
 
 
 @pytest.mark.parametrize(
@@ -338,7 +342,30 @@ def test_cli_audit_and_refresh_match_catalog_results(
         assert audit["status"] == "ok"
         assert refresh_code == 0
         assert refresh["status"] == "review_required"
-        assert refresh == json.loads(output.read_text(encoding="utf-8"))
+        artifact = json.loads(output.read_text(encoding="utf-8"))
+        assert {
+            key: refresh[key]
+            for key in (
+                "status",
+                "current_catalog_digest",
+                "proposed_catalog_digest",
+                "changes",
+                "upgrade_plan",
+            )
+        } == {
+            key: artifact[key]
+            for key in (
+                "status",
+                "current_catalog_digest",
+                "proposed_catalog_digest",
+                "changes",
+                "upgrade_plan",
+            )
+        }
+        assert refresh["output_path"] == str(output.resolve())
+        assert "output_path" not in artifact
+        assert "catalog_path" in refresh["validation"]
+        assert "catalog_path" not in artifact["validation"]
 
 
 def test_refresh_skill_routes_to_public_preview_without_private_data() -> None:

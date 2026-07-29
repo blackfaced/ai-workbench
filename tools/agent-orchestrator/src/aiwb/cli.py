@@ -132,6 +132,7 @@ def _build_parser() -> argparse.ArgumentParser:
     pipeline_verify.add_argument("--candidate-report", required=True, type=Path)
     pipeline_verify.add_argument("--owner", required=True)
     pipeline_verify.add_argument("--repository", required=True)
+    pipeline_verify.add_argument("--workflow-name", required=True)
     pipeline_verify.add_argument(
         "--required-check",
         action="append",
@@ -492,12 +493,13 @@ def _run_pipeline(options: argparse.Namespace) -> int:
         repository=options.repository,
         candidate=HarnessApplyResult.from_dict(value),
         required_checks=tuple(options.required_check),
+        workflow_name=options.workflow_name,
         required_artifacts=tuple(options.required_artifact),
         missing_variables=tuple(
             _named_values(options.missing_variable, "missing variable")
         ),
     )
-    executable = os.environ.get("AIWB_GH_BIN", "/usr/bin/gh")
+    executable = os.environ.get("AIWB_GH_BIN") or None
     result = HarnessSetup().verify_pipeline(
         request,
         adapter=GitHubActionsAdapter(

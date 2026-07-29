@@ -121,6 +121,18 @@ class RecipeRefreshPreview:
             "output_path": self.output_path,
         }
 
+    def artifact_dict(self) -> Mapping[str, object]:
+        validation = dict(self.validation.to_dict())
+        validation.pop("catalog_path", None)
+        return {
+            "status": self.status,
+            "current_catalog_digest": self.current_catalog_digest,
+            "proposed_catalog_digest": self.proposed_catalog_digest,
+            "changes": [dict(item) for item in self.changes],
+            "upgrade_plan": [dict(item) for item in self.upgrade_plan],
+            "validation": validation,
+        }
+
 
 class RecipeCatalog:
     """Resolve layered versioned Recipes and preview source-backed refreshes."""
@@ -363,7 +375,7 @@ class RecipeCatalog:
             validation=proposed,
             output_path=str(output_path),
         )
-        _write_json_atomically(output_path, result.to_dict())
+        _write_json_atomically(output_path, result.artifact_dict())
         return result
 
 
