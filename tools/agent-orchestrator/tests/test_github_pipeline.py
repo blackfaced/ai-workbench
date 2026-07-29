@@ -195,13 +195,16 @@ def test_expired_required_artifact_is_non_verified_and_visible() -> None:
     )
 
 
-def test_completed_run_with_missing_required_check_is_non_verified() -> None:
+def test_completed_run_with_missing_required_job_is_non_verified() -> None:
     source = FixtureSource(
         runs=(
             _run(10, commit=COMMIT, status="completed", conclusion="success"),
         ),
         jobs=(
-            _job(10, 100, status="completed", conclusion="success"),
+            {
+                **_job(10, 100, status="completed", conclusion="success"),
+                "name": "docs",
+            },
         ),
         checks=(),
         artifacts=(
@@ -269,6 +272,124 @@ def test_flaky_retry_preserves_first_failure_and_successful_retry() -> None:
     assert result.flaky is True
 
 
+def test_newer_workflow_run_wins_when_older_run_has_higher_attempt() -> None:
+    source = FixtureSource(
+        runs=(
+            _run(
+                10,
+                commit=COMMIT,
+                attempt=2,
+                status="completed",
+                conclusion="failure",
+            ),
+            _run(
+                11,
+                commit=COMMIT,
+                attempt=1,
+                status="completed",
+                conclusion="success",
+            ),
+        ),
+        jobs=(
+            _job(10, 100, attempt=2, status="completed", conclusion="failure"),
+            _job(11, 101, attempt=1, status="completed", conclusion="success"),
+        ),
+        checks=(
+            _check("harness", commit=COMMIT, status="completed", conclusion="success"),
+        ),
+        artifacts=(
+            _artifact(11, "harness-evidence", expired=False),
+        ),
+    )
+
+    result = GitHubActionsAdapter(source).verify(_request())
+
+    assert result.status == "verified"
+    assert result.blockers == ()
+
+
+def test_unrelated_workflow_cannot_control_harness_verification() -> None:
+    source = FixtureSource(
+        runs=(
+            _run(
+                10,
+                commit=COMMIT,
+                status="completed",
+                conclusion="success",
+                name="AI Workbench Harness",
+            ),
+            _run(
+                20,
+                commit=COMMIT,
+                status="completed",
+                conclusion="failure",
+                name="Documentation",
+            ),
+        ),
+        jobs=(
+            _job(10, 100, status="completed", conclusion="success"),
+            {
+                **_job(20, 200, status="completed", conclusion="failure"),
+                "name": "docs",
+            },
+        ),
+        checks=(
+            _check("harness", commit=COMMIT, status="completed", conclusion="success"),
+        ),
+        artifacts=(
+            _artifact(10, "harness-evidence", expired=False),
+        ),
+    )
+
+    result = GitHubActionsAdapter(source).verify(
+        _request(workflow_name="AI Workbench Harness")
+    )
+
+    assert result.status == "verified"
+    assert result.retry_count == 0
+    assert result.flaky is False
+    assert any(
+        item.kind == "run" and item.name == "Documentation"
+        for item in result.evidence
+    )
+
+
+def test_unrelated_commit_check_cannot_satisfy_selected_workflow_gate() -> None:
+    source = FixtureSource(
+        runs=(
+            _run(
+                10,
+                commit=COMMIT,
+                status="completed",
+                conclusion="success",
+            ),
+        ),
+        jobs=(
+            {
+                **_job(10, 100, status="completed", conclusion="success"),
+                "name": "docs",
+            },
+        ),
+        checks=(
+            _check("harness", commit=COMMIT, status="completed", conclusion="success"),
+        ),
+    )
+
+    result = GitHubActionsAdapter(source).verify(_request())
+
+    assert result.status == "verification_failed"
+    assert [blocker.code for blocker in result.blockers] == [
+        "required_check_missing"
+    ]
+
+
+def test_pipeline_verification_requires_explicit_workflow_identity() -> None:
+    request = _request(workflow_name="")
+
+    with pytest.raises(ValueError, match="workflow_name"):
+        GitHubActionsAdapter(FixtureSource()).verify(request)
+
+
 def test_adapter_rejects_non_configured_local_input() -> None:
     configured = replace_apply_status("failed_local")
     request = _request(configured=configured)
@@ -296,6 +417,7 @@ def test_missing_variable_reports_only_name_and_purpose() -> None:
         owner="blackfaced",
         repository="ai-workbench",
         candidate=replace_apply_status("configured_local"),
+        workflow_name="AI Workbench Harness",
         required_checks=("harness",),
         required_artifacts=("harness-evidence",),
         missing_variables=(("PACKAGE_TOKEN", "read private test dependency"),),
@@ -445,6 +567,22 @@ def test_gh_source_uses_only_side_effect_free_get_requests() -> None:
         assert "/branches/" not in serialized
 
 
+def test_gh_source_resolves_the_cli_from_path() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        executable = root / "gh"
+        executable.write_text(
+            f"#!{sys.executable}\n"
+            "import json\n"
+            "print(json.dumps({'workflow_runs': []}))\n",
+            encoding="utf-8",
+        )
+        executable.chmod(0o755)
+        source = GhApiGitHubSource(environment={"PATH": str(root)})
+
+        assert source.workflow_runs(_request()) == ()
+
+
 def test_pipeline_cli_reads_candidate_report_and_returns_pending(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -499,6 +637,8 @@ def test_pipeline_cli_reads_candidate_report_and_returns_pending(
                 "blackfaced",
                 "--repository",
                 "ai-workbench",
+                "--workflow-name",
+                "AI Workbench Harness",
                 "--required-check",
                 "harness",
                 "--required-artifact",
@@ -530,15 +670,25 @@ def test_repository_github_workflow_has_stable_gate_and_pinned_actions() -> None
     assert "workflow_dispatch" not in workflow
     assert "actions/checkout@v4" not in workflow
     assert "actions/setup-python@v5" not in workflow
+    assert "macos-latest" in workflow
+    assert 'python: "3.9"' in workflow
+    assert "tests/test_harness_setup.py" in workflow
+    assert "tests/test_harness_apply.py" in workflow
+    assert "tests/test_recipe_catalog.py" in workflow
+    assert "tests/test_github_pipeline.py" in workflow
 
 
-def _request(configured=None) -> GitHubPipelineRequest:
+def _request(
+    configured=None,
+    workflow_name: str = "AI Workbench Harness",
+) -> GitHubPipelineRequest:
     return GitHubPipelineRequest(
         owner="blackfaced",
         repository="ai-workbench",
         candidate=configured or replace_apply_status("configured_local"),
         required_checks=("harness",),
         required_artifacts=("harness-evidence",),
+        workflow_name=workflow_name,
     )
 
 
@@ -565,6 +715,7 @@ def _run(
     status: str,
     conclusion,
     attempt: int = 1,
+    name: str = "AI Workbench Harness",
 ):
     return {
         "id": run_id,
@@ -573,7 +724,7 @@ def _run(
         "conclusion": conclusion,
         "run_attempt": attempt,
         "html_url": f"https://github.test/runs/{run_id}",
-        "name": "AI Workbench Harness",
+        "name": name,
         "event": "push",
     }
 

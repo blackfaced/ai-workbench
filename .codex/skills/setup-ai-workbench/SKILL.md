@@ -76,7 +76,9 @@ review. `configured_local` is not pipeline verification.
 
 Once an approved repository flow publishes the configured candidate, use
 `aiwb pipeline verify` with the candidate report, GitHub owner/repository,
-required check names, required artifact names, and an external state directory.
+the approved Harness workflow name, required check names, required artifact
+names, and an external state directory. AI Workbench resolves `gh` from `PATH`;
+`AIWB_GH_BIN` is an explicit override, not a required setup step.
 This is read-only against GitHub. Do not dispatch a workflow, inspect secret
 values, change required checks, or accept a green result for another commit.
 Report `pipeline_pending`, `verification_failed`, or `verified` exactly as

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ class GitHubPipelineRequest:
     owner: str
     repository: str
     candidate: HarnessApplyResult
+    workflow_name: str
     required_checks: Tuple[str, ...]
     required_artifacts: Tuple[str, ...] = ()
     missing_variables: Tuple[Tuple[str, str], ...] = ()
@@ -123,7 +125,7 @@ class GitHubActionsAdapter:
         _validate_request(request)
         raw_runs = tuple(self._source.workflow_runs(request))
         raw_checks = tuple(self._source.check_runs(request))
-        exact_runs = tuple(
+        commit_runs = tuple(
             run for run in raw_runs if str(run.get("head_sha", "")) == request.commit
         )
         evidence = [
@@ -149,7 +151,7 @@ class GitHubActionsAdapter:
                     ),
                 )
             )
-        if not exact_runs:
+        if not commit_runs:
             blockers.append(
                 IntakeBlocker(
                     code="exact_commit_missing",
@@ -162,12 +164,38 @@ class GitHubActionsAdapter:
                     ),
                 )
             )
-            return _result(request, evidence, blockers)
+            return _result(request, evidence, blockers, selected_run_ids=())
+        exact_runs = tuple(
+            run
+            for run in commit_runs
+            if str(run.get("name", "")) == request.workflow_name
+        )
+        if not exact_runs:
+            blockers.append(
+                IntakeBlocker(
+                    code="workflow_missing",
+                    message=(
+                        "No exact-commit GitHub Actions run matches workflow "
+                        f"{request.workflow_name!r}."
+                    ),
+                    action=(
+                        "Confirm the Harness workflow name and publish the exact "
+                        "candidate through that approved workflow."
+                    ),
+                )
+            )
+            return _result(request, evidence, blockers, selected_run_ids=())
 
         exact_runs = tuple(sorted(exact_runs, key=_attempt_key))
+        selected_run_ids = tuple(
+            str(_integer(run.get("id"), "workflow run id"))
+            for run in exact_runs
+        )
+        jobs_by_run_id = {}
         for run in exact_runs:
             run_id = _integer(run.get("id"), "workflow run id")
             jobs = tuple(self._source.run_jobs(request, run_id))
+            jobs_by_run_id[run_id] = jobs
             evidence.extend(
                 _job_evidence(job, request.commit, run)
                 for job in jobs
@@ -178,23 +206,18 @@ class GitHubActionsAdapter:
                 for artifact in artifacts
             )
 
-        exact_checks = tuple(
-            check
-            for check in raw_checks
-            if str(check.get("head_sha", "")) == request.commit
-        )
         latest_run = exact_runs[-1]
         latest_run_id = _integer(latest_run.get("id"), "workflow run id")
         run_status = str(latest_run.get("status", ""))
         run_conclusion = str(latest_run.get("conclusion") or "")
         pending = run_status != "completed"
-        check_by_name = {
-            str(check.get("name", "")): check
-            for check in exact_checks
+        selected_job_by_name = {
+            str(job.get("name", "")): job
+            for job in jobs_by_run_id[latest_run_id]
         }
         for required in request.required_checks:
-            check = check_by_name.get(required)
-            if check is None:
+            selected_job = selected_job_by_name.get(required)
+            if selected_job is None:
                 if not pending:
                     blockers.append(
                         IntakeBlocker(
@@ -207,8 +230,8 @@ class GitHubActionsAdapter:
                         )
                     )
                 continue
-            status = str(check.get("status", ""))
-            conclusion = str(check.get("conclusion") or "")
+            status = str(selected_job.get("status", ""))
+            conclusion = str(selected_job.get("conclusion") or "")
             if status != "completed":
                 pending = True
             elif conclusion != "success":
@@ -257,7 +280,13 @@ class GitHubActionsAdapter:
                             ),
                         )
                     )
-        return _result(request, evidence, blockers, pending=pending)
+        return _result(
+            request,
+            evidence,
+            blockers,
+            pending=pending,
+            selected_run_ids=selected_run_ids,
+        )
 
 
 class GhApiGitHubSource:
@@ -265,15 +294,23 @@ class GhApiGitHubSource:
 
     def __init__(
         self,
-        executable: str = "/usr/bin/gh",
+        executable: str | None = None,
         environment: Mapping[str, str] | None = None,
     ) -> None:
-        self._executable = executable
         self._environment = (
             dict(environment)
             if environment is not None
             else dict(os.environ)
         )
+        resolved = executable or shutil.which(
+            "gh",
+            path=self._environment.get("PATH", os.defpath),
+        )
+        if not resolved:
+            raise ValueError(
+                "GitHub CLI 'gh' was not found on PATH; install it or set AIWB_GH_BIN"
+            )
+        self._executable = resolved
 
     def workflow_runs(
         self,
@@ -426,18 +463,25 @@ def _result(
     blockers: Sequence[IntakeBlocker],
     *,
     pending: bool = False,
+    selected_run_ids: Sequence[str],
 ) -> PipelineVerification:
+    selected = set(selected_run_ids)
     attempts = sorted(
         {
             item.attempt
             for item in evidence
-            if item.kind == "run" and not item.stale
+            if item.kind == "run"
+            and not item.stale
+            and item.identifier in selected
         }
     )
     conclusions = {
         item.conclusion
         for item in evidence
-        if item.kind == "run" and not item.stale and item.conclusion
+        if item.kind == "run"
+        and not item.stale
+        and item.identifier in selected
+        and item.conclusion
     }
     flaky = "failure" in conclusions and "success" in conclusions
     if blockers:
@@ -542,6 +586,8 @@ def _validate_request(request: GitHubPipelineRequest) -> None:
         raise ValueError("Pipeline verification requires configured_local candidate")
     if not request.owner or not request.repository:
         raise ValueError("GitHub owner and repository are required")
+    if not request.workflow_name.strip():
+        raise ValueError("GitHub workflow_name is required")
     if len(request.commit) != 40:
         raise ValueError("candidate commit must be a full Git commit SHA")
     if not request.required_checks:
@@ -555,8 +601,8 @@ def _validate_request(request: GitHubPipelineRequest) -> None:
 
 def _attempt_key(run: Mapping[str, object]) -> Tuple[int, int]:
     return (
-        _integer(run.get("run_attempt", 1), "run attempt"),
         _integer(run.get("id"), "workflow run id"),
+        _integer(run.get("run_attempt", 1), "run attempt"),
     )
 
 

@@ -86,6 +86,7 @@ repository flow, read its GitHub Actions state without dispatching a workflow:
 aiwb pipeline verify \
   --candidate-report /path/to/configured-local-report.json \
   --owner owner --repository repository \
+  --workflow-name "AI Workbench Harness" \
   --required-check harness \
   --required-artifact harness-evidence \
   --state-dir /path/outside/repository/state
@@ -98,7 +99,10 @@ becomes `pipeline_pending`; only successful required checks and artifacts for
 the exact candidate commit can become `verified`. Stale green commits,
 failures, cancellation, missing or expired artifacts, and missing terminal
 checks remain explicitly non-verified. Every observed retry and first failure
-stays in the append-only external report.
+stays in the append-only external report. The approved Harness workflow must
+always be selected with `--workflow-name`; required gates are matched to jobs
+from that workflow run. Unrelated workflow runs and commit-level checks remain
+visible Evidence but cannot control verification.
 
 This repository dogfoods the Adapter through
 `.github/workflows/aiwb-harness.yml`. The workflow uses pinned Actions commits,
