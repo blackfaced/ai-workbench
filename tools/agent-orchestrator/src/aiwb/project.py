@@ -114,7 +114,7 @@ class ProjectPolicy:
         root = project.get("root")
         if not isinstance(root, str) or not root:
             raise ProjectConfigError("project policy root must be a non-empty string")
-        repository = Path(root).expanduser().resolve()
+        repository = _resolve_project_root(config_path, root)
 
         capabilities = data.get("capabilities")
         if not isinstance(capabilities, dict):
@@ -856,7 +856,7 @@ class ProjectDoctor:
         )
         root_value = project.get("root")
         repository = (
-            Path(root_value).expanduser().resolve()
+            _resolve_project_root(config_path, root_value)
             if isinstance(root_value, str) and root_value
             else None
         )
@@ -1025,6 +1025,18 @@ class ProjectDoctor:
 def _read_small_text(path: Path, limit: int = 1024 * 1024) -> str:
     with path.open("r", encoding="utf-8", errors="replace") as source:
         return source.read(limit)
+
+
+def _resolve_project_root(config_path: Path, root: str) -> Path:
+    value = Path(root).expanduser()
+    if value.is_absolute():
+        return value.resolve()
+    base = (
+        config_path.parent.parent
+        if config_path.parent.name == ".ai-workbench"
+        else config_path.parent
+    )
+    return (base / value).resolve()
 
 
 def _string_mapping(value: object) -> Mapping[str, str]:

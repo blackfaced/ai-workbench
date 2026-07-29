@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import configparser
 import hashlib
 import json
 import os
@@ -17,8 +18,16 @@ import yaml
 
 from .evidence import EvidenceReference, EvidenceStore
 
+try:
+    import tomllib
+except ImportError:  # pragma: no cover - Python 3.9 and 3.10
+    import tomli as tomllib
+
 if TYPE_CHECKING:
     from .harness_setup import HarnessPlan
+
+_POETRY_VERSION = "2.1.3"
+_UV_VERSION = "0.8.4"
 
 
 @dataclass(frozen=True)
@@ -369,8 +378,6 @@ def apply_python_l0(
             "commit",
             "-m",
             "chore: configure Python L0 Harness",
-            "-m",
-            "Co-authored-by: TRAE CLI <noreply@bytedance.com>",
         )
     candidate_commit = _git(worktree, "rev-parse", "HEAD").stdout.strip()
     evidence = []
@@ -538,10 +545,11 @@ def _render_projections(
         rendered = shlex.join(canonical)
         canonical_lines.append(f"- `{rendered}`")
         pipeline_lines.append(f"      - run: {rendered}")
+    python_version, install_steps = _python_pipeline_setup(repository, selected)
     workflow = {
         "schema_version": 1,
         "status": "approved",
-        "project": {"root": str(repository), "trusted": True},
+        "project": {"root": ".", "trusted": True},
         "capabilities": {"commands": approved_commands, "skills": {}},
         "harness": {"allowed_kubernetes_contexts": [], "profiles": {}},
         "images": {"profiles": {}},
@@ -571,6 +579,10 @@ def _render_projections(
         "    runs-on: ubuntu-latest\n"
         "    steps:\n"
         "      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2\n"
+        "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0\n"
+        "        with:\n"
+        f'          python-version: "{python_version}"\n'
+        + install_steps
         + "\n".join(pipeline_lines)
         + "\n"
     )
@@ -628,6 +640,122 @@ def _render_projections(
         ),
         tuple(probe_commands),
     )
+
+
+def _python_pipeline_setup(
+    repository: Path,
+    selected: Sequence[object],
+) -> Tuple[str, str]:
+    target_paths = tuple(
+        sorted({str(candidate.working_directory) for candidate in selected})
+    )
+    versions = {
+        version
+        for target_path in target_paths
+        if (version := _declared_python_version(repository / target_path))
+    }
+    if len(versions) > 1:
+        raise ValueError(
+            "selected Python targets require different interpreter versions"
+        )
+    python_version = next(iter(versions), "3.11")
+    rendered_steps = []
+    for target_path in target_paths:
+        commands = _python_install_commands(repository / target_path)
+        rendered_steps.append(
+            "      - name: Install Harness dependencies\n"
+            f"        working-directory: {json.dumps(target_path)}\n"
+            "        run: |\n"
+            + "".join(f"          {shlex.join(command)}\n" for command in commands)
+        )
+    return python_version, "".join(rendered_steps)
+
+
+def _declared_python_version(target: Path) -> str:
+    version_file = target / ".python-version"
+    if version_file.is_file():
+        lines = version_file.read_text(encoding="utf-8").splitlines()
+        value = lines[0].strip() if lines else ""
+        match = re.match(r"^(\d+\.\d+)", value)
+        if match:
+            return match.group(1)
+
+    constraint = ""
+    pyproject = target / "pyproject.toml"
+    if pyproject.is_file():
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        project = data.get("project", {})
+        if isinstance(project, dict):
+            value = project.get("requires-python")
+            if isinstance(value, str):
+                constraint = value
+    setup_cfg = target / "setup.cfg"
+    if not constraint and setup_cfg.is_file():
+        parser = configparser.ConfigParser()
+        parser.read(setup_cfg, encoding="utf-8")
+        constraint = parser.get("options", "python_requires", fallback="")
+    match = re.search(r"(\d+)\.(\d+)", constraint)
+    return f"{match.group(1)}.{match.group(2)}" if match else ""
+
+
+def _python_install_commands(target: Path) -> Tuple[Tuple[str, ...], ...]:
+    if (target / "uv.lock").is_file():
+        return (
+            ("python", "-m", "pip", "install", f"uv=={_UV_VERSION}"),
+            ("uv", "sync", "--locked", "--all-extras", "--dev"),
+            (
+                "bash",
+                "-c",
+                'echo "$PWD/.venv/bin" >> "$GITHUB_PATH"',
+            ),
+        )
+    if (target / "poetry.lock").is_file():
+        return (
+            (
+                "python",
+                "-m",
+                "pip",
+                "install",
+                f"poetry=={_POETRY_VERSION}",
+            ),
+            ("poetry", "config", "virtualenvs.create", "false", "--local"),
+            ("poetry", "install", "--no-interaction"),
+        )
+    for name in (
+        "requirements-dev.txt",
+        "requirements-test.txt",
+        "requirements.txt",
+    ):
+        if (target / name).is_file():
+            return (("python", "-m", "pip", "install", "-r", name),)
+
+    extra = _python_test_extra(target)
+    package = f".[{extra}]" if extra else "."
+    return (("python", "-m", "pip", "install", "-e", package),)
+
+
+def _python_test_extra(target: Path) -> str:
+    pyproject = target / "pyproject.toml"
+    if pyproject.is_file():
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        project = data.get("project", {})
+        optional = (
+            project.get("optional-dependencies", {})
+            if isinstance(project, dict)
+            else {}
+        )
+        if isinstance(optional, dict):
+            for name in ("test", "tests", "dev"):
+                if name in optional:
+                    return name
+    setup_cfg = target / "setup.cfg"
+    if setup_cfg.is_file():
+        parser = configparser.ConfigParser()
+        parser.read(setup_cfg, encoding="utf-8")
+        for name in ("test", "tests", "dev"):
+            if parser.has_option("options.extras_require", name):
+                return name
+    return ""
 
 
 def _wrapper_content(

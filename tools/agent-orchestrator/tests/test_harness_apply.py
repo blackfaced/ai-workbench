@@ -14,7 +14,12 @@ import yaml
 TOOL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_ROOT / "src"))
 
-from aiwb import EvidenceStore, HarnessSetup, HarnessSetupRequest  # noqa: E402
+from aiwb import (  # noqa: E402
+    EvidenceStore,
+    HarnessSetup,
+    HarnessSetupRequest,
+    ProjectPolicy,
+)
 from aiwb.cli import main as cli_main  # noqa: E402
 
 
@@ -105,10 +110,25 @@ def test_approved_python_l0_apply_configures_isolated_candidate() -> None:
         )
         canonical = ["bash", ".ai-workbench/commands/unit.sh"]
         assert workflow["capabilities"]["commands"]["unit"]["argv"] == canonical
+        assert workflow["project"]["root"] == "."
+        assert ProjectPolicy.load(
+            worktree / ".ai-workbench" / "workflow.yaml"
+        ).repository == worktree.resolve()
+        unit_wrapper = (
+            worktree / ".ai-workbench" / "commands" / "unit.sh"
+        ).read_text(encoding="utf-8")
+        assert sys.executable not in unit_wrapper
+        assert "python3 -m pytest" in unit_wrapper
         pipeline = (
             worktree / ".github" / "workflows" / "aiwb-harness.yml"
         ).read_text(encoding="utf-8")
         assert "bash .ai-workbench/commands/unit.sh" in pipeline
+        assert (
+            "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+            in pipeline
+        )
+        assert 'python-version: "3.9"' in pipeline
+        assert "python -m pip install -e '.[test]'" in pipeline
         assert (
             "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683"
             in pipeline
@@ -156,6 +176,80 @@ def test_approved_python_l0_apply_configures_isolated_candidate() -> None:
             primary_branch,
             check=False,
         ).returncode != 0
+        candidate_message = _git(
+            worktree,
+            "show",
+            "-s",
+            "--format=%B",
+            result.candidate_commit,
+        ).stdout.lower()
+        assert "trae" not in candidate_message
+        assert "bytedance" not in candidate_message
+
+
+@pytest.mark.parametrize(
+    ("lockfile", "expected_commands"),
+    (
+        (
+            "poetry.lock",
+            (
+                "python -m pip install poetry==2.1.3",
+                "poetry config virtualenvs.create false --local",
+                "poetry install --no-interaction",
+            ),
+        ),
+        (
+            "uv.lock",
+            (
+                "python -m pip install uv==0.8.4",
+                "uv sync --locked --all-extras --dev",
+                "GITHUB_PATH",
+            ),
+        ),
+    ),
+)
+def test_apply_preview_derives_locked_pipeline_setup_from_project_metadata(
+    lockfile: str,
+    expected_commands: tuple[str, ...],
+) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _python_repository(root)
+        (repository / lockfile).write_text(
+            "# fixture lock\n",
+            encoding="utf-8",
+        )
+        _git(repository, "add", lockfile)
+        _git(repository, "commit", "-m", "Add package manager lock")
+        setup = HarnessSetup()
+        plan = setup.plan(
+            HarnessSetupRequest(
+                repository=repository,
+                planning_mode="python-l0",
+            )
+        )
+        approved_plan = setup.approve_plan(
+            plan,
+            approved_by="owner",
+            artifact_path=root / "approved-plan.json",
+        )
+
+        preview = setup.preview_apply(
+            approved_plan,
+            base_commit=_git(repository, "rev-parse", "HEAD").stdout.strip(),
+            state_dir=root / "state",
+            command_names=("unit",),
+        )
+
+        pipeline = next(
+            projection.content
+            for projection in preview.files
+            if projection.path == ".github/workflows/aiwb-harness.yml"
+        )
+        assert 'python-version: "3.9"' in pipeline
+        for command in expected_commands:
+            assert command in pipeline
+        assert "pip install -e" not in pipeline
 
 
 def test_apply_rejects_missing_or_modified_exact_approval_before_worktree() -> None:
@@ -813,16 +907,6 @@ def _python_repository(
             "raise SystemExit(0)\n",
             encoding="utf-8",
         )
-        (repository / "conftest.py").write_text(
-            "from pathlib import Path\n\n"
-            "def pytest_addoption(parser):\n"
-            "    parser.addoption('--cov', action='store', nargs='?', const='.')\n"
-            "    parser.addoption('--cov-report', action='store')\n\n"
-            "def pytest_sessionfinish(session, exitstatus):\n"
-            "    if session.config.getoption('--cov') is not None:\n"
-            "        Path('coverage.xml').write_text('<coverage/>\\n')\n",
-            encoding="utf-8",
-        )
     dependencies = (
         "test = ['pytest>=8', 'pytest-cov>=5', 'ruff==0.12.4', 'mypy==1.17']\n\n"
         if full_l0
@@ -834,6 +918,7 @@ def _python_repository(
         "build-backend = 'setuptools.build_meta'\n\n"
         "[project]\n"
         "name = 'sample'\n\n"
+        "requires-python = '>=3.9'\n\n"
         "[project.optional-dependencies]\n"
         + dependencies
         +
