@@ -752,16 +752,23 @@ class GoalRunner:
         self._admit_agent(contract, todo.todo_id, "conflict_repairer")
         started = time.monotonic()
         try:
-            result = self._conflict_repairer.repair(
-                MergeConflictRepairRequest(
-                    worktree=candidate.worktree,
-                    todo_id=todo.todo_id,
-                    prompt=_conflict_repair_prompt(contract, todo, conflict_paths),
-                    conflict_paths=conflict_paths,
-                    provider=contract.agent_provider,
-                    model=contract.agent_model,
-                    timeout_seconds=todo.timeout_seconds,
-                )
+            result = self._external_effect(
+                contract.run_id,
+                lambda: self._conflict_repairer.repair(
+                    MergeConflictRepairRequest(
+                        worktree=candidate.worktree,
+                        todo_id=todo.todo_id,
+                        prompt=_conflict_repair_prompt(
+                            contract,
+                            todo,
+                            conflict_paths,
+                        ),
+                        conflict_paths=conflict_paths,
+                        provider=contract.agent_provider,
+                        model=contract.agent_model,
+                        timeout_seconds=todo.timeout_seconds,
+                    )
+                ),
             )
         except ProviderQuotaError as error:
             self._pause_for_provider_quota(
