@@ -359,7 +359,6 @@ class AgentDaemon:
             run_id = _required_parameter(parameters, "run_id")
             try:
                 self._runner.resume(run_id)
-                self._ledger.requeue(run_id)
             except (KeyError, ValueError) as error:
                 raise DaemonError("run_not_resumable", str(error)) from error
             self._schedule(run_id)

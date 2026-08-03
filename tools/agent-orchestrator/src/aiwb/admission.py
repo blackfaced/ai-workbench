@@ -217,6 +217,9 @@ class RunLedger(Protocol):
     ) -> RunRecord:
         ...
 
+    def resume(self, run_id: str) -> RunRecord:
+        ...
+
     def requeue(self, run_id: str) -> RunRecord:
         ...
 
@@ -656,28 +659,12 @@ class SQLiteRunLedger(_RunLedgerExecutionOperations):
                 connection.execute("DELETE FROM run_leases WHERE run_id = ?", (run_id,))
         return self.run(run_id)
 
-    def requeue(self, run_id: str) -> RunRecord:
-        now = _now()
-        with self._connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            run = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?",
-                (run_id,),
-            ).fetchone()
-            if run is None:
-                raise KeyError(f"unknown Run: {run_id}")
-            if not str(run["status"]).startswith("paused_"):
-                raise ValueError(f"Run {run_id!r} is not paused")
-            connection.execute(
-                "UPDATE runs SET status = 'queued', error = '' WHERE run_id = ?",
-                (run_id,),
-            )
-            connection.execute(
-                "INSERT OR REPLACE INTO run_queue (run_id, enqueued_at) VALUES (?, ?)",
-                (run_id, now),
-            )
-            connection.execute("DELETE FROM run_leases WHERE run_id = ?", (run_id,))
+    def resume(self, run_id: str) -> RunRecord:
+        super().resume(run_id)
         return self.run(run_id)
+
+    def requeue(self, run_id: str) -> RunRecord:
+        return self.resume(run_id)
 
     @staticmethod
     def _prove_lease(

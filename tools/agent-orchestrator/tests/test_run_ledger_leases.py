@@ -121,6 +121,31 @@ def test_renewal_extends_the_same_generation_and_rejects_after_expiry() -> None:
             )
 
 
+def test_paused_projection_is_atomically_resumed_and_requeued() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        ledger = SQLiteRunLedger(Path(directory) / "ledger.db")
+        admitted = ledger.admit(_snapshot(), goal_id="fenced-goal")
+        lease = ledger.claim(
+            admitted.run_id,
+            owner_id="daemon-a",
+            lease_seconds=30,
+        )
+        assert lease is not None
+        ledger.transition(
+            admitted.run_id,
+            owner_id=lease.owner_id,
+            generation=lease.generation,
+            status="paused_resource",
+        )
+
+        observed = ledger.run(admitted.run_id)
+        resumed = ledger.resume(admitted.run_id)
+
+        assert observed.status == "paused_resource"
+        assert resumed.status == "queued"
+        assert ledger.queued_runs() == (resumed,)
+
+
 def test_claim_preserves_an_unsupported_snapshot_as_incompatible_engine() -> None:
     with tempfile.TemporaryDirectory() as directory:
         ledger = SQLiteRunLedger(Path(directory) / "ledger.db")
