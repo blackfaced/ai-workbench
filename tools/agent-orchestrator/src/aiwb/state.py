@@ -5,6 +5,7 @@ import os
 import shutil
 import socket
 import sqlite3
+import tempfile
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -196,16 +197,6 @@ class DurableStateSetup:
                         "current RunLedger state is mixed with legacy durable state"
                     ),
                 )
-            if _run_ledger_has_hot_sidecar(run_ledger_database):
-                return StateAssessment(
-                    format=StateFormat.INCOMPATIBLE_CURRENT,
-                    state_dir=str(root),
-                    current_database=str(run_ledger_database),
-                    detail=(
-                        "current RunLedger state is hot; stop its writer and "
-                        "preserve it for diagnosis"
-                    ),
-                )
             if _is_current_run_ledger(run_ledger_database):
                 return StateAssessment(
                     format=StateFormat.CURRENT,
@@ -347,46 +338,48 @@ def _readonly_connection(database: Path) -> sqlite3.Connection:
 
 def _is_current_run_ledger(database: Path) -> bool:
     try:
-        with _immutable_connection(database) as connection:
-            tables = {
-                str(row[0])
+        with tempfile.TemporaryDirectory(prefix="aiwb-run-ledger-inspect-") as directory:
+            snapshot = Path(directory) / database.name
+            shutil.copyfile(database, snapshot)
+            for suffix in ("-journal", "-wal"):
+                sidecar = Path(f"{database}{suffix}")
+                if sidecar.exists():
+                    shutil.copyfile(sidecar, Path(f"{snapshot}{suffix}"))
+            connection = sqlite3.connect(snapshot)
+            try:
+                return _has_current_run_ledger_schema(connection)
+            finally:
+                connection.close()
+    except (OSError, sqlite3.DatabaseError):
+        return False
+
+
+def _has_current_run_ledger_schema(connection: sqlite3.Connection) -> bool:
+    try:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+        if not _CURRENT_RUN_LEDGER_TABLES.issubset(tables):
+            return False
+        for table, required_columns in _CURRENT_RUN_LEDGER_COLUMNS.items():
+            columns = {
+                str(row[1])
                 for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    f"PRAGMA table_info({table})"
                 ).fetchall()
             }
-            if not _CURRENT_RUN_LEDGER_TABLES.issubset(tables):
+            if not required_columns.issubset(columns):
                 return False
-            for table, required_columns in _CURRENT_RUN_LEDGER_COLUMNS.items():
-                columns = {
-                    str(row[1])
-                    for row in connection.execute(
-                        f"PRAGMA table_info({table})"
-                    ).fetchall()
-                }
-                if not required_columns.issubset(columns):
-                    return False
-            rows = connection.execute(
-                f"SELECT singleton, schema_version FROM {RUN_LEDGER_SCHEMA_TABLE}"
-            ).fetchall()
-            integrity = connection.execute("PRAGMA quick_check").fetchall()
+        rows = connection.execute(
+            f"SELECT singleton, schema_version FROM {RUN_LEDGER_SCHEMA_TABLE}"
+        ).fetchall()
+        integrity = connection.execute("PRAGMA quick_check").fetchall()
     except sqlite3.DatabaseError:
         return False
     return rows == [(1, RUN_LEDGER_SCHEMA_VERSION)] and integrity == [("ok",)]
-
-
-def _immutable_connection(database: Path) -> sqlite3.Connection:
-    uri = f"file:{quote(str(database))}?mode=ro&immutable=1"
-    return sqlite3.connect(uri, uri=True)
-
-
-def _run_ledger_has_hot_sidecar(database: Path) -> bool:
-    return any(
-        sidecar.exists() and sidecar.stat().st_size > 0
-        for sidecar in (
-            Path(f"{database}-journal"),
-            Path(f"{database}-wal"),
-        )
-    )
 
 
 def _managed_legacy_paths(root: Path, state_database: Path) -> Tuple[str, ...]:
