@@ -405,7 +405,7 @@ class GoalRunner:
         agent: AgentAdapter,
         max_workers: int = 1,
         image_poll_interval_seconds: float = 5.0,
-        ledger_database: Optional[Path] = None,
+        ledger: Optional[object] = None,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be at least 1")
@@ -413,15 +413,17 @@ class GoalRunner:
             raise ValueError("image_poll_interval_seconds must be positive")
         self._state_dir = Path(state_dir).expanduser().resolve()
         self._state_dir.mkdir(parents=True, exist_ok=True)
-        self._store = _RunStore(
-            Path(ledger_database).expanduser().resolve()
-            if ledger_database is not None
-            else self._state_dir / "state.db"
-        )
+        if ledger is None:
+            from .admission import SQLiteRunLedger
+
+            ledger = SQLiteRunLedger(self._state_dir / "state.db")
+        self._store = ledger
         self._evidence_store = EvidenceStore(self._state_dir)
         self._agent = agent
         self._max_workers = max_workers
         self._git_lock = threading.Lock()
+        self._external_guards: Dict[str, Callable[[], None]] = {}
+        self._external_guards_lock = threading.Lock()
         browser_diagnostics = McpBrowserDiagnosticAdapter()
         self._harnesses: Mapping[str, HarnessAdapter] = {
             "local_process": LocalProcessHarness(browser_diagnostics),
@@ -437,11 +439,20 @@ class GoalRunner:
         _, _, record = self._prepare(Path(contract_path))
         return self._report(record)
 
-    def prepare_snapshot(self, snapshot: object, *, run_id: str) -> RunReport:
+    def prepare_snapshot(
+        self,
+        snapshot: object,
+        *,
+        run_id: str,
+        lease: Optional[object] = None,
+    ) -> RunReport:
         """Prepare a Run from its immutable admitted ExecutionSnapshot."""
         contract = _contract_from_snapshot(snapshot, run_id=run_id)
-        _, _, record = self._prepare_contract(contract)
-        return self._report(record)
+        owner_id = str(getattr(lease, "owner_id", ""))
+        generation = int(getattr(lease, "generation", 0))
+        with self._store.guard_mutations(run_id, owner_id, generation):
+            _, _, record = self._prepare_contract(contract)
+            return self._report(record)
 
     def report(self, run_id: str) -> RunReport:
         return self._report(self._store.get(run_id))
@@ -504,11 +515,18 @@ class GoalRunner:
         snapshot: object,
         *,
         run_id: str,
+        lease: Optional[object] = None,
         mutation_guard: Optional[Callable[[], None]] = None,
     ) -> RunReport:
         """Execute only the manifest retained by Admission."""
         contract = _contract_from_snapshot(snapshot, run_id=run_id)
-        with self._store.guard_mutations(run_id, mutation_guard):
+        if mutation_guard is not None:
+            mutation_guard()
+        owner_id = str(getattr(lease, "owner_id", ""))
+        generation = int(getattr(lease, "generation", 0))
+        with self._store.guard_mutations(
+            run_id, owner_id, generation
+        ), self._guard_external_effects(run_id, mutation_guard):
             contract, workspace, record = self._prepare_contract(contract)
             try:
                 return self._run_dag(contract, workspace, record)
@@ -517,6 +535,40 @@ class GoalRunner:
             except Exception as error:
                 self._record_failure(contract, error)
                 raise
+
+    @contextmanager
+    def _guard_external_effects(
+        self,
+        run_id: str,
+        guard: Optional[Callable[[], None]],
+    ) -> Iterator[None]:
+        if guard is None:
+            yield
+            return
+        with self._external_guards_lock:
+            self._external_guards[run_id] = guard
+        try:
+            yield
+        finally:
+            with self._external_guards_lock:
+                self._external_guards.pop(run_id, None)
+
+    def _prove_external_effect(self, run_id: str) -> None:
+        with self._external_guards_lock:
+            guard = self._external_guards.get(run_id)
+        if guard is not None:
+            guard()
+
+    def _external_effect(
+        self,
+        run_id: str,
+        operation: Callable[[], Any],
+    ) -> Any:
+        self._prove_external_effect(run_id)
+        try:
+            return operation()
+        finally:
+            self._prove_external_effect(run_id)
 
     def _record_failure(
         self,
@@ -660,7 +712,10 @@ class GoalRunner:
             todo_record = self._store.get_todo(contract.run_id, todo.todo_id)
             code_commit = _required_string(todo_record, "code_commit")
             if not candidate.contains(code_commit):
-                conflict_paths = candidate.merge(contract.todo_branch(todo))
+                conflict_paths = self._external_effect(
+                    contract.run_id,
+                    lambda: candidate.merge(contract.todo_branch(todo)),
+                )
                 if conflict_paths:
                     self._repair_todo_merge_conflict(
                         contract,
@@ -792,7 +847,7 @@ class GoalRunner:
             branch=contract.todo_branch(todo),
             base_ref=base_commit,
         )
-        workspace.ensure()
+        self._external_effect(contract.run_id, workspace.ensure)
         self._store.prepare_todo(
             contract.run_id,
             todo.todo_id,
@@ -829,16 +884,19 @@ class GoalRunner:
         self._admit_agent(contract, todo.todo_id, role)
         started = time.monotonic()
         try:
-            result = self._agent.run(
-                AgentRequest(
-                    role=role,
-                    prompt=prompt,
-                    worktree=str(worktree),
-                    todo_id=todo.todo_id,
-                    provider=contract.agent_provider,
-                    model=contract.agent_model,
-                    timeout_seconds=todo.timeout_seconds,
-                )
+            result = self._external_effect(
+                contract.run_id,
+                lambda: self._agent.run(
+                    AgentRequest(
+                        role=role,
+                        prompt=prompt,
+                        worktree=str(worktree),
+                        todo_id=todo.todo_id,
+                        provider=contract.agent_provider,
+                        model=contract.agent_model,
+                        timeout_seconds=todo.timeout_seconds,
+                    )
+                ),
             )
         except ProviderQuotaError as error:
             self._pause_for_provider_quota(
@@ -888,7 +946,12 @@ class GoalRunner:
         workspace: "_GitWorkspace",
     ) -> None:
         record = self._store.get_todo(contract.run_id, todo.todo_id)
-        workspace.restore_checkpoint(_required_string(record, "base_commit"))
+        self._external_effect(
+            contract.run_id,
+            lambda: workspace.restore_checkpoint(
+                _required_string(record, "base_commit")
+            ),
+        )
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "test_designer")
         result = self._run_todo_agent(
             contract,
@@ -922,8 +985,11 @@ class GoalRunner:
             )
             raise GateError(f"RED gate failed for {todo.todo_id}")
         with self._git_lock:
-            red_commit = workspace.commit(
-                f"test({todo.todo_id}): add RED acceptance test"
+            red_commit = self._external_effect(
+                contract.run_id,
+                lambda: workspace.commit(
+                    f"test({todo.todo_id}): add RED acceptance test"
+                ),
             )
         self._store.todo_checkpoint(
             contract.run_id,
@@ -942,7 +1008,12 @@ class GoalRunner:
         workspace: "_GitWorkspace",
         record: Mapping[str, Any],
     ) -> None:
-        workspace.restore_checkpoint(_required_string(record, "red_commit"))
+        self._external_effect(
+            contract.run_id,
+            lambda: workspace.restore_checkpoint(
+                _required_string(record, "red_commit")
+            ),
+        )
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "implementer")
         try:
             result = self._run_todo_agent(
@@ -985,8 +1056,11 @@ class GoalRunner:
                 + (evidence.stderr or evidence.stdout)
             )
         with self._git_lock:
-            code_commit = workspace.commit(
-                f"feat({todo.todo_id}): satisfy acceptance test"
+            code_commit = self._external_effect(
+                contract.run_id,
+                lambda: workspace.commit(
+                    f"feat({todo.todo_id}): satisfy acceptance test"
+                ),
             )
         self._store.todo_checkpoint(
             contract.run_id,
@@ -1006,7 +1080,10 @@ class GoalRunner:
         record: Mapping[str, Any],
     ) -> None:
         code_commit = _required_string(record, "code_commit")
-        workspace.restore_checkpoint(code_commit)
+        self._external_effect(
+            contract.run_id,
+            lambda: workspace.restore_checkpoint(code_commit),
+        )
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "verifier")
         result = self._run_todo_agent(
             contract,
@@ -1016,7 +1093,10 @@ class GoalRunner:
             workspace.worktree,
         )
         if workspace.changed_paths():
-            workspace.restore_checkpoint(code_commit)
+            self._external_effect(
+                contract.run_id,
+                lambda: workspace.restore_checkpoint(code_commit),
+            )
             raise GateError(f"Verifier mutated Todo Candidate {todo.todo_id}")
         evidence = self._run_gate(
             contract,
@@ -1061,7 +1141,7 @@ class GoalRunner:
             branch=contract.branch,
             base_ref=contract.pinned_base_commit or contract.base_ref,
         )
-        workspace.ensure()
+        self._external_effect(contract.run_id, workspace.ensure)
         record = self._store.get_or_create(contract, workspace.worktree)
         return contract, workspace, record
 
@@ -1096,7 +1176,10 @@ class GoalRunner:
             contract.run_id,
             candidate_commit,
         )
-        workspace.restore_checkpoint(candidate_commit)
+        self._external_effect(
+            contract.run_id,
+            lambda: workspace.restore_checkpoint(candidate_commit),
+        )
         record = self._store.get(contract.run_id)
 
         if not record["candidate_verifier_completed"]:
@@ -1106,13 +1189,19 @@ class GoalRunner:
                     workspace,
                 )
             except Exception:
-                workspace.restore_checkpoint(candidate_commit)
+                self._external_effect(
+                    contract.run_id,
+                    lambda: workspace.restore_checkpoint(candidate_commit),
+                )
                 raise
             if (
                 workspace.head() != candidate_commit
                 or workspace.changed_paths()
             ):
-                workspace.restore_checkpoint(candidate_commit)
+                self._external_effect(
+                    contract.run_id,
+                    lambda: workspace.restore_checkpoint(candidate_commit),
+                )
                 error = "Final Candidate verifier mutated the immutable Candidate"
                 self._store.record_run_attempt(
                     contract.run_id,
@@ -1158,7 +1247,10 @@ class GoalRunner:
             stage = f"candidate_acceptance:{todo.todo_id}"
             if stage in completed_stages:
                 continue
-            workspace.restore_checkpoint(candidate_commit)
+            self._external_effect(
+                contract.run_id,
+                lambda: workspace.restore_checkpoint(candidate_commit),
+            )
             try:
                 evidence = self._run_gate(
                     contract=contract,
@@ -1167,7 +1259,10 @@ class GoalRunner:
                     cwd=workspace.worktree,
                 )
             finally:
-                workspace.restore_checkpoint(candidate_commit)
+                self._external_effect(
+                    contract.run_id,
+                    lambda: workspace.restore_checkpoint(candidate_commit),
+                )
             self._store.record_run_evidence(contract.run_id, evidence)
             if evidence.returncode != 0:
                 error = (
@@ -1187,19 +1282,22 @@ class GoalRunner:
         self._admit_agent(contract, "candidate", "candidate_verifier")
         started = time.monotonic()
         try:
-            result = self._agent.run(
-                AgentRequest(
-                    role="candidate_verifier",
-                    prompt=_candidate_verifier_prompt(contract),
-                    worktree=str(workspace.worktree),
-                    todo_id="candidate",
-                    sandbox="read-only",
-                    provider=contract.agent_provider,
-                    model=contract.agent_model,
-                    timeout_seconds=max(
-                        todo.timeout_seconds for todo in contract.todos
-                    ),
-                )
+            result = self._external_effect(
+                contract.run_id,
+                lambda: self._agent.run(
+                    AgentRequest(
+                        role="candidate_verifier",
+                        prompt=_candidate_verifier_prompt(contract),
+                        worktree=str(workspace.worktree),
+                        todo_id="candidate",
+                        sandbox="read-only",
+                        provider=contract.agent_provider,
+                        model=contract.agent_model,
+                        timeout_seconds=max(
+                            todo.timeout_seconds for todo in contract.todos
+                        ),
+                    )
+                ),
             )
         except ProviderQuotaError as error:
             self._pause_for_provider_quota(
@@ -1393,18 +1491,27 @@ class GoalRunner:
             operation_id = record["image_operation_id"]
             if not operation_id:
                 try:
-                    operation_id = self._image_builder.start(request)
+                    operation_id = self._external_effect(
+                        contract.run_id,
+                        lambda: self._image_builder.start(request),
+                    )
                 finally:
                     self._sync_image_artifacts(contract.run_id, request.artifact_dir)
                 self._store.start_image(contract.run_id, operation_id)
             try:
-                status = self._image_builder.status(request, operation_id)
+                status = self._external_effect(
+                    contract.run_id,
+                    lambda: self._image_builder.status(request, operation_id),
+                )
             finally:
                 self._sync_image_artifacts(contract.run_id, request.artifact_dir)
             self._store.set_image_status(contract.run_id, status)
             if status == "succeeded":
                 try:
-                    result = self._image_builder.result(request, operation_id)
+                    result = self._external_effect(
+                        contract.run_id,
+                        lambda: self._image_builder.result(request, operation_id),
+                    )
                 finally:
                     self._sync_image_artifacts(
                         contract.run_id,
@@ -1449,13 +1556,16 @@ class GoalRunner:
         if profile is None or record["published_commit"]:
             return self._report(record)
         try:
-            result = self._candidate_publisher.publish(
-                CandidatePublishRequest(
-                    repository=contract.repository,
-                    branch=contract.branch,
-                    commit=workspace.head(),
-                    profile=profile,
-                )
+            result = self._external_effect(
+                contract.run_id,
+                lambda: self._candidate_publisher.publish(
+                    CandidatePublishRequest(
+                        repository=contract.repository,
+                        branch=contract.branch,
+                        commit=workspace.head(),
+                        profile=profile,
+                    )
+                ),
             )
         except CandidatePublishError as error:
             self._store.record_interruption(contract.run_id, str(error))
@@ -1477,11 +1587,14 @@ class GoalRunner:
     ) -> CommandEvidence:
         self._admit_harness(contract, todo.todo_id, stage)
         if todo.harness is None:
-            evidence = _run_command(
-                stage=stage,
-                command=todo.test_command,
-                cwd=cwd,
-                timeout_seconds=todo.timeout_seconds,
+            evidence = self._external_effect(
+                contract.run_id,
+                lambda: _run_command(
+                    stage=stage,
+                    command=todo.test_command,
+                    cwd=cwd,
+                    timeout_seconds=todo.timeout_seconds,
+                ),
             )
         else:
             artifact_dir = (
@@ -1494,16 +1607,21 @@ class GoalRunner:
             adapter = self._harnesses[todo.harness.kind]
             started = time.monotonic()
             try:
-                result = adapter.execute(HarnessRequest(
-                    profile=todo.harness,
-                    command=todo.test_command,
-                    cwd=cwd,
-                    timeout_seconds=todo.timeout_seconds,
-                    run_id=contract.run_id,
-                    artifact_dir=artifact_dir,
-                    execution_id=f"{todo.todo_id}:{stage}",
-                    stage=stage,
-                ))
+                result = self._external_effect(
+                    contract.run_id,
+                    lambda: adapter.execute(
+                        HarnessRequest(
+                            profile=todo.harness,
+                            command=todo.test_command,
+                            cwd=cwd,
+                            timeout_seconds=todo.timeout_seconds,
+                            run_id=contract.run_id,
+                            artifact_dir=artifact_dir,
+                            execution_id=f"{todo.todo_id}:{stage}",
+                            stage=stage,
+                        )
+                    ),
+                )
             except HarnessError as error:
                 retained = self._retain_command_evidence(
                     contract.run_id,
@@ -1574,13 +1692,19 @@ class GoalRunner:
         evidence: CommandEvidence,
     ) -> CommandEvidence:
         label = f"{run_id}/{todo_id}/{evidence.stage}"
-        stdout, stdout_ref = self._evidence_store.retain_text(
-            evidence.stdout,
-            label=f"{label}/stdout",
+        stdout, stdout_ref = self._external_effect(
+            run_id,
+            lambda: self._evidence_store.retain_text(
+                evidence.stdout,
+                label=f"{label}/stdout",
+            ),
         )
-        stderr, stderr_ref = self._evidence_store.retain_text(
-            evidence.stderr,
-            label=f"{label}/stderr",
+        stderr, stderr_ref = self._external_effect(
+            run_id,
+            lambda: self._evidence_store.retain_text(
+                evidence.stderr,
+                label=f"{label}/stderr",
+            ),
         )
         return replace(
             evidence,
@@ -1607,9 +1731,12 @@ class GoalRunner:
             if not path.is_file():
                 continue
             references.append(
-                self._evidence_store.retain_file(
-                    path,
-                    label=f"{run_id}/{label}/artifact-{index}-{path.name}",
+                self._external_effect(
+                    run_id,
+                    lambda: self._evidence_store.retain_file(
+                        path,
+                        label=f"{run_id}/{label}/artifact-{index}-{path.name}",
+                    ),
                 )
             )
         return tuple(references)
@@ -1679,29 +1806,31 @@ class GoalRunner:
         )
 
 
-class _RunStore:
-    def __init__(self, database: Path) -> None:
-        database.parent.mkdir(parents=True, exist_ok=True)
-        self._database = database
-        self._mutation_guards: Dict[str, Callable[[], None]] = {}
+class _RunLedgerExecutionOperations:
+    """SQLite execution operations mixed into the canonical RunLedger."""
+
+    def _initialize_execution_state(self, connection: sqlite3.Connection) -> None:
+        self._mutation_guards: Dict[str, Tuple[str, int]] = {}
         self._mutation_guards_lock = threading.Lock()
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS runs (
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runs (
                     run_id TEXT PRIMARY KEY,
-                    contract_hash TEXT NOT NULL UNIQUE,
+                    snapshot_id TEXT,
+                    contract_hash TEXT UNIQUE,
                     goal_id TEXT NOT NULL,
                     status TEXT NOT NULL,
-                    active_stage TEXT NOT NULL,
-                    repository TEXT NOT NULL,
-                    worktree TEXT NOT NULL,
-                    branch TEXT NOT NULL,
+                    error TEXT NOT NULL DEFAULT '',
+                    lease_generation INTEGER NOT NULL DEFAULT 0,
+                    active_stage TEXT NOT NULL DEFAULT '',
+                    repository TEXT NOT NULL DEFAULT '',
+                    worktree TEXT NOT NULL DEFAULT '',
+                    branch TEXT NOT NULL DEFAULT '',
                     red_commit TEXT,
                     code_commit TEXT,
-                    sessions_json TEXT NOT NULL,
+                    sessions_json TEXT NOT NULL DEFAULT '{}',
                     attempts_json TEXT NOT NULL DEFAULT '[]',
-                    evidence_json TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL DEFAULT '[]',
                     stop_json TEXT NOT NULL DEFAULT 'null',
                     resource_window_started_at TEXT NOT NULL DEFAULT '',
                     resource_attempt_baseline INTEGER NOT NULL DEFAULT 0,
@@ -1721,14 +1850,16 @@ class _RunStore:
                     published_commit TEXT NOT NULL DEFAULT '',
                     last_error TEXT,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (snapshot_id)
+                        REFERENCES execution_snapshots(snapshot_id)
             )
-            self._ensure_run_columns(connection)
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS todos (
+            """
+        )
+        self._ensure_run_columns(connection)
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS todos (
                     run_id TEXT NOT NULL,
                     todo_id TEXT NOT NULL,
                     title TEXT NOT NULL,
@@ -1750,37 +1881,41 @@ class _RunStore:
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (run_id, todo_id),
                     FOREIGN KEY (run_id) REFERENCES runs(run_id)
-                )
-                """
             )
-            self._ensure_todo_columns(connection)
+            """
+        )
+        self._ensure_todo_columns(connection)
 
     def get_or_create(self, contract: _Contract, worktree: Path) -> Mapping[str, Any]:
-        existing = self._find_by_hash(contract.contract_hash)
+        try:
+            existing = self.get(contract.run_id)
+        except KeyError:
+            existing = self._find_by_hash(contract.contract_hash)
         if existing:
-            if contract.image_profile_name and not existing["image_profile"]:
-                self._update(
-                    contract.run_id,
-                    image_profile=contract.image_profile_name,
+            initialization: Dict[str, object] = {}
+            if not existing["contract_hash"]:
+                initialization.update(
+                    contract_hash=contract.contract_hash,
+                    repository=str(contract.repository),
+                    worktree=str(worktree),
+                    branch=contract.branch,
                 )
+            if contract.image_profile_name and not existing["image_profile"]:
+                initialization["image_profile"] = contract.image_profile_name
             if not json.loads(existing["execution_envelope_json"]):
-                self._update(
-                    contract.run_id,
-                    execution_envelope_json=json.dumps(
-                        _execution_envelope(contract).to_dict(),
-                        sort_keys=True,
-                    ),
+                initialization["execution_envelope_json"] = json.dumps(
+                    _execution_envelope(contract).to_dict(),
+                    sort_keys=True,
                 )
             if not existing["resource_window_started_at"]:
-                self._update(
-                    contract.run_id,
-                    resource_window_started_at=existing["created_at"],
-                )
+                initialization["resource_window_started_at"] = existing["created_at"]
+            if initialization:
+                self._update(contract.run_id, **initialization)
             self._ensure_todos(contract)
             return self.get(contract.run_id)
         now = _now()
-        self._prove_mutation(contract.run_id)
         with self._connect() as connection:
+            self._begin_worker_mutation(connection, contract.run_id)
             connection.execute(
                 """
                 INSERT INTO runs (
@@ -1814,8 +1949,8 @@ class _RunStore:
 
     def _ensure_todos(self, contract: _Contract) -> None:
         now = _now()
-        self._prove_mutation(contract.run_id)
         with self._connect() as connection:
+            self._begin_worker_mutation(connection, contract.run_id)
             for todo in contract.todos:
                 connection.execute(
                     """
@@ -2305,22 +2440,22 @@ class _RunStore:
         return dict(row) if row is not None else None
 
     def _update(self, run_id: str, **values: object) -> None:
-        self._prove_mutation(run_id)
         values["updated_at"] = _now()
         assignments = ", ".join(f"{name} = ?" for name in values)
         parameters = list(values.values()) + [run_id]
         with self._connect() as connection:
+            self._begin_worker_mutation(connection, run_id)
             connection.execute(
                 f"UPDATE runs SET {assignments} WHERE run_id = ?",
                 parameters,
             )
 
     def _update_todo(self, run_id: str, todo_id: str, **values: object) -> None:
-        self._prove_mutation(run_id)
         values["updated_at"] = _now()
         assignments = ", ".join(f"{name} = ?" for name in values)
         parameters = list(values.values()) + [run_id, todo_id]
         with self._connect() as connection:
+            self._begin_worker_mutation(connection, run_id)
             connection.execute(
                 f"UPDATE todos SET {assignments} WHERE run_id = ? AND todo_id = ?",
                 parameters,
@@ -2330,24 +2465,34 @@ class _RunStore:
     def guard_mutations(
         self,
         run_id: str,
-        guard: Optional[Callable[[], None]],
+        owner_id: str,
+        generation: int,
     ) -> Iterator[None]:
-        if guard is None:
+        if not owner_id:
             yield
             return
         with self._mutation_guards_lock:
-            self._mutation_guards[run_id] = guard
+            self._mutation_guards[run_id] = (owner_id, generation)
         try:
             yield
         finally:
             with self._mutation_guards_lock:
                 self._mutation_guards.pop(run_id, None)
 
-    def _prove_mutation(self, run_id: str) -> None:
+    def _begin_worker_mutation(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+    ) -> None:
         with self._mutation_guards_lock:
-            guard = self._mutation_guards.get(run_id)
-        if guard is not None:
-            guard()
+            fence = self._mutation_guards.get(run_id)
+        if fence is None:
+            return
+        connection.execute("BEGIN IMMEDIATE")
+        owner_id, generation = fence
+        self._assert_worker_lease(connection, run_id, owner_id, generation)
+        self._inject_worker_fault("after_worker_fence", connection, run_id)
+        self._assert_worker_lease(connection, run_id, owner_id, generation)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(str(self._database), timeout=30)
@@ -2361,6 +2506,10 @@ class _RunStore:
             row[1] for row in connection.execute("PRAGMA table_info(runs)").fetchall()
         }
         columns = {
+            "snapshot_id": "TEXT",
+            "contract_hash": "TEXT",
+            "error": "TEXT NOT NULL DEFAULT ''",
+            "lease_generation": "INTEGER NOT NULL DEFAULT 0",
             "attempts_json": "TEXT NOT NULL DEFAULT '[]'",
             "stop_json": "TEXT NOT NULL DEFAULT 'null'",
             "resource_window_started_at": "TEXT NOT NULL DEFAULT ''",

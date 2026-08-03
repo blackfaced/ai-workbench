@@ -16,7 +16,7 @@ from typing import Any, AbstractSet, Callable, Mapping, Optional, Protocol, Tupl
 
 import yaml
 
-from .runner import ContractError, _load_contract
+from .runner import ContractError, _RunLedgerExecutionOperations, _load_contract
 
 
 ADMISSION_SCHEMA_VERSION = 1
@@ -220,46 +220,44 @@ class RunLedger(Protocol):
         ...
 
 
-class SQLiteRunLedger:
+class SQLiteRunLedger(_RunLedgerExecutionOperations):
     def __init__(
         self,
         database: Path,
         *,
         _fault_injector: Optional[Callable[[str], None]] = None,
+        _worker_fault_injector: Optional[
+            Callable[[str, sqlite3.Connection, str], None]
+        ] = None,
     ) -> None:
         self._database = Path(database)
         self._database.parent.mkdir(parents=True, exist_ok=True)
         self._fault_injector = _fault_injector
+        self._worker_fault_injector = _worker_fault_injector
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
-            connection.executescript(
+            connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS execution_snapshots (
                     snapshot_id TEXT PRIMARY KEY,
                     source BLOB NOT NULL,
                     manifest_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS ledger_runs (
-                    run_id TEXT PRIMARY KEY,
-                    snapshot_id TEXT NOT NULL,
-                    goal_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    error TEXT NOT NULL DEFAULT '',
-                    lease_generation INTEGER NOT NULL DEFAULT 0,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY (snapshot_id)
-                        REFERENCES execution_snapshots(snapshot_id)
-                );
+                )
+                """
+            )
+            self._initialize_execution_state(connection)
+            connection.executescript(
+                """
                 CREATE TABLE IF NOT EXISTS run_queue (
                     run_id TEXT PRIMARY KEY,
                     enqueued_at TEXT NOT NULL,
-                    FOREIGN KEY (run_id) REFERENCES ledger_runs(run_id)
+                    FOREIGN KEY (run_id) REFERENCES runs(run_id)
                 );
                 CREATE TABLE IF NOT EXISTS idempotency_keys (
                     idempotency_key TEXT PRIMARY KEY,
                     run_id TEXT NOT NULL UNIQUE,
-                    FOREIGN KEY (run_id) REFERENCES ledger_runs(run_id)
+                    FOREIGN KEY (run_id) REFERENCES runs(run_id)
                 );
                 CREATE TABLE IF NOT EXISTS run_leases (
                     run_id TEXT PRIMARY KEY,
@@ -267,7 +265,7 @@ class SQLiteRunLedger:
                     generation INTEGER NOT NULL,
                     expires_at TEXT NOT NULL,
                     renewed_at TEXT NOT NULL,
-                    FOREIGN KEY (run_id) REFERENCES ledger_runs(run_id)
+                    FOREIGN KEY (run_id) REFERENCES runs(run_id)
                 );
                 CREATE TABLE IF NOT EXISTS run_transitions (
                     transition_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -277,11 +275,10 @@ class SQLiteRunLedger:
                     to_status TEXT NOT NULL,
                     error TEXT NOT NULL,
                     recorded_at TEXT NOT NULL,
-                    FOREIGN KEY (run_id) REFERENCES ledger_runs(run_id)
+                    FOREIGN KEY (run_id) REFERENCES runs(run_id)
                 );
                 """
             )
-            self._ensure_run_columns(connection)
 
     def admit(
         self,
@@ -302,9 +299,9 @@ class SQLiteRunLedger:
             if idempotency_key is not None:
                 existing = connection.execute(
                     """
-                    SELECT ledger_runs.*
+                    SELECT runs.*
                     FROM idempotency_keys
-                    JOIN ledger_runs USING (run_id)
+                    JOIN runs USING (run_id)
                     WHERE idempotency_key = ?
                     """,
                     (idempotency_key,),
@@ -333,11 +330,11 @@ class SQLiteRunLedger:
             run_id = f"{goal_id}-{uuid.uuid4().hex}"
             connection.execute(
                 """
-                INSERT INTO ledger_runs (
-                    run_id, snapshot_id, goal_id, status, created_at
-                ) VALUES (?, ?, ?, 'queued', ?)
+                INSERT INTO runs (
+                    run_id, snapshot_id, goal_id, status, created_at, updated_at
+                ) VALUES (?, ?, ?, 'queued', ?, ?)
                 """,
-                (run_id, snapshot.snapshot_id, goal_id, now),
+                (run_id, snapshot.snapshot_id, goal_id, now, now),
             )
             self._inject("after_run")
             connection.execute(
@@ -381,7 +378,7 @@ class SQLiteRunLedger:
     def run(self, run_id: str) -> RunRecord:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM ledger_runs WHERE run_id = ?",
+                "SELECT * FROM runs WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
         if row is None:
@@ -392,11 +389,11 @@ class SQLiteRunLedger:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT ledger_runs.*
+                SELECT runs.*
                 FROM run_queue
-                JOIN ledger_runs USING (run_id)
-                WHERE ledger_runs.status IN ('queued', 'running')
-                ORDER BY run_queue.enqueued_at, ledger_runs.run_id
+                JOIN runs USING (run_id)
+                WHERE runs.status IN ('queued', 'running')
+                ORDER BY run_queue.enqueued_at, runs.run_id
                 """
             ).fetchall()
         return tuple(_run_record(row) for row in rows)
@@ -421,7 +418,7 @@ class SQLiteRunLedger:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             run = connection.execute(
-                "SELECT * FROM ledger_runs WHERE run_id = ?",
+                "SELECT * FROM runs WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
             if run is None:
@@ -455,7 +452,7 @@ class SQLiteRunLedger:
             )
             if incompatibility:
                 connection.execute(
-                    "UPDATE ledger_runs SET status = 'incompatible_engine', error = ? "
+                    "UPDATE runs SET status = 'incompatible_engine', error = ? "
                     "WHERE run_id = ?",
                     (incompatibility, run_id),
                 )
@@ -478,7 +475,7 @@ class SQLiteRunLedger:
                 return None
             generation = int(run["lease_generation"]) + 1
             connection.execute(
-                "UPDATE ledger_runs SET status = 'running', error = '', lease_generation = ? "
+                "UPDATE runs SET status = 'running', error = '', lease_generation = ? "
                 "WHERE run_id = ?",
                 (generation, run_id),
             )
@@ -614,13 +611,13 @@ class SQLiteRunLedger:
             connection.execute("BEGIN IMMEDIATE")
             self._prove_lease(connection, lease, instant)
             previous = connection.execute(
-                "SELECT status FROM ledger_runs WHERE run_id = ?",
+                "SELECT status FROM runs WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
             if previous is None:  # pragma: no cover - protected by foreign keys
                 raise KeyError(f"unknown Run: {run_id}")
             connection.execute(
-                "UPDATE ledger_runs SET status = ?, error = ? WHERE run_id = ?",
+                "UPDATE runs SET status = ?, error = ? WHERE run_id = ?",
                 (status, error, run_id),
             )
             connection.execute(
@@ -648,7 +645,7 @@ class SQLiteRunLedger:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             run = connection.execute(
-                "SELECT * FROM ledger_runs WHERE run_id = ?",
+                "SELECT * FROM runs WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
             if run is None:
@@ -656,7 +653,7 @@ class SQLiteRunLedger:
             if not str(run["status"]).startswith("paused_"):
                 raise ValueError(f"Run {run_id!r} is not paused")
             connection.execute(
-                "UPDATE ledger_runs SET status = 'queued', error = '' WHERE run_id = ?",
+                "UPDATE runs SET status = 'queued', error = '' WHERE run_id = ?",
                 (run_id,),
             )
             connection.execute(
@@ -689,20 +686,27 @@ class SQLiteRunLedger:
             raise LeaseConflictError(f"Lease for Run {lease.run_id!r} has expired")
         return current
 
-    @staticmethod
-    def _ensure_run_columns(connection: sqlite3.Connection) -> None:
-        existing = {
-            row[1]
-            for row in connection.execute("PRAGMA table_info(ledger_runs)").fetchall()
-        }
-        for name, definition in {
-            "error": "TEXT NOT NULL DEFAULT ''",
-            "lease_generation": "INTEGER NOT NULL DEFAULT 0",
-        }.items():
-            if name not in existing:
-                connection.execute(
-                    f"ALTER TABLE ledger_runs ADD COLUMN {name} {definition}"
-                )
+    def _assert_worker_lease(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+        owner_id: str,
+        generation: int,
+    ) -> None:
+        self._prove_lease(
+            connection,
+            RunLease(run_id, owner_id, generation, _now()),
+            _instant(None),
+        )
+
+    def _inject_worker_fault(
+        self,
+        boundary: str,
+        connection: sqlite3.Connection,
+        run_id: str,
+    ) -> None:
+        if self._worker_fault_injector is not None:
+            self._worker_fault_injector(boundary, connection, run_id)
 
     def _inject(self, boundary: str) -> None:
         if self._fault_injector is not None:

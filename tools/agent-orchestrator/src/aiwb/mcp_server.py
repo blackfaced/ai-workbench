@@ -179,22 +179,10 @@ class McpServer:
                 contract_path = _string_argument(arguments, "contract_path")
                 workflow_path = arguments.get("workflow_path")
                 idempotency_key = arguments.get("idempotency_key")
-                for argument_name, argument_value in (
-                    ("workflow_path", workflow_path),
-                    ("idempotency_key", idempotency_key),
-                ):
-                    if argument_value is not None and (
-                        not isinstance(argument_value, str) or not argument_value
-                    ):
-                        raise ValueError(
-                            f"{argument_name} must be a non-empty string"
-                        )
                 value = self._client.submit(
                     Path(contract_path),
-                    workflow_path=(Path(workflow_path) if workflow_path else None),
-                    idempotency_key=(
-                        idempotency_key if isinstance(idempotency_key, str) else None
-                    ),
+                    workflow_path=workflow_path,
+                    idempotency_key=idempotency_key,
                 ).__dict__
             elif name == "aiwb_goal_status":
                 run_id = _string_argument(arguments, "run_id")

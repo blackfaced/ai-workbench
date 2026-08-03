@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import subprocess
@@ -19,11 +20,13 @@ from aiwb import (  # noqa: E402
     AgentResult,
     AgentDaemon,
     DaemonClient,
+    DaemonError,
     ExecutionSnapshot,
     GoalRunner,
     LeaseConflictError,
     SQLiteRunLedger,
 )
+from aiwb.mcp_server import McpServer  # noqa: E402
 
 
 class UnusedAgent:
@@ -188,6 +191,56 @@ def test_runner_rejects_a_worker_that_cannot_prove_its_generation() -> None:
             runner.report("stale-run")
 
 
+def test_takeover_between_fence_and_worker_write_leaves_no_durable_effect() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = root / "repository"
+        repository.mkdir()
+        _git(repository, "init", "-b", "main")
+        _git(repository, "config", "user.name", "AIWB Test")
+        _git(repository, "config", "user.email", "aiwb@example.test")
+        (repository / "README.md").write_text("fixture\n", encoding="utf-8")
+        _git(repository, "add", ".")
+        _git(repository, "commit", "-m", "fixture")
+        commit = _git(repository, "rev-parse", "HEAD").stdout.strip()
+        snapshot = _snapshot(repository=repository, base_commit=commit)
+
+        def take_over(boundary, connection, run_id) -> None:
+            if boundary != "after_worker_fence":
+                return
+            connection.execute(
+                """
+                UPDATE run_leases
+                SET owner_id = 'daemon-b', generation = generation + 1
+                WHERE run_id = ?
+                """,
+                (run_id,),
+            )
+
+        ledger = SQLiteRunLedger(
+            root / "state" / "run-ledger.db",
+            _worker_fault_injector=take_over,
+        )
+        admitted = ledger.admit(snapshot, goal_id="fenced-goal")
+        lease = ledger.claim(
+            admitted.run_id,
+            owner_id="daemon-a",
+            lease_seconds=30,
+        )
+        assert lease is not None
+        runner = GoalRunner(root / "state", UnusedAgent(), ledger=ledger)
+
+        with pytest.raises(LeaseConflictError, match="stale Lease generation"):
+            runner.prepare_snapshot(
+                snapshot,
+                run_id=admitted.run_id,
+                lease=lease,
+            )
+
+        assert ledger.run(admitted.run_id).status == "running"
+        assert not (root / "state" / "state.db").exists()
+
+
 def test_state_directory_allows_only_one_daemon_even_with_another_socket() -> None:
     with tempfile.TemporaryDirectory() as directory:
         state_dir = Path(directory) / "state"
@@ -236,6 +289,54 @@ def test_daemon_marks_unsupported_runs_without_starting_an_agent() -> None:
                 == "incompatible_engine"
             )
             assert "test-engine" in client.status(admitted.run_id).error
+        finally:
+            daemon.shutdown()
+            thread.join(timeout=5)
+
+
+@pytest.mark.parametrize(
+    ("argument_name", "argument_value", "expected_code"),
+    (
+        ("workflow_path", "", "admission_error"),
+        ("idempotency_key", "", "admission_error"),
+        ("workflow_path", 7, "invalid_request"),
+        ("idempotency_key", 7, "invalid_request"),
+    ),
+)
+def test_daemon_and_mcp_share_submission_normalization_and_errors(
+    argument_name: str,
+    argument_value: object,
+    expected_code: str,
+) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        state_dir = Path(directory) / "state"
+        daemon = AgentDaemon(state_dir, UnusedAgent())
+        thread = threading.Thread(target=daemon.serve_forever, daemon=True)
+        thread.start()
+        client = DaemonClient(daemon.socket_path)
+        missing_contract = Path(directory) / "missing-contract.yaml"
+        try:
+            _wait_until(client.ping)
+            with pytest.raises(DaemonError) as direct_error:
+                client.submit(
+                    missing_contract,
+                    **{argument_name: argument_value},
+                )
+
+            mcp_result = McpServer(daemon.socket_path)._call_tool(
+                "aiwb_goal_submit",
+                {
+                    "contract_path": str(missing_contract),
+                    argument_name: argument_value,
+                },
+            )
+            mcp_error = json.loads(mcp_result["content"][0]["text"])
+
+            assert direct_error.value.code == expected_code
+            assert mcp_error == {
+                "error": direct_error.value.code,
+                "message": str(direct_error.value),
+            }
         finally:
             daemon.shutdown()
             thread.join(timeout=5)
