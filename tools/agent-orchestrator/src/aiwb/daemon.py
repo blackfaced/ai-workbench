@@ -2,19 +2,32 @@ from __future__ import annotations
 
 import json
 import os
+import fcntl
 import socket
 import socketserver
-import sqlite3
 import threading
+import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
 from .agent import AgentAdapter
+from .admission import (
+    ADMISSION_SCHEMA_VERSION,
+    Admission,
+    AdmissionError,
+    AdmissionRequest,
+    LeaseConflictError,
+    RunLease,
+    SQLiteRunLedger,
+)
 from .evidence import EvidencePayload, EvidencePruneReport
 from .runner import GoalRunner, RunReport
+
+
+ENGINE_VERSION = "0.1.0"
+TRANSITION_POLICY_VERSION = "strict-v1"
 
 
 @dataclass(frozen=True)
@@ -30,6 +43,8 @@ class RunStatus:
     provider: str = ""
     model: str = ""
     resumable: bool = False
+    snapshot_id: str = ""
+    goal_id: str = ""
 
     @classmethod
     def from_dict(cls, value: Mapping[str, object]) -> "RunStatus":
@@ -45,6 +60,8 @@ class RunStatus:
             provider=str(value.get("provider", "")),
             model=str(value.get("model", "")),
             resumable=bool(value.get("resumable", False)),
+            snapshot_id=str(value.get("snapshot_id", "")),
+            goal_id=str(value.get("goal_id", "")),
         )
 
 
@@ -68,10 +85,22 @@ class DaemonClient:
             return False
         return result.get("status") == "ok"
 
-    def submit(self, contract_path: Path) -> RunStatus:
+    def submit(
+        self,
+        contract_path: Path,
+        *,
+        workflow_path: Optional[Path] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> RunStatus:
         result = self._request(
             "submit",
             contract_path=str(Path(contract_path).expanduser().resolve()),
+            workflow_path=(
+                str(Path(workflow_path).expanduser().resolve())
+                if workflow_path is not None
+                else None
+            ),
+            idempotency_key=idempotency_key,
         )
         return RunStatus.from_dict(result)
 
@@ -154,12 +183,16 @@ class AgentDaemon:
         todo_workers: int = 2,
         image_poll_interval_seconds: float = 5.0,
         janitor_interval_seconds: float = 60.0,
+        lease_seconds: float = 2.0,
+        engine_version: str = ENGINE_VERSION,
+        transition_policy_version: str = TRANSITION_POLICY_VERSION,
     ) -> None:
         if (
             max_workers <= 0
             or todo_workers <= 0
             or image_poll_interval_seconds <= 0
             or janitor_interval_seconds <= 0
+            or lease_seconds <= 0
         ):
             raise ValueError("worker counts and intervals must be positive")
         self._state_dir = Path(state_dir).expanduser().resolve()
@@ -174,8 +207,18 @@ class AgentDaemon:
             agent,
             max_workers=todo_workers,
             image_poll_interval_seconds=image_poll_interval_seconds,
+            ledger_database=self._state_dir / "run-ledger.db",
         )
-        self._jobs = _JobStore(self._state_dir / "daemon.db")
+        self._ledger = SQLiteRunLedger(self._state_dir / "run-ledger.db")
+        self._admission = Admission(
+            self._ledger,
+            engine_version=engine_version,
+            transition_policy_version=transition_policy_version,
+        )
+        self._engine_version = engine_version
+        self._transition_policy_version = transition_policy_version
+        self._lease_seconds = lease_seconds
+        self._owner_id = f"daemon-{os.getpid()}-{uuid.uuid4().hex}"
         self._executor = ThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="aiwb-run",
@@ -185,12 +228,19 @@ class AgentDaemon:
         self._janitor_interval_seconds = janitor_interval_seconds
         self._janitor_stop = threading.Event()
         self._janitor_thread: Optional[threading.Thread] = None
+        self._queue_thread: Optional[threading.Thread] = None
         self._server: Optional[_ThreadingUnixServer] = None
+        self._process_lock_file: Optional[Any] = None
 
     def serve_forever(self) -> None:
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
-        self._reject_live_or_remove_stale_socket()
-        server = _ThreadingUnixServer(str(self.socket_path), _RequestHandler)
+        self._acquire_process_lock()
+        try:
+            self._reject_live_or_remove_stale_socket()
+            server = _ThreadingUnixServer(str(self.socket_path), _RequestHandler)
+        except Exception:
+            self._release_process_lock()
+            raise
         server.agent_daemon = self
         self._server = server
         os.chmod(self.socket_path, 0o600)
@@ -201,13 +251,21 @@ class AgentDaemon:
             daemon=True,
         )
         self._janitor_thread.start()
-        self._recover_jobs()
+        self._queue_thread = threading.Thread(
+            target=self._queue_loop,
+            name="aiwb-run-queue",
+            daemon=True,
+        )
+        self._queue_thread.start()
+        self._schedule_queued_runs()
         try:
             server.serve_forever(poll_interval=0.05)
         finally:
             self._janitor_stop.set()
             if self._janitor_thread is not None:
                 self._janitor_thread.join(timeout=5)
+            if self._queue_thread is not None:
+                self._queue_thread.join(timeout=5)
             server.server_close()
             self._executor.shutdown(wait=True)
             self._server = None
@@ -215,6 +273,7 @@ class AgentDaemon:
                 self.socket_path.unlink()
             except FileNotFoundError:
                 pass
+            self._release_process_lock()
 
     def shutdown(self) -> None:
         self._janitor_stop.set()
@@ -225,6 +284,15 @@ class AgentDaemon:
     def _janitor_loop(self) -> None:
         while not self._janitor_stop.wait(self._janitor_interval_seconds):
             self._runner.sweep_kubernetes()
+
+    def _queue_loop(self) -> None:
+        interval = min(0.2, self._lease_seconds / 4)
+        while not self._janitor_stop.wait(interval):
+            self._schedule_queued_runs()
+
+    def _schedule_queued_runs(self) -> None:
+        for run in self._ledger.queued_runs():
+            self._schedule(run.run_id)
 
     def _dispatch(self, request: object) -> Mapping[str, object]:
         if not isinstance(request, dict):
@@ -238,29 +306,43 @@ class AgentDaemon:
             return {"status": "ok"}
         if method == "submit":
             contract_path = _required_parameter(parameters, "contract_path")
-            prepared = self._runner.prepare(Path(contract_path))
-            status = self._jobs.submit(prepared.run_id, Path(contract_path))
-            if status.status in {"queued", "running"}:
-                self._schedule(prepared.run_id)
-            return asdict(status)
+            workflow_value = parameters.get("workflow_path")
+            idempotency_value = parameters.get("idempotency_key")
+            if workflow_value is not None and not isinstance(workflow_value, str):
+                raise DaemonError("invalid_request", "workflow_path must be text or null")
+            if idempotency_value is not None and not isinstance(idempotency_value, str):
+                raise DaemonError("invalid_request", "idempotency_key must be text or null")
+            try:
+                admitted = self._admission.admit(
+                    AdmissionRequest(
+                        contract_path=Path(contract_path),
+                        workflow_path=(Path(workflow_value) if workflow_value else None),
+                        idempotency_key=idempotency_value or None,
+                    )
+                )
+            except AdmissionError as error:
+                raise DaemonError("admission_error", str(error)) from error
+            self._schedule(admitted.run_id)
+            return asdict(self._status(admitted.run_id))
         if method == "status":
-            return asdict(self._jobs.status(_required_parameter(parameters, "run_id")))
+            return asdict(self._status(_required_parameter(parameters, "run_id")))
         if method == "resume":
             run_id = _required_parameter(parameters, "run_id")
-            self._runner.resume(run_id)
-            self._jobs.mark_queued(run_id)
+            try:
+                self._runner.resume(run_id)
+                self._ledger.requeue(run_id)
+            except (KeyError, ValueError) as error:
+                raise DaemonError("run_not_resumable", str(error)) from error
             self._schedule(run_id)
-            return asdict(self._jobs.status(run_id))
+            return asdict(self._status(run_id))
         if method == "report":
             run_id = _required_parameter(parameters, "run_id")
-            report = self._jobs.report(run_id)
-            if report is None:
-                try:
-                    report = self._runner.report(run_id)
-                except KeyError as error:
-                    raise DaemonError(
-                        "report_not_ready", f"Run {run_id!r} has no report yet"
-                    ) from error
+            try:
+                report = self._runner.report(run_id)
+            except KeyError as error:
+                raise DaemonError(
+                    "report_not_ready", f"Run {run_id!r} has no report yet"
+                ) from error
             return report.to_dict()
         if method == "evidence":
             run_id = _required_parameter(parameters, "run_id")
@@ -293,36 +375,129 @@ class AgentDaemon:
             future.add_done_callback(lambda _: self._forget(run_id))
 
     def _execute(self, run_id: str) -> None:
-        job = self._jobs.get(run_id)
-        if job["status"] == "merge_ready":
+        lease = self._ledger.claim(
+            run_id,
+            owner_id=self._owner_id,
+            lease_seconds=self._lease_seconds,
+            supported_engine_versions={self._engine_version},
+            supported_admission_schema_versions={ADMISSION_SCHEMA_VERSION},
+            supported_transition_policy_versions={self._transition_policy_version},
+        )
+        if lease is None:
             return
-        self._jobs.mark_running(run_id)
+        run = self._ledger.run(run_id)
+        snapshot = self._ledger.execution_snapshot(run.snapshot_id)
+        heartbeat_stop = threading.Event()
+        lease_state: List[RunLease] = [lease]
+        heartbeat = threading.Thread(
+            target=self._renew_lease,
+            args=(lease_state, heartbeat_stop),
+            name=f"aiwb-lease-{run_id}",
+            daemon=True,
+        )
+        heartbeat.start()
+        report: Optional[RunReport] = None
+        error_text = ""
         try:
-            report = self._runner.run(Path(job["contract_path"]))
+            report = self._runner.run_snapshot(
+                snapshot,
+                run_id=run_id,
+                mutation_guard=lambda: self._ledger.prove(lease_state[0]),
+            )
         except Exception as error:
+            error_text = str(error)
             try:
                 report = self._runner.report(run_id)
             except KeyError:
-                self._jobs.mark_blocked(run_id, str(error))
-            else:
-                self._jobs.stop(run_id, report, str(error))
+                report = None
+        finally:
+            heartbeat_stop.set()
+            heartbeat.join(timeout=max(1.0, self._lease_seconds))
+        status = (
+            report.status
+            if report is not None and report.status != "running"
+            else "blocked"
+        )
+        try:
+            self._ledger.transition(
+                run_id,
+                owner_id=self._owner_id,
+                generation=lease_state[0].generation,
+                status=status,
+                error=error_text,
+            )
+        except LeaseConflictError:
+            # A superseded worker must not write durable Run state.
             return
-        self._jobs.complete(run_id, report)
+
+    def _renew_lease(
+        self,
+        lease_state: List[RunLease],
+        stop: threading.Event,
+    ) -> None:
+        interval = self._lease_seconds / 3
+        while not stop.wait(interval):
+            try:
+                lease_state[0] = self._ledger.renew(
+                    lease_state[0],
+                    lease_seconds=self._lease_seconds,
+                )
+            except LeaseConflictError:
+                return
 
     def _forget(self, run_id: str) -> None:
         with self._futures_lock:
             self._futures.pop(run_id, None)
-        try:
-            queued = self._jobs.get(run_id)["status"] == "queued"
-        except DaemonError:
-            queued = False
-        if queued:
-            self._schedule(run_id)
 
-    def _recover_jobs(self) -> None:
-        for run_id in self._jobs.recoverable_run_ids():
-            self._jobs.mark_queued(run_id)
-            self._schedule(run_id)
+    def _status(self, run_id: str) -> RunStatus:
+        try:
+            run = self._ledger.run(run_id)
+        except KeyError as error:
+            raise DaemonError("run_not_found", str(error)) from error
+        stop: Mapping[str, object] = {}
+        try:
+            report = self._runner.report(run_id)
+        except KeyError:
+            pass
+        else:
+            if report.stop is not None:
+                stop = asdict(report.stop)
+        return RunStatus(
+            run_id=run.run_id,
+            status=run.status,
+            error=run.error,
+            reason=str(stop.get("reason", "")),
+            boundary=str(stop.get("boundary", "")),
+            todo_id=str(stop.get("todo_id", "")),
+            role=str(stop.get("role", "")),
+            stage=str(stop.get("stage", "")),
+            provider=str(stop.get("provider", "")),
+            model=str(stop.get("model", "")),
+            resumable=bool(stop.get("resumable", False)),
+            snapshot_id=run.snapshot_id,
+            goal_id=run.goal_id,
+        )
+
+    def _acquire_process_lock(self) -> None:
+        lock_path = self._state_dir / "run" / "daemon.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = lock_path.open("a+")
+        try:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            lock_file.close()
+            raise RuntimeError(
+                f"daemon is already active for state directory: {self._state_dir}"
+            ) from error
+        self._process_lock_file = lock_file
+
+    def _release_process_lock(self) -> None:
+        lock_file = self._process_lock_file
+        self._process_lock_file = None
+        if lock_file is None:
+            return
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        lock_file.close()
 
     def _reject_live_or_remove_stale_socket(self) -> None:
         if not self.socket_path.exists():
@@ -371,149 +546,8 @@ class _RequestHandler(socketserver.StreamRequestHandler):
         self.wfile.write((json.dumps(response) + "\n").encode("utf-8"))
 
 
-class _JobStore:
-    def __init__(self, database: Path) -> None:
-        self._database = database
-        with self._connect() as connection:
-            connection.execute("PRAGMA journal_mode=WAL")
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS daemon_jobs (
-                    run_id TEXT PRIMARY KEY,
-                    contract_path TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    error TEXT,
-                    report_json TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-
-    def submit(self, run_id: str, contract_path: Path) -> RunStatus:
-        now = _now()
-        with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT OR IGNORE INTO daemon_jobs (
-                    run_id, contract_path, status, created_at, updated_at
-                ) VALUES (?, ?, 'queued', ?, ?)
-                """,
-                (run_id, str(contract_path.resolve()), now, now),
-            )
-        return self.status(run_id)
-
-    def get(self, run_id: str) -> Mapping[str, Any]:
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT * FROM daemon_jobs WHERE run_id = ?",
-                (run_id,),
-            ).fetchone()
-        if row is None:
-            raise DaemonError("run_not_found", f"unknown Run: {run_id}")
-        return dict(row)
-
-    def status(self, run_id: str) -> RunStatus:
-        record = self.get(run_id)
-        stop = None
-        if record["report_json"]:
-            value = json.loads(record["report_json"])
-            if isinstance(value, dict):
-                stop = value.get("stop")
-        if not isinstance(stop, dict):
-            stop = {}
-        return RunStatus(
-            run_id=run_id,
-            status=record["status"],
-            error=record["error"] or "",
-            reason=str(stop.get("reason", "")),
-            boundary=str(stop.get("boundary", "")),
-            todo_id=str(stop.get("todo_id", "")),
-            role=str(stop.get("role", "")),
-            stage=str(stop.get("stage", "")),
-            provider=str(stop.get("provider", "")),
-            model=str(stop.get("model", "")),
-            resumable=bool(stop.get("resumable", False)),
-        )
-
-    def report(self, run_id: str) -> Optional[RunReport]:
-        record = self.get(run_id)
-        if not record["report_json"]:
-            return None
-        value = json.loads(record["report_json"])
-        if not isinstance(value, dict):
-            raise DaemonError("invalid_report", f"stored report for {run_id!r} is invalid")
-        return RunReport.from_dict(value)
-
-    def recoverable_run_ids(self) -> List[str]:
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT run_id FROM daemon_jobs WHERE status IN ('queued', 'running')"
-            ).fetchall()
-        return [row["run_id"] for row in rows]
-
-    def mark_queued(self, run_id: str) -> None:
-        self._update(
-            run_id,
-            status="queued",
-            error=None,
-            report_json=None,
-        )
-
-    def mark_running(self, run_id: str) -> None:
-        self._update(
-            run_id,
-            status="running",
-            error=None,
-            report_json=None,
-        )
-
-    def mark_blocked(self, run_id: str, error: str) -> None:
-        self._update(run_id, status="blocked", error=error)
-
-    def stop(self, run_id: str, report: RunReport, error: str) -> None:
-        status = (
-            report.status
-            if report.status != "running"
-            else "blocked"
-        )
-        self._update(
-            run_id,
-            status=status,
-            error=error,
-            report_json=json.dumps(report.to_dict()),
-        )
-
-    def complete(self, run_id: str, report: RunReport) -> None:
-        self._update(
-            run_id,
-            status="merge_ready",
-            error=None,
-            report_json=json.dumps(report.to_dict()),
-        )
-
-    def _update(self, run_id: str, **values: object) -> None:
-        values["updated_at"] = _now()
-        assignments = ", ".join(f"{name} = ?" for name in values)
-        parameters = list(values.values()) + [run_id]
-        with self._connect() as connection:
-            connection.execute(
-                f"UPDATE daemon_jobs SET {assignments} WHERE run_id = ?",
-                parameters,
-            )
-
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(str(self._database), timeout=5)
-        connection.row_factory = sqlite3.Row
-        return connection
-
-
 def _required_parameter(parameters: Mapping[str, object], name: str) -> str:
     value = parameters.get(name)
     if not isinstance(value, str) or not value:
         raise DaemonError("invalid_request", f"{name} must be a non-empty string")
     return value
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()

@@ -8,11 +8,12 @@ import sqlite3
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 import yaml
 
@@ -28,6 +29,7 @@ from .harness import HarnessAdapter, HarnessError, HarnessRequest, LocalProcessH
 from .image import CommandImageBuilder, ImageBuildRequest
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
 from .project import (
+    BrowserDiagnosticProfile,
     CandidatePublishProfile,
     HarnessProfile,
     ImageProfile,
@@ -103,10 +105,12 @@ class _Contract:
     role_skill_texts: Mapping[str, Tuple[Tuple[str, str], ...]]
     policy: Mapping[str, object]
     policy_blockers: Tuple[Mapping[str, str], ...]
+    admitted_run_id: str = ""
+    pinned_base_commit: str = ""
 
     @property
     def run_id(self) -> str:
-        return f"{self.goal_id}-{self.contract_hash[:12]}"
+        return self.admitted_run_id or f"{self.goal_id}-{self.contract_hash[:12]}"
 
     @property
     def branch(self) -> str:
@@ -401,6 +405,7 @@ class GoalRunner:
         agent: AgentAdapter,
         max_workers: int = 1,
         image_poll_interval_seconds: float = 5.0,
+        ledger_database: Optional[Path] = None,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be at least 1")
@@ -408,7 +413,11 @@ class GoalRunner:
             raise ValueError("image_poll_interval_seconds must be positive")
         self._state_dir = Path(state_dir).expanduser().resolve()
         self._state_dir.mkdir(parents=True, exist_ok=True)
-        self._store = _RunStore(self._state_dir / "state.db")
+        self._store = _RunStore(
+            Path(ledger_database).expanduser().resolve()
+            if ledger_database is not None
+            else self._state_dir / "state.db"
+        )
         self._evidence_store = EvidenceStore(self._state_dir)
         self._agent = agent
         self._max_workers = max_workers
@@ -426,6 +435,12 @@ class GoalRunner:
 
     def prepare(self, contract_path: Path) -> RunReport:
         _, _, record = self._prepare(Path(contract_path))
+        return self._report(record)
+
+    def prepare_snapshot(self, snapshot: object, *, run_id: str) -> RunReport:
+        """Prepare a Run from its immutable admitted ExecutionSnapshot."""
+        contract = _contract_from_snapshot(snapshot, run_id=run_id)
+        _, _, record = self._prepare_contract(contract)
         return self._report(record)
 
     def report(self, run_id: str) -> RunReport:
@@ -483,6 +498,25 @@ class GoalRunner:
         except Exception as error:
             self._record_failure(contract, error)
             raise
+
+    def run_snapshot(
+        self,
+        snapshot: object,
+        *,
+        run_id: str,
+        mutation_guard: Optional[Callable[[], None]] = None,
+    ) -> RunReport:
+        """Execute only the manifest retained by Admission."""
+        contract = _contract_from_snapshot(snapshot, run_id=run_id)
+        with self._store.guard_mutations(run_id, mutation_guard):
+            contract, workspace, record = self._prepare_contract(contract)
+            try:
+                return self._run_dag(contract, workspace, record)
+            except RunPaused:
+                raise
+            except Exception as error:
+                self._record_failure(contract, error)
+                raise
 
     def _record_failure(
         self,
@@ -1014,12 +1048,18 @@ class GoalRunner:
         contract_path: Path,
     ) -> Tuple[_Contract, "_GitWorkspace", Mapping[str, Any]]:
         contract = _load_contract(contract_path)
+        return self._prepare_contract(contract)
+
+    def _prepare_contract(
+        self,
+        contract: _Contract,
+    ) -> Tuple[_Contract, "_GitWorkspace", Mapping[str, Any]]:
         worktree = self._state_dir / "worktrees" / contract.run_id / "candidate"
         workspace = _GitWorkspace(
             repository=contract.repository,
             worktree=worktree,
             branch=contract.branch,
-            base_ref=contract.base_ref,
+            base_ref=contract.pinned_base_commit or contract.base_ref,
         )
         workspace.ensure()
         record = self._store.get_or_create(contract, workspace.worktree)
@@ -1643,6 +1683,8 @@ class _RunStore:
     def __init__(self, database: Path) -> None:
         database.parent.mkdir(parents=True, exist_ok=True)
         self._database = database
+        self._mutation_guards: Dict[str, Callable[[], None]] = {}
+        self._mutation_guards_lock = threading.Lock()
         with self._connect() as connection:
             connection.execute(
                 """
@@ -1737,6 +1779,7 @@ class _RunStore:
             self._ensure_todos(contract)
             return self.get(contract.run_id)
         now = _now()
+        self._prove_mutation(contract.run_id)
         with self._connect() as connection:
             connection.execute(
                 """
@@ -1771,6 +1814,7 @@ class _RunStore:
 
     def _ensure_todos(self, contract: _Contract) -> None:
         now = _now()
+        self._prove_mutation(contract.run_id)
         with self._connect() as connection:
             for todo in contract.todos:
                 connection.execute(
@@ -2261,6 +2305,7 @@ class _RunStore:
         return dict(row) if row is not None else None
 
     def _update(self, run_id: str, **values: object) -> None:
+        self._prove_mutation(run_id)
         values["updated_at"] = _now()
         assignments = ", ".join(f"{name} = ?" for name in values)
         parameters = list(values.values()) + [run_id]
@@ -2271,6 +2316,7 @@ class _RunStore:
             )
 
     def _update_todo(self, run_id: str, todo_id: str, **values: object) -> None:
+        self._prove_mutation(run_id)
         values["updated_at"] = _now()
         assignments = ", ".join(f"{name} = ?" for name in values)
         parameters = list(values.values()) + [run_id, todo_id]
@@ -2279,6 +2325,29 @@ class _RunStore:
                 f"UPDATE todos SET {assignments} WHERE run_id = ? AND todo_id = ?",
                 parameters,
             )
+
+    @contextmanager
+    def guard_mutations(
+        self,
+        run_id: str,
+        guard: Optional[Callable[[], None]],
+    ) -> Iterator[None]:
+        if guard is None:
+            yield
+            return
+        with self._mutation_guards_lock:
+            self._mutation_guards[run_id] = guard
+        try:
+            yield
+        finally:
+            with self._mutation_guards_lock:
+                self._mutation_guards.pop(run_id, None)
+
+    def _prove_mutation(self, run_id: str) -> None:
+        with self._mutation_guards_lock:
+            guard = self._mutation_guards.get(run_id)
+        if guard is not None:
+            guard()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(str(self._database), timeout=30)
@@ -2457,6 +2526,176 @@ class _GitWorkspace:
         check: bool = True,
     ) -> subprocess.CompletedProcess[str]:
         return _git(self.worktree, *arguments, check=check)
+
+
+def _contract_from_snapshot(snapshot: object, *, run_id: str) -> _Contract:
+    manifest = getattr(snapshot, "manifest", None)
+    snapshot_id = getattr(snapshot, "snapshot_id", None)
+    if not isinstance(manifest, Mapping) or not isinstance(snapshot_id, str):
+        raise ContractError("execution requires an admitted ExecutionSnapshot")
+    goal = _manifest_mapping_value(manifest, "goal")
+    agent = _manifest_mapping_value(manifest, "agent")
+    repository = _manifest_mapping_value(manifest, "repository")
+    resources = _manifest_mapping_value(manifest, "resources")
+    role_guidance = _manifest_mapping_value(manifest, "role_guidance")
+    policy = _manifest_mapping_value(manifest, "policy")
+
+    acceptance = tuple(
+        _Acceptance(
+            test_id=str(_manifest_mapping_item(item, "goal.acceptance")["test_id"]),
+            statement=str(_manifest_mapping_item(item, "goal.acceptance")["statement"]),
+        )
+        for item in _manifest_sequence(goal, "acceptance")
+    )
+    todos = tuple(_todo_from_manifest(item) for item in _manifest_sequence(manifest, "todos"))
+    image_value = manifest.get("image_profile")
+    image_profile = (
+        _image_from_manifest(_manifest_mapping_item(image_value, "image_profile"))
+        if image_value is not None
+        else None
+    )
+    publish_value = manifest.get("publish_policy")
+    publish_policy = (
+        _publish_from_manifest(_manifest_mapping_item(publish_value, "publish_policy"))
+        if publish_value is not None
+        else None
+    )
+    guidance = {
+        str(role): tuple(
+            (str(entry[0]), str(entry[1]))
+            for entry in entries
+            if isinstance(entry, (tuple, list)) and len(entry) == 2
+        )
+        for role, entries in role_guidance.items()
+        if isinstance(entries, (tuple, list))
+    }
+    required_secrets = tuple(str(item) for item in _manifest_sequence(manifest, "required_secrets"))
+    return _Contract(
+        contract_hash=hashlib.sha256(
+            f"{snapshot_id}\0{run_id}".encode("utf-8")
+        ).hexdigest(),
+        approval_status=str(manifest["approval_status"]),
+        goal_id=str(goal["id"]),
+        goal_title=str(goal["title"]),
+        requirement=str(goal["requirement"]),
+        acceptance=acceptance,
+        agent_provider=str(agent["provider"]),
+        agent_model=(str(agent["model"]) if agent.get("model") is not None else None),
+        repository=Path(str(repository["path"])).resolve(),
+        base_ref=str(repository["base_ref"]),
+        todos=todos,
+        resources=_ResourcePolicy(
+            agent_attempts=_optional_manifest_int(resources.get("agent_attempts")),
+            wall_clock_seconds=_optional_manifest_float(resources.get("wall_clock_seconds")),
+            harness_seconds=_optional_manifest_float(resources.get("harness_seconds")),
+            provider_tokens=_optional_manifest_int(resources.get("provider_tokens")),
+        ),
+        required_secrets=required_secrets,
+        image_profile_name=image_profile.name if image_profile is not None else "",
+        image_profile=image_profile,
+        candidate_publish=publish_policy,
+        role_skill_texts=guidance,
+        policy=dict(policy),
+        policy_blockers=(),
+        admitted_run_id=run_id,
+        pinned_base_commit=str(repository["base_commit"]),
+    )
+
+
+def _todo_from_manifest(value: object) -> _Todo:
+    todo = _manifest_mapping_item(value, "todos[]")
+    harness_value = todo.get("harness")
+    harness = (
+        _harness_from_manifest(_manifest_mapping_item(harness_value, "todos[].harness"))
+        if harness_value is not None
+        else None
+    )
+    return _Todo(
+        todo_id=str(todo["todo_id"]),
+        title=str(todo["title"]),
+        depends_on=tuple(str(item) for item in _manifest_sequence(todo, "depends_on")),
+        test_ids=tuple(str(item) for item in _manifest_sequence(todo, "test_ids")),
+        test_command=tuple(str(item) for item in _manifest_sequence(todo, "test_command")),
+        allowed_test_paths=tuple(
+            str(item) for item in _manifest_sequence(todo, "allowed_test_paths")
+        ),
+        timeout_seconds=int(todo["timeout_seconds"]),
+        harness_name=str(todo["harness_name"]),
+        harness=harness,
+    )
+
+
+def _harness_from_manifest(value: Mapping[str, object]) -> HarnessProfile:
+    browser_value = value.get("browser_diagnostic")
+    browser = None
+    if browser_value is not None:
+        item = _manifest_mapping_item(browser_value, "browser_diagnostic")
+        browser = BrowserDiagnosticProfile(
+            adapter=str(item["adapter"]),
+            command=tuple(str(part) for part in _manifest_sequence(item, "command")),
+            timeout_seconds=int(item["timeout_seconds"]),
+        )
+    return HarnessProfile(
+        name=str(value["name"]),
+        kind=str(value["kind"]),
+        environment=str(value["environment"]),
+        start_command=tuple(str(item) for item in value.get("start_command", ())),
+        ready_url=str(value.get("ready_url", "")),
+        ready_timeout_seconds=int(value.get("ready_timeout_seconds", 0)),
+        browser_gate=str(value.get("browser_gate", "")),
+        browser_diagnostic=browser,
+        kubernetes_context=str(value.get("kubernetes_context", "")),
+        namespace_prefix=str(value.get("namespace_prefix", "")),
+        ttl_seconds=int(value.get("ttl_seconds", 0)),
+        provision_command=tuple(str(item) for item in value.get("provision_command", ())),
+        collect_command=tuple(str(item) for item in value.get("collect_command", ())),
+        cleanup_command=tuple(str(item) for item in value.get("cleanup_command", ())),
+    )
+
+
+def _image_from_manifest(value: Mapping[str, object]) -> ImageProfile:
+    return ImageProfile(
+        name=str(value["name"]),
+        environment=str(value["environment"]),
+        start_command=tuple(str(item) for item in _manifest_sequence(value, "start_command")),
+        status_command=tuple(str(item) for item in _manifest_sequence(value, "status_command")),
+        result_command=tuple(str(item) for item in _manifest_sequence(value, "result_command")),
+    )
+
+
+def _publish_from_manifest(value: Mapping[str, object]) -> CandidatePublishProfile:
+    return CandidatePublishProfile(
+        remote=str(value["remote"]),
+        branch_prefix=str(value["branch_prefix"]),
+        remote_url=str(value["remote_url"]),
+    )
+
+
+def _manifest_mapping_value(
+    value: Mapping[str, object], name: str
+) -> Mapping[str, object]:
+    return _manifest_mapping_item(value.get(name), name)
+
+
+def _manifest_mapping_item(value: object, path: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ContractError(f"ExecutionManifest {path} must be a mapping")
+    return value
+
+
+def _manifest_sequence(value: Mapping[str, object], name: str) -> Sequence[object]:
+    item = value.get(name)
+    if not isinstance(item, (tuple, list)):
+        raise ContractError(f"ExecutionManifest {name} must be a sequence")
+    return item
+
+
+def _optional_manifest_int(value: object) -> Optional[int]:
+    return int(value) if value is not None else None
+
+
+def _optional_manifest_float(value: object) -> Optional[float]:
+    return float(value) if value is not None else None
 
 
 def _load_contract(

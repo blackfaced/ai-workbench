@@ -9,10 +9,10 @@ import subprocess
 import uuid
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, is_dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Mapping, Optional, Protocol, Tuple
+from typing import Any, AbstractSet, Callable, Mapping, Optional, Protocol, Tuple
 
 import yaml
 
@@ -24,6 +24,18 @@ ADMISSION_SCHEMA_VERSION = 1
 
 class AdmissionError(ValueError):
     pass
+
+
+class LeaseConflictError(RuntimeError):
+    """The worker no longer owns the fenced Lease it presented."""
+
+
+@dataclass(frozen=True)
+class RunLease:
+    run_id: str
+    owner_id: str
+    generation: int
+    expires_at: str
 
 
 @dataclass(frozen=True)
@@ -129,6 +141,7 @@ class RunRecord:
     goal_id: str
     status: str
     created_at: str
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -161,6 +174,51 @@ class RunLedger(Protocol):
     def queued_runs(self) -> Tuple[RunRecord, ...]:
         ...
 
+    def claim(
+        self,
+        run_id: str,
+        *,
+        owner_id: str,
+        lease_seconds: float,
+        now: Optional[datetime] = None,
+        supported_engine_versions: Optional[AbstractSet[str]] = None,
+        supported_admission_schema_versions: Optional[AbstractSet[int]] = None,
+        supported_transition_policy_versions: Optional[AbstractSet[str]] = None,
+    ) -> Optional[RunLease]:
+        ...
+
+    def renew(
+        self,
+        lease: RunLease,
+        *,
+        lease_seconds: float,
+        now: Optional[datetime] = None,
+    ) -> RunLease:
+        ...
+
+    def prove(
+        self,
+        lease: RunLease,
+        *,
+        now: Optional[datetime] = None,
+    ) -> RunLease:
+        ...
+
+    def transition(
+        self,
+        run_id: str,
+        *,
+        owner_id: str,
+        generation: int,
+        status: str,
+        error: str = "",
+        now: Optional[datetime] = None,
+    ) -> RunRecord:
+        ...
+
+    def requeue(self, run_id: str) -> RunRecord:
+        ...
+
 
 class SQLiteRunLedger:
     def __init__(
@@ -182,11 +240,13 @@ class SQLiteRunLedger:
                     manifest_json TEXT NOT NULL,
                     created_at TEXT NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS runs (
+                CREATE TABLE IF NOT EXISTS ledger_runs (
                     run_id TEXT PRIMARY KEY,
                     snapshot_id TEXT NOT NULL,
                     goal_id TEXT NOT NULL,
                     status TEXT NOT NULL,
+                    error TEXT NOT NULL DEFAULT '',
+                    lease_generation INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY (snapshot_id)
                         REFERENCES execution_snapshots(snapshot_id)
@@ -194,15 +254,34 @@ class SQLiteRunLedger:
                 CREATE TABLE IF NOT EXISTS run_queue (
                     run_id TEXT PRIMARY KEY,
                     enqueued_at TEXT NOT NULL,
-                    FOREIGN KEY (run_id) REFERENCES runs(run_id)
+                    FOREIGN KEY (run_id) REFERENCES ledger_runs(run_id)
                 );
                 CREATE TABLE IF NOT EXISTS idempotency_keys (
                     idempotency_key TEXT PRIMARY KEY,
                     run_id TEXT NOT NULL UNIQUE,
-                    FOREIGN KEY (run_id) REFERENCES runs(run_id)
+                    FOREIGN KEY (run_id) REFERENCES ledger_runs(run_id)
+                );
+                CREATE TABLE IF NOT EXISTS run_leases (
+                    run_id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    generation INTEGER NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    renewed_at TEXT NOT NULL,
+                    FOREIGN KEY (run_id) REFERENCES ledger_runs(run_id)
+                );
+                CREATE TABLE IF NOT EXISTS run_transitions (
+                    transition_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    generation INTEGER NOT NULL,
+                    from_status TEXT NOT NULL,
+                    to_status TEXT NOT NULL,
+                    error TEXT NOT NULL,
+                    recorded_at TEXT NOT NULL,
+                    FOREIGN KEY (run_id) REFERENCES ledger_runs(run_id)
                 );
                 """
             )
+            self._ensure_run_columns(connection)
 
     def admit(
         self,
@@ -223,9 +302,9 @@ class SQLiteRunLedger:
             if idempotency_key is not None:
                 existing = connection.execute(
                     """
-                    SELECT runs.*
+                    SELECT ledger_runs.*
                     FROM idempotency_keys
-                    JOIN runs USING (run_id)
+                    JOIN ledger_runs USING (run_id)
                     WHERE idempotency_key = ?
                     """,
                     (idempotency_key,),
@@ -254,7 +333,7 @@ class SQLiteRunLedger:
             run_id = f"{goal_id}-{uuid.uuid4().hex}"
             connection.execute(
                 """
-                INSERT INTO runs (
+                INSERT INTO ledger_runs (
                     run_id, snapshot_id, goal_id, status, created_at
                 ) VALUES (?, ?, ?, 'queued', ?)
                 """,
@@ -302,7 +381,7 @@ class SQLiteRunLedger:
     def run(self, run_id: str) -> RunRecord:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM runs WHERE run_id = ?",
+                "SELECT * FROM ledger_runs WHERE run_id = ?",
                 (run_id,),
             ).fetchone()
         if row is None:
@@ -313,13 +392,317 @@ class SQLiteRunLedger:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT runs.*
+                SELECT ledger_runs.*
                 FROM run_queue
-                JOIN runs USING (run_id)
-                ORDER BY run_queue.enqueued_at, runs.run_id
+                JOIN ledger_runs USING (run_id)
+                WHERE ledger_runs.status IN ('queued', 'running')
+                ORDER BY run_queue.enqueued_at, ledger_runs.run_id
                 """
             ).fetchall()
         return tuple(_run_record(row) for row in rows)
+
+    def claim(
+        self,
+        run_id: str,
+        *,
+        owner_id: str,
+        lease_seconds: float,
+        now: Optional[datetime] = None,
+        supported_engine_versions: Optional[AbstractSet[str]] = None,
+        supported_admission_schema_versions: Optional[AbstractSet[int]] = None,
+        supported_transition_policy_versions: Optional[AbstractSet[str]] = None,
+    ) -> Optional[RunLease]:
+        if not owner_id:
+            raise ValueError("owner_id must be non-empty")
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
+        instant = _instant(now)
+        expires_at = instant + timedelta(seconds=lease_seconds)
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                "SELECT * FROM ledger_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                raise KeyError(f"unknown Run: {run_id}")
+            if run["status"] not in {"queued", "running"}:
+                return None
+            queued = connection.execute(
+                "SELECT 1 FROM run_queue WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if queued is None:
+                return None
+            current = connection.execute(
+                "SELECT * FROM run_leases WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if current is not None and _parse_instant(current["expires_at"]) > instant:
+                if current["owner_id"] != owner_id:
+                    return None
+                return _run_lease(current)
+            incompatibility = self._incompatible_reason(
+                connection,
+                run["snapshot_id"],
+                supported_engine_versions=supported_engine_versions,
+                supported_admission_schema_versions=(
+                    supported_admission_schema_versions
+                ),
+                supported_transition_policy_versions=(
+                    supported_transition_policy_versions
+                ),
+            )
+            if incompatibility:
+                connection.execute(
+                    "UPDATE ledger_runs SET status = 'incompatible_engine', error = ? "
+                    "WHERE run_id = ?",
+                    (incompatibility, run_id),
+                )
+                connection.execute("DELETE FROM run_queue WHERE run_id = ?", (run_id,))
+                connection.execute("DELETE FROM run_leases WHERE run_id = ?", (run_id,))
+                connection.execute(
+                    """
+                    INSERT INTO run_transitions (
+                        run_id, generation, from_status, to_status, error, recorded_at
+                    ) VALUES (?, ?, ?, 'incompatible_engine', ?, ?)
+                    """,
+                    (
+                        run_id,
+                        int(run["lease_generation"]),
+                        run["status"],
+                        incompatibility,
+                        instant.isoformat(),
+                    ),
+                )
+                return None
+            generation = int(run["lease_generation"]) + 1
+            connection.execute(
+                "UPDATE ledger_runs SET status = 'running', error = '', lease_generation = ? "
+                "WHERE run_id = ?",
+                (generation, run_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO run_leases (
+                    run_id, owner_id, generation, expires_at, renewed_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    owner_id = excluded.owner_id,
+                    generation = excluded.generation,
+                    expires_at = excluded.expires_at,
+                    renewed_at = excluded.renewed_at
+                """,
+                (
+                    run_id,
+                    owner_id,
+                    generation,
+                    expires_at.isoformat(),
+                    instant.isoformat(),
+                ),
+            )
+        return RunLease(
+            run_id=run_id,
+            owner_id=owner_id,
+            generation=generation,
+            expires_at=expires_at.isoformat(),
+        )
+
+    @staticmethod
+    def _incompatible_reason(
+        connection: sqlite3.Connection,
+        snapshot_id: str,
+        *,
+        supported_engine_versions: Optional[AbstractSet[str]],
+        supported_admission_schema_versions: Optional[AbstractSet[int]],
+        supported_transition_policy_versions: Optional[AbstractSet[str]],
+    ) -> str:
+        if (
+            supported_engine_versions is None
+            and supported_admission_schema_versions is None
+            and supported_transition_policy_versions is None
+        ):
+            return ""
+        row = connection.execute(
+            "SELECT manifest_json FROM execution_snapshots WHERE snapshot_id = ?",
+            (snapshot_id,),
+        ).fetchone()
+        if row is None:  # pragma: no cover - protected by foreign key
+            return f"missing ExecutionSnapshot {snapshot_id}"
+        value = json.loads(row["manifest_json"])
+        versions = value.get("versions", {}) if isinstance(value, dict) else {}
+        checks = (
+            ("engine", versions.get("engine"), supported_engine_versions),
+            (
+                "Admission schema",
+                versions.get("admission_schema"),
+                supported_admission_schema_versions,
+            ),
+            (
+                "transition policy",
+                versions.get("transition_policy"),
+                supported_transition_policy_versions,
+            ),
+        )
+        unsupported = [
+            f"{name} version {version!r}"
+            for name, version, supported in checks
+            if supported is not None and version not in supported
+        ]
+        if not unsupported:
+            return ""
+        return "unsupported " + ", ".join(unsupported)
+
+    def renew(
+        self,
+        lease: RunLease,
+        *,
+        lease_seconds: float,
+        now: Optional[datetime] = None,
+    ) -> RunLease:
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
+        instant = _instant(now)
+        expires_at = instant + timedelta(seconds=lease_seconds)
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._prove_lease(connection, lease, instant)
+            connection.execute(
+                "UPDATE run_leases SET expires_at = ?, renewed_at = ? "
+                "WHERE run_id = ? AND owner_id = ? AND generation = ?",
+                (
+                    expires_at.isoformat(),
+                    instant.isoformat(),
+                    lease.run_id,
+                    lease.owner_id,
+                    lease.generation,
+                ),
+            )
+        return RunLease(
+            run_id=current["run_id"],
+            owner_id=current["owner_id"],
+            generation=int(current["generation"]),
+            expires_at=expires_at.isoformat(),
+        )
+
+    def prove(
+        self,
+        lease: RunLease,
+        *,
+        now: Optional[datetime] = None,
+    ) -> RunLease:
+        instant = _instant(now)
+        with self._connect() as connection:
+            current = self._prove_lease(connection, lease, instant)
+        return _run_lease(current)
+
+    def transition(
+        self,
+        run_id: str,
+        *,
+        owner_id: str,
+        generation: int,
+        status: str,
+        error: str = "",
+        now: Optional[datetime] = None,
+    ) -> RunRecord:
+        if not status:
+            raise ValueError("status must be non-empty")
+        instant = _instant(now)
+        lease = RunLease(run_id, owner_id, generation, instant.isoformat())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._prove_lease(connection, lease, instant)
+            previous = connection.execute(
+                "SELECT status FROM ledger_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if previous is None:  # pragma: no cover - protected by foreign keys
+                raise KeyError(f"unknown Run: {run_id}")
+            connection.execute(
+                "UPDATE ledger_runs SET status = ?, error = ? WHERE run_id = ?",
+                (status, error, run_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO run_transitions (
+                    run_id, generation, from_status, to_status, error, recorded_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    generation,
+                    previous["status"],
+                    status,
+                    error,
+                    instant.isoformat(),
+                ),
+            )
+            if status not in {"queued", "running"}:
+                connection.execute("DELETE FROM run_queue WHERE run_id = ?", (run_id,))
+                connection.execute("DELETE FROM run_leases WHERE run_id = ?", (run_id,))
+        return self.run(run_id)
+
+    def requeue(self, run_id: str) -> RunRecord:
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            run = connection.execute(
+                "SELECT * FROM ledger_runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                raise KeyError(f"unknown Run: {run_id}")
+            if not str(run["status"]).startswith("paused_"):
+                raise ValueError(f"Run {run_id!r} is not paused")
+            connection.execute(
+                "UPDATE ledger_runs SET status = 'queued', error = '' WHERE run_id = ?",
+                (run_id,),
+            )
+            connection.execute(
+                "INSERT OR REPLACE INTO run_queue (run_id, enqueued_at) VALUES (?, ?)",
+                (run_id, now),
+            )
+            connection.execute("DELETE FROM run_leases WHERE run_id = ?", (run_id,))
+        return self.run(run_id)
+
+    @staticmethod
+    def _prove_lease(
+        connection: sqlite3.Connection,
+        lease: RunLease,
+        now: datetime,
+    ) -> sqlite3.Row:
+        current = connection.execute(
+            "SELECT * FROM run_leases WHERE run_id = ?",
+            (lease.run_id,),
+        ).fetchone()
+        if current is None:
+            raise LeaseConflictError(f"Run {lease.run_id!r} has no active Lease")
+        if (
+            current["owner_id"] != lease.owner_id
+            or int(current["generation"]) != lease.generation
+        ):
+            raise LeaseConflictError(
+                f"stale Lease generation for Run {lease.run_id!r}"
+            )
+        if _parse_instant(current["expires_at"]) <= now:
+            raise LeaseConflictError(f"Lease for Run {lease.run_id!r} has expired")
+        return current
+
+    @staticmethod
+    def _ensure_run_columns(connection: sqlite3.Connection) -> None:
+        existing = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(ledger_runs)").fetchall()
+        }
+        for name, definition in {
+            "error": "TEXT NOT NULL DEFAULT ''",
+            "lease_generation": "INTEGER NOT NULL DEFAULT 0",
+        }.items():
+            if name not in existing:
+                connection.execute(
+                    f"ALTER TABLE ledger_runs ADD COLUMN {name} {definition}"
+                )
 
     def _inject(self, boundary: str) -> None:
         if self._fault_injector is not None:
@@ -1038,8 +1421,29 @@ def _run_record(row: sqlite3.Row) -> RunRecord:
         goal_id=row["goal_id"],
         status=row["status"],
         created_at=row["created_at"],
+        error=row["error"] if "error" in row.keys() else "",
     )
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _instant(value: Optional[datetime]) -> datetime:
+    instant = value or datetime.now(timezone.utc)
+    if instant.tzinfo is None:
+        raise ValueError("Lease time must be timezone-aware")
+    return instant.astimezone(timezone.utc)
+
+
+def _parse_instant(value: str) -> datetime:
+    return datetime.fromisoformat(value).astimezone(timezone.utc)
+
+
+def _run_lease(row: sqlite3.Row) -> RunLease:
+    return RunLease(
+        run_id=row["run_id"],
+        owner_id=row["owner_id"],
+        generation=int(row["generation"]),
+        expires_at=row["expires_at"],
+    )

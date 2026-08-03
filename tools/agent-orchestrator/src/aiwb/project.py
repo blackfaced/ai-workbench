@@ -80,6 +80,7 @@ class ImageProfile:
 class CandidatePublishProfile:
     remote: str
     branch_prefix: str
+    remote_url: str = ""
 
 
 @dataclass(frozen=True)
