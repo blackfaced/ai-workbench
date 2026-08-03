@@ -96,16 +96,16 @@ class DaemonClient:
         self,
         contract_path: Path,
         *,
-        workflow_path: Optional[Path] = None,
-        idempotency_key: Optional[str] = None,
+        workflow_path: object = None,
+        idempotency_key: object = None,
     ) -> RunStatus:
         result = self._request(
             "submit",
             contract_path=str(Path(contract_path).expanduser().resolve()),
             workflow_path=(
                 str(Path(workflow_path).expanduser().resolve())
-                if workflow_path is not None
-                else None
+                if isinstance(workflow_path, Path)
+                else workflow_path
             ),
             idempotency_key=idempotency_key,
         )
@@ -221,14 +221,14 @@ class AgentDaemon:
             if socket_path
             else self._state_dir / "run" / "daemon.sock"
         )
+        self._ledger = SQLiteRunLedger(self._state_dir / "run-ledger.db")
         self._runner = GoalRunner(
             self._state_dir,
             agent,
             max_workers=todo_workers,
             image_poll_interval_seconds=image_poll_interval_seconds,
-            ledger_database=self._state_dir / "run-ledger.db",
+            ledger=self._ledger,
         )
-        self._ledger = SQLiteRunLedger(self._state_dir / "run-ledger.db")
         self._admission = Admission(
             self._ledger,
             engine_version=engine_version,
@@ -421,6 +421,7 @@ class AgentDaemon:
             report = self._runner.run_snapshot(
                 snapshot,
                 run_id=run_id,
+                lease=lease,
                 mutation_guard=lambda: self._ledger.prove(lease_state[0]),
             )
         except Exception as error:
