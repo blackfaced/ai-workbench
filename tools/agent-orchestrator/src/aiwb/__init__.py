@@ -9,6 +9,17 @@ from .agent import (
     CodexCliAdapter,
     ProviderQuotaError,
 )
+from .admission import (
+    Admission,
+    AdmissionError,
+    AdmissionRequest,
+    AdmittedRun,
+    ExecutionManifest,
+    ExecutionSnapshot,
+    RunLedger,
+    RunRecord,
+    SQLiteRunLedger,
+)
 from .browser import (
     BrowserDiagnosticAdapter,
     BrowserDiagnosticError,
@@ -112,6 +123,10 @@ from .supervisor import LaunchdError, LaunchdInstallResult, LaunchdService
 
 __all__ = [
     "AgentAdapter",
+    "Admission",
+    "AdmissionError",
+    "AdmissionRequest",
+    "AdmittedRun",
     "AgentDaemon",
     "AgentRequest",
     "AgentResult",
@@ -128,6 +143,8 @@ __all__ = [
     "CodeStructureEvidence",
     "ContractError",
     "ExecutionEnvelope",
+    "ExecutionManifest",
+    "ExecutionSnapshot",
     "ExternalAnalysisEvidence",
     "EvidenceError",
     "EvidenceIntegrityError",
@@ -193,10 +210,13 @@ __all__ = [
     "RecipeRefreshPreview",
     "RecipeResolution",
     "RunReport",
+    "RunLedger",
+    "RunRecord",
     "RunPaused",
     "RunStatus",
     "SetupApplyResult",
     "SetupInspection",
+    "SQLiteRunLedger",
     "StopReport",
     "SkillCatalog",
     "SkillCatalogSnapshot",

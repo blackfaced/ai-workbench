@@ -96,6 +96,7 @@ class _Contract:
     base_ref: str
     todos: Tuple[_Todo, ...]
     resources: _ResourcePolicy
+    required_secrets: Tuple[str, ...]
     image_profile_name: str
     image_profile: Optional[ImageProfile]
     candidate_publish: Optional[CandidatePublishProfile]
@@ -2464,8 +2465,10 @@ def _load_contract(
     require_approval: bool = True,
     workflow_path: Optional[Path] = None,
     preflight: bool = False,
+    raw: Optional[bytes] = None,
 ) -> _Contract:
-    raw = path.read_bytes()
+    if raw is None:
+        raw = path.read_bytes()
     try:
         data = yaml.safe_load(raw)
     except yaml.YAMLError as error:
@@ -2547,6 +2550,7 @@ def _load_contract(
         preflight=preflight,
     )
     resources = _parse_resources(data.get("resources", {}))
+    required_secrets = _parse_required_secrets(data.get("required_secrets", []))
 
     return _Contract(
         contract_hash=_contract_hash(raw, role_skill_texts),
@@ -2561,6 +2565,7 @@ def _load_contract(
         base_ref=_text(project, "base_ref"),
         todos=todos,
         resources=resources,
+        required_secrets=required_secrets,
         image_profile_name=image_profile_name,
         image_profile=image_profile,
         candidate_publish=candidate_publish,
@@ -2572,6 +2577,26 @@ def _load_contract(
         },
         policy_blockers=tuple(policy_metadata.get("blockers", ())),
     )
+
+
+def _parse_required_secrets(value: object) -> Tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ContractError("required_secrets must be a list of references")
+    references: List[str] = []
+    reference_pattern = re.compile(
+        r"^(?:env:[A-Za-z_][A-Za-z0-9_]*|"
+        r"keychain:[A-Za-z0-9_][A-Za-z0-9._/@:-]*)$"
+    )
+    for item in value:
+        if not isinstance(item, str) or not reference_pattern.fullmatch(item):
+            raise ContractError(
+                "required_secrets entries must use supported references such as "
+                "env:OPENAI_API_KEY or keychain:aiwb/openai"
+            )
+        if item in references:
+            raise ContractError(f"required_secrets contains duplicate reference {item!r}")
+        references.append(item)
+    return tuple(references)
 
 
 def _parse_resources(value: object) -> _ResourcePolicy:
