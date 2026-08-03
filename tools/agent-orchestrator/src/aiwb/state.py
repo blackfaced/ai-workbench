@@ -12,9 +12,109 @@ from typing import Callable, Mapping, Optional, Tuple
 from urllib.parse import quote
 
 
-_CURRENT_TABLES = frozenset(
-    {"execution_snapshots", "runs", "run_queue", "idempotency_keys"}
+RUN_LEDGER_SCHEMA_TABLE = "run_ledger_schema"
+RUN_LEDGER_SCHEMA_VERSION = 1
+INCOMPATIBLE_CURRENT_STATE_MESSAGE = (
+    "incompatible current RunLedger state; preserve it for diagnosis; "
+    "the explicit legacy reset does not apply"
 )
+_CURRENT_RUN_LEDGER_TABLES = frozenset(
+    {
+        RUN_LEDGER_SCHEMA_TABLE,
+        "execution_snapshots",
+        "runs",
+        "todos",
+        "run_queue",
+        "idempotency_keys",
+        "run_leases",
+        "run_transitions",
+    }
+)
+_CURRENT_RUN_LEDGER_COLUMNS = {
+    RUN_LEDGER_SCHEMA_TABLE: frozenset({"singleton", "schema_version"}),
+    "execution_snapshots": frozenset(
+        {"snapshot_id", "source", "manifest_json", "created_at"}
+    ),
+    "runs": frozenset(
+        {
+            "run_id",
+            "snapshot_id",
+            "contract_hash",
+            "goal_id",
+            "status",
+            "error",
+            "lease_generation",
+            "active_stage",
+            "repository",
+            "worktree",
+            "branch",
+            "red_commit",
+            "code_commit",
+            "sessions_json",
+            "attempts_json",
+            "evidence_json",
+            "stop_json",
+            "resource_window_started_at",
+            "resource_attempt_baseline",
+            "resource_harness_baseline",
+            "resource_token_baseline",
+            "execution_envelope_json",
+            "candidate_commit",
+            "candidate_verifier_completed",
+            "image_profile",
+            "image_operation_id",
+            "image_status",
+            "image_digest",
+            "image_artifacts_json",
+            "image_artifact_refs_json",
+            "published_remote",
+            "published_ref",
+            "published_commit",
+            "last_error",
+            "created_at",
+            "updated_at",
+        }
+    ),
+    "todos": frozenset(
+        {
+            "run_id",
+            "todo_id",
+            "title",
+            "status",
+            "active_stage",
+            "branch",
+            "worktree",
+            "base_commit",
+            "red_commit",
+            "code_commit",
+            "sessions_json",
+            "attempts_json",
+            "evidence_json",
+            "repair_commits_json",
+            "resume_status",
+            "stop_json",
+            "last_error",
+            "created_at",
+            "updated_at",
+        }
+    ),
+    "run_queue": frozenset({"run_id", "enqueued_at"}),
+    "idempotency_keys": frozenset({"idempotency_key", "run_id"}),
+    "run_leases": frozenset(
+        {"run_id", "owner_id", "generation", "expires_at", "renewed_at"}
+    ),
+    "run_transitions": frozenset(
+        {
+            "transition_id",
+            "run_id",
+            "generation",
+            "from_status",
+            "to_status",
+            "error",
+            "recorded_at",
+        }
+    ),
+}
 _RESET_MARKER = ".legacy-state-reset.json"
 _RESET_MARKER_TEMPORARY = ".legacy-state-reset.json.tmp"
 
@@ -27,12 +127,14 @@ class StateFormat(str, Enum):
     MISSING = "missing"
     CURRENT = "current"
     INCOMPATIBLE_LEGACY = "incompatible_legacy"
+    INCOMPATIBLE_CURRENT = "incompatible_current"
 
 
 @dataclass(frozen=True)
 class StateAssessment:
     format: StateFormat
     state_dir: str
+    current_database: str = ""
     legacy_databases: Tuple[str, ...] = ()
     managed_paths: Tuple[str, ...] = ()
     reset_in_progress: bool = False
@@ -43,6 +145,7 @@ class StateAssessment:
         return {
             "format": self.format.value,
             "state_dir": self.state_dir,
+            "current_database": self.current_database,
             "legacy_databases": list(self.legacy_databases),
             "managed_paths": list(self.managed_paths),
             "reset_in_progress": self.reset_in_progress,
@@ -75,8 +178,48 @@ class DurableStateSetup:
             return _assessment_from_marker(root, marker)
         state_database = root / "state.db"
         daemon_database = root / "daemon.db"
-        if not state_database.exists() and not daemon_database.exists():
+        run_ledger_database = root / "run-ledger.db"
+        if (
+            not state_database.exists()
+            and not daemon_database.exists()
+            and not run_ledger_database.exists()
+        ):
             return StateAssessment(format=StateFormat.MISSING, state_dir=str(root))
+
+        if run_ledger_database.exists():
+            if state_database.exists() or daemon_database.exists():
+                return StateAssessment(
+                    format=StateFormat.INCOMPATIBLE_CURRENT,
+                    state_dir=str(root),
+                    current_database=str(run_ledger_database),
+                    detail=(
+                        "current RunLedger state is mixed with legacy durable state"
+                    ),
+                )
+            if _run_ledger_has_hot_sidecar(run_ledger_database):
+                return StateAssessment(
+                    format=StateFormat.INCOMPATIBLE_CURRENT,
+                    state_dir=str(root),
+                    current_database=str(run_ledger_database),
+                    detail=(
+                        "current RunLedger state is hot; stop its writer and "
+                        "preserve it for diagnosis"
+                    ),
+                )
+            if _is_current_run_ledger(run_ledger_database):
+                return StateAssessment(
+                    format=StateFormat.CURRENT,
+                    state_dir=str(root),
+                    current_database=str(run_ledger_database),
+                )
+            return StateAssessment(
+                format=StateFormat.INCOMPATIBLE_CURRENT,
+                state_dir=str(root),
+                current_database=str(run_ledger_database),
+                detail=(
+                    "current RunLedger schema is corrupt, incomplete, or unsupported"
+                ),
+            )
 
         try:
             state_tables = (
@@ -97,16 +240,6 @@ class DurableStateSetup:
                 resettable=False,
                 detail=f"state database cannot be safely inspected: {error}",
             )
-        current_run_columns = {"snapshot_id", "goal_id", "status", "created_at"}
-        if (
-            _CURRENT_TABLES.issubset(state_tables)
-            and current_run_columns.issubset(run_columns)
-            and "contract_hash" not in run_columns
-            and "todos" not in state_tables
-            and not daemon_database.exists()
-        ):
-            return StateAssessment(format=StateFormat.CURRENT, state_dir=str(root))
-
         legacy = []
         if daemon_database.exists() and "daemon_jobs" in daemon_tables:
             legacy.append(str(daemon_database))
@@ -144,6 +277,8 @@ class DurableStateSetup:
         assessment = self.inspect(state_dir)
         if assessment.format in {StateFormat.MISSING, StateFormat.CURRENT}:
             return StateResetResult(changed=False, assessment=assessment)
+        if assessment.format == StateFormat.INCOMPATIBLE_CURRENT:
+            raise StateResetError(INCOMPATIBLE_CURRENT_STATE_MESSAGE)
         if not confirmed:
             raise StateResetError("legacy state reset requires explicit confirmation")
         if not assessment.resettable:
@@ -208,6 +343,50 @@ def _table_columns(database: Path, table: str) -> set[str]:
 def _readonly_connection(database: Path) -> sqlite3.Connection:
     uri = f"file:{quote(str(database))}?mode=ro"
     return sqlite3.connect(uri, uri=True)
+
+
+def _is_current_run_ledger(database: Path) -> bool:
+    try:
+        with _immutable_connection(database) as connection:
+            tables = {
+                str(row[0])
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            if not _CURRENT_RUN_LEDGER_TABLES.issubset(tables):
+                return False
+            for table, required_columns in _CURRENT_RUN_LEDGER_COLUMNS.items():
+                columns = {
+                    str(row[1])
+                    for row in connection.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()
+                }
+                if not required_columns.issubset(columns):
+                    return False
+            rows = connection.execute(
+                f"SELECT singleton, schema_version FROM {RUN_LEDGER_SCHEMA_TABLE}"
+            ).fetchall()
+            integrity = connection.execute("PRAGMA quick_check").fetchall()
+    except sqlite3.DatabaseError:
+        return False
+    return rows == [(1, RUN_LEDGER_SCHEMA_VERSION)] and integrity == [("ok",)]
+
+
+def _immutable_connection(database: Path) -> sqlite3.Connection:
+    uri = f"file:{quote(str(database))}?mode=ro&immutable=1"
+    return sqlite3.connect(uri, uri=True)
+
+
+def _run_ledger_has_hot_sidecar(database: Path) -> bool:
+    return any(
+        sidecar.exists() and sidecar.stat().st_size > 0
+        for sidecar in (
+            Path(f"{database}-journal"),
+            Path(f"{database}-wal"),
+        )
+    )
 
 
 def _managed_legacy_paths(root: Path, state_database: Path) -> Tuple[str, ...]:

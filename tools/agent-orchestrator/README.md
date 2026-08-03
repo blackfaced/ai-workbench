@@ -725,6 +725,12 @@ the former `state.db` plus `daemon.db` durable-state pair. A Daemon presented
 with that legacy format exits with `incompatible_state` and does not modify or
 delete it.
 
+The current `run-ledger.db` carries an explicit schema-version marker. Before
+startup, the Daemon inspects that marker and the complete schema without
+writing to the database. A corrupt, incomplete, unsupported-version, or hot
+RunLedger is also rejected with `incompatible_state` and preserved for
+diagnosis. It is not eligible for the legacy reset described below.
+
 Use setup to review the exact legacy databases, managed Run workspaces, and
 Run-owned temporary paths before an interactive confirmation:
 
