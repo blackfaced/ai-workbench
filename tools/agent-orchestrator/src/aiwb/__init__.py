@@ -121,6 +121,13 @@ from .skills import (
     SkillRecommendation,
     SkillRecommendationResult,
 )
+from .state import (
+    DurableStateSetup,
+    StateAssessment,
+    StateFormat,
+    StateResetError,
+    StateResetResult,
+)
 from .supervisor import LaunchdError, LaunchdInstallResult, LaunchdService
 
 __all__ = [
@@ -222,6 +229,11 @@ __all__ = [
     "SetupInspection",
     "SQLiteRunLedger",
     "StopReport",
+    "DurableStateSetup",
+    "StateAssessment",
+    "StateFormat",
+    "StateResetError",
+    "StateResetResult",
     "SkillCatalog",
     "SkillCatalogSnapshot",
     "SkillDescriptor",
