@@ -9,12 +9,32 @@ A durable development objective with an agreed requirement and acceptance bounda
 _Avoid_: Task, workflow, chat
 
 **Contract**:
-An approved, immutable version of a Goal's scope, acceptance tests, Todo graph, permissions, Harness profiles, and run limits.
+An approved, immutable version of a Goal's requested scope, acceptance tests, Todo graph, permissions, Harness selections, and run limits. A Contract is the owner's approved intent; it is not the executable authority after Admission.
 _Avoid_: Plan, prompt, brief
 
+**Admission**:
+The atomic process that validates an approved Contract, resolves and authorizes every behavior-affecting input, pins the repository commit, and creates an ExecutionSnapshot and queued Run.
+_Avoid_: Preflight, parsing, submit
+
+**ExecutionSnapshot**:
+The immutable, versioned execution authority produced by Admission. It retains the approved source for audit and a fully resolved manifest for execution; its identity covers every non-secret input that can change Run behavior.
+_Avoid_: Contract path, envelope, mutable configuration
+
 **Run**:
-One resumable execution of one Contract using a fixed agent provider.
+One resumable execution of one ExecutionSnapshot using a fixed agent provider. Repeated submissions of the same ExecutionSnapshot create distinct Runs.
 _Avoid_: Session, job, workflow
+
+**Lease**:
+A time-bounded, fenced grant allowing one Daemon generation to mutate a Run. An expired or superseded Lease cannot write durable Run state.
+_Avoid_: Lock, owner flag, running status
+
+**Transition**:
+An append-only record of one authorized Run or Todo state change. Current state is stored directly; recovery does not replay Transitions.
+_Avoid_: Arbitrary update, event-sourcing event
+
+**Projection**:
+A derived status or report view assembled from the RunLedger's canonical state. A Projection is disposable and never a second state authority.
+_Avoid_: Report snapshot, copied state
 
 **Todo**:
 A vertical, independently verifiable slice of a Contract. Todos form a dependency graph and each Todo owns its implementation worktree.
