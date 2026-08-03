@@ -706,7 +706,7 @@ aiwb daemon install --no-load
 
 Omit `--no-load` to write the user LaunchAgent and bootstrap it with `launchctl`. Runtime logs are written under `~/.ai-workbench/logs/`.
 
-The direct command remains available as an operational fallback:
+The foreground command submits through the Daemon and follows that Run:
 
 ```bash
 aiwb goal run \
@@ -716,7 +716,12 @@ aiwb goal run \
   --image-poll-seconds 5
 ```
 
-Rerunning the same command after interruption reuses the immutable Contract hash and resumes from the last durable checkpoint. Runtime state and managed worktrees stay under the selected state directory, not in this repository.
+Closing the terminal does not terminate the submitted Run. Continue observing or
+resume that exact Run with `aiwb goal status <run-id>` and
+`aiwb goal resume <run-id>`. Running `aiwb goal run` again without an explicit
+idempotency key intentionally creates a distinct Run, even when the immutable
+ExecutionSnapshot is identical. Runtime state and managed worktrees stay under
+the selected state directory, not in this repository.
 
 ### One-time legacy state reset
 
