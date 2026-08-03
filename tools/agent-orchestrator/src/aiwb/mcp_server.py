@@ -177,7 +177,25 @@ class McpServer:
                 ).to_dict()
             elif name == "aiwb_goal_submit":
                 contract_path = _string_argument(arguments, "contract_path")
-                value = self._client.submit(Path(contract_path)).__dict__
+                workflow_path = arguments.get("workflow_path")
+                idempotency_key = arguments.get("idempotency_key")
+                for argument_name, argument_value in (
+                    ("workflow_path", workflow_path),
+                    ("idempotency_key", idempotency_key),
+                ):
+                    if argument_value is not None and (
+                        not isinstance(argument_value, str) or not argument_value
+                    ):
+                        raise ValueError(
+                            f"{argument_name} must be a non-empty string"
+                        )
+                value = self._client.submit(
+                    Path(contract_path),
+                    workflow_path=(Path(workflow_path) if workflow_path else None),
+                    idempotency_key=(
+                        idempotency_key if isinstance(idempotency_key, str) else None
+                    ),
+                ).__dict__
             elif name == "aiwb_goal_status":
                 run_id = _string_argument(arguments, "run_id")
                 value = self._client.status(run_id).__dict__
@@ -351,7 +369,11 @@ def _tools():
             ),
             "inputSchema": {
                 "type": "object",
-                "properties": {"contract_path": string_argument},
+                "properties": {
+                    "contract_path": string_argument,
+                    "workflow_path": string_argument,
+                    "idempotency_key": string_argument,
+                },
                 "required": ["contract_path"],
                 "additionalProperties": False,
             },

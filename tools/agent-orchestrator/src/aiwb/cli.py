@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional, Sequence, Tuple
 
@@ -29,7 +30,7 @@ from .project import (
     ProjectInitError,
 )
 from .recipe_catalog import RecipeCatalog
-from .runner import GoalRunner, preview_execution
+from .runner import preview_execution
 from .skills import SkillCatalog
 from .supervisor import LaunchdError, LaunchdService
 from .tickets import TicketContractDraftBuilder
@@ -178,6 +179,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     submit = goal_commands.add_parser("submit")
     submit.add_argument("--contract", required=True, type=Path)
+    submit.add_argument("--workflow", type=Path)
+    submit.add_argument("--idempotency-key")
     _add_control_options(submit)
 
     goal_status = goal_commands.add_parser("status")
@@ -566,18 +569,38 @@ def _run_goal(options: argparse.Namespace) -> int:
         _print_json(result.to_dict())
         return 0
     if options.goal_command == "run":
-        report = GoalRunner(
-            state_dir=options.state_dir,
-            agent=_agent_router(options),
-            max_workers=options.todo_workers,
-            image_poll_interval_seconds=options.image_poll_seconds,
-        ).run(options.contract)
-        _print_json(report.to_dict())
-        return 0
+        client = DaemonClient(_socket_path(options))
+        submitted = client.submit(options.contract)
+        terminal = {
+            "merge_ready",
+            "incompatible_engine",
+            "blocked",
+            "failed_cleanup",
+            "failed_acceptance",
+            "failed_harness",
+            "paused_resource",
+            "paused_deadline",
+            "paused_provider_quota",
+        }
+        status = submitted
+        while status.status not in terminal:
+            time.sleep(0.1)
+            status = client.status(submitted.run_id)
+        if status.status == "incompatible_engine":
+            _print_json(status.__dict__)
+            return 1
+        _print_json(client.report(submitted.run_id).to_dict())
+        return 0 if status.status == "merge_ready" else 1
 
     client = DaemonClient(_socket_path(options))
     if options.goal_command == "submit":
-        _print_json(client.submit(options.contract).__dict__)
+        _print_json(
+            client.submit(
+                options.contract,
+                workflow_path=options.workflow,
+                idempotency_key=options.idempotency_key,
+            ).__dict__
+        )
     elif options.goal_command == "status":
         _print_json(client.status(options.run_id).__dict__)
     elif options.goal_command == "report":
