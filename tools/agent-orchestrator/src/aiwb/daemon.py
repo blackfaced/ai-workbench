@@ -24,6 +24,13 @@ from .admission import (
 )
 from .evidence import EvidencePayload, EvidencePruneReport
 from .runner import GoalRunner, RunReport
+from .state import DurableStateSetup, StateFormat, StateResetError
+
+
+_INCOMPATIBLE_STATE_MESSAGE = (
+    "incompatible legacy Run state; no migration is available; review and reset "
+    "it with aiwb setup --repo <path> --state-dir <state-dir>"
+)
 
 
 ENGINE_VERSION = "0.1.0"
@@ -196,6 +203,18 @@ class AgentDaemon:
         ):
             raise ValueError("worker counts and intervals must be positive")
         self._state_dir = Path(state_dir).expanduser().resolve()
+        try:
+            state_assessment = DurableStateSetup().inspect(self._state_dir)
+        except StateResetError as error:
+            raise DaemonError(
+                "incompatible_state",
+                _INCOMPATIBLE_STATE_MESSAGE,
+            ) from error
+        if state_assessment.format == StateFormat.INCOMPATIBLE_LEGACY:
+            raise DaemonError(
+                "incompatible_state",
+                _INCOMPATIBLE_STATE_MESSAGE,
+            )
         self._state_dir.mkdir(parents=True, exist_ok=True)
         self.socket_path = (
             Path(socket_path).expanduser().resolve()

@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
 import yaml
 
 
@@ -20,6 +21,7 @@ from aiwb import (  # noqa: E402
     AgentRequest,
     AgentResult,
     DaemonClient,
+    DaemonError,
 )
 
 
@@ -64,7 +66,7 @@ class ProcessAgentAdapter:
         )
 
 
-def test_new_daemon_process_recovers_a_run_interrupted_after_red() -> None:
+def test_new_daemon_process_rejects_legacy_run_interrupted_after_red() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         repository = root / "project"
@@ -104,42 +106,18 @@ def test_new_daemon_process_recovers_a_run_interrupted_after_red() -> None:
             first.terminate()
             first.join(timeout=5)
             assert not first.is_alive()
+            before = _tree_snapshot(state_dir)
 
-            second = context.Process(
-                target=_serve,
-                args=(state_dir, socket_path, marker_dir, False),
-            )
-            second.start()
-            try:
-                _wait_until(client.ping)
-                _wait_until(
-                    lambda: client.status(submitted.run_id).status == "merge_ready",
-                    timeout=20,
+            with pytest.raises(DaemonError) as captured:
+                AgentDaemon(
+                    state_dir=state_dir,
+                    agent=ProcessAgentAdapter(False, marker_dir),
+                    socket_path=socket_path,
                 )
-                report = client.report(submitted.run_id)
-            finally:
-                second.terminate()
-                second.join(timeout=5)
 
-            assert report.status == "merge_ready"
-            assert report.sessions["test_designer"].startswith(f"{first_pid}-")
-            assert not report.sessions["implementer"].startswith(f"{first_pid}-")
-            assert not report.sessions["verifier"].startswith(f"{first_pid}-")
-            assert [attempt.role for attempt in report.attempts] == [
-                "test_designer",
-                "implementer",
-                "verifier",
-                "candidate_verifier",
-            ]
-            assert {
-                item["role"]
-                for item in report.to_dict()["consumption"]["agents"]
-            } == {
-                "test_designer",
-                "implementer",
-                "verifier",
-                "candidate_verifier",
-            }
+            assert first_pid is not None
+            assert captured.value.code == "incompatible_state"
+            assert _tree_snapshot(state_dir) == before
         finally:
             if first.is_alive():
                 first.terminate()
@@ -157,6 +135,14 @@ def _serve(
         agent=ProcessAgentAdapter(block_implementer, marker_dir),
         socket_path=socket_path,
     ).serve_forever()
+
+
+def _tree_snapshot(root: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
 
 
 def _write_contract(root: Path, repository: Path) -> Path:

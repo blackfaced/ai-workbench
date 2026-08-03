@@ -20,6 +20,7 @@ from aiwb import (  # noqa: E402
     AgentRequest,
     AgentResult,
     DaemonClient,
+    DaemonError,
     GoalRunner,
     GateError,
     ProviderQuotaError,
@@ -357,7 +358,7 @@ def test_harness_gate_failure_has_a_distinct_stop_reason() -> None:
         assert failed.stop.resumable is False
 
 
-def test_daemon_restart_preserves_pause_until_explicit_resume() -> None:
+def test_daemon_restart_rejects_paused_legacy_state_without_resuming() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         repository = _create_repository(root)
@@ -397,43 +398,15 @@ def test_daemon_restart_preserves_pause_until_explicit_resume() -> None:
         assert not first_thread.is_alive()
 
         second_agent = ResourceAgent()
-        second_daemon = AgentDaemon(
-            state_dir=state_dir,
-            agent=second_agent,
-            socket_path=socket_path,
-        )
-        second_thread = threading.Thread(
-            target=second_daemon.serve_forever,
-            daemon=True,
-        )
-        second_thread.start()
-        second_client = DaemonClient(socket_path)
-        _wait_until(second_client.ping)
-        try:
-            restored = second_client.status(submitted.run_id)
-            assert restored.status == "paused_resource"
-            assert second_agent.calls == []
-
-            resumed = second_client.resume(submitted.run_id)
-            assert resumed.status in {"queued", "running"}
-            _wait_until(
-                lambda: second_client.status(submitted.run_id).status
-                == "merge_ready",
-                timeout=20,
+        with pytest.raises(DaemonError) as captured:
+            AgentDaemon(
+                state_dir=state_dir,
+                agent=second_agent,
+                socket_path=socket_path,
             )
-            report = second_client.report(submitted.run_id)
-            assert report.status == "merge_ready"
-            assert report.stop is None
-            assert [item[1] for item in second_agent.calls] == [
-                "verifier",
-                "candidate_verifier",
-            ]
-            assert {item[2] for item in second_agent.calls} == {"claude-code"}
-            assert {item[3] for item in second_agent.calls} == {"sonnet"}
-        finally:
-            second_daemon.shutdown()
-            second_thread.join(timeout=5)
-        assert not second_thread.is_alive()
+
+        assert captured.value.code == "incompatible_state"
+        assert second_agent.calls == []
 
 
 def test_paused_todo_does_not_cancel_independent_work_or_unlock_dependents() -> None:
