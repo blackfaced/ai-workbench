@@ -14,6 +14,7 @@ sys.path.insert(0, str(TOOL_ROOT / "src"))
 
 import pytest
 
+from aiwb import SQLiteRunLedger  # noqa: E402
 from aiwb.state import DurableStateSetup, StateResetError  # noqa: E402
 
 
@@ -28,8 +29,14 @@ def test_setup_distinguishes_missing_current_and_legacy_state() -> None:
         assert setup.inspect(missing).format == "missing"
 
         current.mkdir()
-        _create_current_database(current / "state.db")
-        assert setup.inspect(current).format == "current"
+        SQLiteRunLedger(current / "run-ledger.db")
+        before = _tree_snapshot(current)
+        current_assessment = setup.inspect(current)
+        assert current_assessment.format == "current"
+        assert current_assessment.current_database == str(
+            (current / "run-ledger.db").resolve()
+        )
+        assert _tree_snapshot(current) == before
 
         legacy.mkdir()
         _create_legacy_databases(legacy)
@@ -39,6 +46,27 @@ def test_setup_distinguishes_missing_current_and_legacy_state() -> None:
             str((legacy / "daemon.db").resolve()),
             str((legacy / "state.db").resolve()),
         )
+
+
+def test_current_marker_requires_complete_run_ledger_schema() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        state_dir = Path(directory) / "state"
+        state_dir.mkdir()
+        ledger = state_dir / "run-ledger.db"
+        SQLiteRunLedger(ledger)
+        connection = sqlite3.connect(ledger)
+        try:
+            connection.execute("PRAGMA foreign_keys=OFF")
+            connection.execute("DROP TABLE runs")
+            connection.execute("CREATE TABLE runs (run_id TEXT PRIMARY KEY)")
+            connection.commit()
+        finally:
+            connection.close()
+
+        assessment = DurableStateSetup().inspect(state_dir)
+
+        assert assessment.format == "incompatible_current"
+        assert assessment.resettable is False
 
 
 def test_confirmed_reset_removes_only_legacy_run_owned_state_and_is_idempotent() -> None:
@@ -245,22 +273,113 @@ def test_daemon_startup_reports_stable_incompatible_state_without_modifying_it()
         assert _tree_snapshot(state_dir) == before
 
 
-def _create_current_database(path: Path) -> None:
-    with sqlite3.connect(path) as connection:
-        connection.executescript(
-            """
-            CREATE TABLE execution_snapshots (snapshot_id TEXT PRIMARY KEY);
-            CREATE TABLE runs (
-                run_id TEXT PRIMARY KEY,
-                snapshot_id TEXT NOT NULL,
-                goal_id TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE run_queue (run_id TEXT PRIMARY KEY);
-            CREATE TABLE idempotency_keys (idempotency_key TEXT PRIMARY KEY);
-            """
+def test_daemon_refuses_corrupt_current_ledger_without_modifying_it() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        state_dir = Path(directory) / "state"
+        state_dir.mkdir()
+        ledger = state_dir / "run-ledger.db"
+        ledger.write_bytes(b"not a SQLite database")
+        before = _tree_snapshot(state_dir)
+
+        assessment = DurableStateSetup().inspect(state_dir)
+        completed = _run_daemon_cli(state_dir)
+
+        assert assessment.format == "incompatible_current"
+        assert assessment.current_database == str(ledger.resolve())
+        assert assessment.resettable is False
+        assert completed.returncode == 1
+        assert completed.stdout == ""
+        assert json.loads(completed.stderr) == {
+            "error": "incompatible_state",
+            "message": (
+                "incompatible current RunLedger state; preserve it for diagnosis; "
+                "the explicit legacy reset does not apply"
+            ),
+        }
+        assert _tree_snapshot(state_dir) == before
+
+
+def test_daemon_refuses_unsupported_current_schema_version_without_modifying_it() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        state_dir = Path(directory) / "state"
+        state_dir.mkdir()
+        ledger = state_dir / "run-ledger.db"
+        SQLiteRunLedger(ledger)
+        connection = sqlite3.connect(ledger)
+        try:
+            connection.execute(
+                "UPDATE run_ledger_schema SET schema_version = 999 WHERE singleton = 1"
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        before = _tree_snapshot(state_dir)
+
+        assessment = DurableStateSetup().inspect(state_dir)
+        completed = _run_daemon_cli(state_dir)
+
+        assert assessment.format == "incompatible_current"
+        assert completed.returncode == 1
+        assert json.loads(completed.stderr)["error"] == "incompatible_state"
+        assert _tree_snapshot(state_dir) == before
+
+
+def test_explicit_legacy_reset_refuses_incompatible_current_ledger() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = root / "project"
+        repository.mkdir()
+        state_dir = root / "state"
+        state_dir.mkdir()
+        ledger = state_dir / "run-ledger.db"
+        ledger.write_bytes(b"unsupported current ledger")
+        before = _tree_snapshot(state_dir)
+
+        with pytest.raises(StateResetError, match="legacy reset does not apply"):
+            DurableStateSetup().reset(state_dir, confirmed=True)
+        completed = _run_setup_cli(
+            repository,
+            state_dir,
+            extra=("--reset-incompatible-state",),
         )
+
+        assert completed.returncode == 1
+        assert completed.stdout == ""
+        assert json.loads(completed.stderr) == {
+            "error": "operation_error",
+            "message": (
+                "incompatible current RunLedger state; preserve it for diagnosis; "
+                "the explicit legacy reset does not apply"
+            ),
+        }
+        assert _tree_snapshot(state_dir) == before
+
+
+def test_daemon_refuses_hot_current_ledger_without_modifying_it() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        state_dir = Path(directory) / "state"
+        state_dir.mkdir()
+        ledger = state_dir / "run-ledger.db"
+        SQLiteRunLedger(ledger)
+        writer = sqlite3.connect(ledger)
+        try:
+            writer.execute("PRAGMA wal_autocheckpoint=0")
+            writer.execute("CREATE TABLE hot_writer_probe (value TEXT NOT NULL)")
+            writer.execute("INSERT INTO hot_writer_probe VALUES ('active')")
+            writer.commit()
+            assert (state_dir / "run-ledger.db-wal").exists()
+
+            before = _tree_snapshot(state_dir)
+            assessment = DurableStateSetup().inspect(state_dir)
+            completed = _run_daemon_cli(state_dir)
+
+            assert assessment.format == "incompatible_current"
+            assert "hot" in assessment.detail
+            assert completed.returncode == 1
+            assert json.loads(completed.stderr)["error"] == "incompatible_state"
+            assert _tree_snapshot(state_dir) == before
+        finally:
+            writer.close()
 
 
 def _create_legacy_databases(

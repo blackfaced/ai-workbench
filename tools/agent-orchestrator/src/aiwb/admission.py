@@ -17,6 +17,7 @@ from typing import Any, AbstractSet, Callable, Mapping, Optional, Protocol, Tupl
 import yaml
 
 from .runner import ContractError, _RunLedgerExecutionOperations, _load_contract
+from .state import RUN_LEDGER_SCHEMA_TABLE, RUN_LEDGER_SCHEMA_VERSION
 
 
 ADMISSION_SCHEMA_VERSION = 1
@@ -236,6 +237,21 @@ class SQLiteRunLedger(_RunLedgerExecutionOperations):
         self._worker_fault_injector = _worker_fault_injector
         with self._connect() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute(
+                f"""
+                CREATE TABLE IF NOT EXISTS {RUN_LEDGER_SCHEMA_TABLE} (
+                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                    schema_version INTEGER NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                f"""
+                INSERT OR IGNORE INTO {RUN_LEDGER_SCHEMA_TABLE} (
+                    singleton, schema_version
+                ) VALUES (1, {RUN_LEDGER_SCHEMA_VERSION})
+                """
+            )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS execution_snapshots (

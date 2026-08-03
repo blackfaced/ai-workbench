@@ -34,6 +34,7 @@ from .runner import preview_execution
 from .skills import SkillCatalog
 from .state import (
     DurableStateSetup,
+    INCOMPATIBLE_CURRENT_STATE_MESSAGE,
     StateAssessment,
     StateFormat,
     StateResetError,
@@ -330,6 +331,8 @@ def _run_setup(options: argparse.Namespace) -> int:
         state_setup = DurableStateSetup()
         assessment = state_setup.inspect(options.state_dir)
         decision = "not_needed"
+        if assessment.format == StateFormat.INCOMPATIBLE_CURRENT:
+            raise StateResetError(INCOMPATIBLE_CURRENT_STATE_MESSAGE)
         if assessment.format == StateFormat.INCOMPATIBLE_LEGACY:
             if not assessment.resettable:
                 raise StateResetError(assessment.detail)

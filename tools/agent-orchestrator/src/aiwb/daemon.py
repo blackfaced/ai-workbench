@@ -24,7 +24,12 @@ from .admission import (
 )
 from .evidence import EvidencePayload, EvidencePruneReport
 from .runner import GoalRunner, RunReport
-from .state import DurableStateSetup, StateFormat, StateResetError
+from .state import (
+    DurableStateSetup,
+    INCOMPATIBLE_CURRENT_STATE_MESSAGE,
+    StateFormat,
+    StateResetError,
+)
 
 
 _INCOMPATIBLE_STATE_MESSAGE = (
@@ -214,6 +219,11 @@ class AgentDaemon:
             raise DaemonError(
                 "incompatible_state",
                 _INCOMPATIBLE_STATE_MESSAGE,
+            )
+        if state_assessment.format == StateFormat.INCOMPATIBLE_CURRENT:
+            raise DaemonError(
+                "incompatible_state",
+                INCOMPATIBLE_CURRENT_STATE_MESSAGE,
             )
         self._state_dir.mkdir(parents=True, exist_ok=True)
         self.socket_path = (
