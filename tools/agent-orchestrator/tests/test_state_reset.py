@@ -355,7 +355,7 @@ def test_explicit_legacy_reset_refuses_incompatible_current_ledger() -> None:
         assert _tree_snapshot(state_dir) == before
 
 
-def test_daemon_refuses_hot_current_ledger_without_modifying_it() -> None:
+def test_explicit_legacy_reset_preserves_compatible_current_ledger_with_wal() -> None:
     with tempfile.TemporaryDirectory() as directory:
         state_dir = Path(directory) / "state"
         state_dir.mkdir()
@@ -371,12 +371,11 @@ def test_daemon_refuses_hot_current_ledger_without_modifying_it() -> None:
 
             before = _tree_snapshot(state_dir)
             assessment = DurableStateSetup().inspect(state_dir)
-            completed = _run_daemon_cli(state_dir)
+            result = DurableStateSetup().reset(state_dir, confirmed=True)
 
-            assert assessment.format == "incompatible_current"
-            assert "hot" in assessment.detail
-            assert completed.returncode == 1
-            assert json.loads(completed.stderr)["error"] == "incompatible_state"
+            assert assessment.format == "current"
+            assert result.changed is False
+            assert result.assessment.format == "current"
             assert _tree_snapshot(state_dir) == before
         finally:
             writer.close()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import multiprocessing
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -64,7 +65,7 @@ class ProcessAgentAdapter:
         )
 
 
-def test_new_daemon_process_recovers_a_run_interrupted_after_red() -> None:
+def test_new_daemon_process_recovers_run_and_wal_after_crash() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         repository = root / "project"
@@ -104,6 +105,9 @@ def test_new_daemon_process_recovers_a_run_interrupted_after_red() -> None:
             first.terminate()
             first.join(timeout=5)
             assert not first.is_alive()
+            wal = state_dir / "run-ledger.db-wal"
+            assert wal.exists()
+            assert wal.stat().st_size > 0
 
             second = context.Process(
                 target=_serve,
@@ -152,11 +156,25 @@ def _serve(
     marker_dir: Path,
     block_implementer: bool,
 ) -> None:
-    AgentDaemon(
+    daemon = AgentDaemon(
         state_dir=state_dir,
         agent=ProcessAgentAdapter(block_implementer, marker_dir),
         socket_path=socket_path,
-    ).serve_forever()
+    )
+    crash_writer = None
+    if block_implementer:
+        crash_writer = sqlite3.connect(state_dir / "run-ledger.db")
+        crash_writer.execute("PRAGMA wal_autocheckpoint=0")
+        crash_writer.execute(
+            "UPDATE run_ledger_schema SET schema_version = 999 WHERE singleton = 1"
+        )
+        crash_writer.commit()
+        crash_writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        crash_writer.execute(
+            "UPDATE run_ledger_schema SET schema_version = 1 WHERE singleton = 1"
+        )
+        crash_writer.commit()
+    daemon.serve_forever()
 
 
 def _write_contract(root: Path, repository: Path) -> Path:
