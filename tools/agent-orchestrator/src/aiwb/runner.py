@@ -2019,33 +2019,61 @@ class _RunLedgerExecutionOperations:
             last_error=stop.detail,
         )
 
-    def resume(self, run_id: str) -> None:
-        record = self.get(run_id)
-        if not str(record["status"]).startswith("paused_"):
-            raise ValueError(f"Run {run_id!r} is not paused")
+    def resume(self, run_id: str) -> Mapping[str, Any]:
         attempts, harness_seconds, tokens = self.resource_totals(run_id)
-        for todo in self.get_todos(run_id):
-            if todo["status"] != "paused":
-                continue
-            self._update_todo(
-                run_id,
-                todo["todo_id"],
-                status=todo["resume_status"],
-                resume_status="",
-                stop_json="null",
-                last_error=None,
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            record = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if record is None:
+                raise KeyError(f"unknown run: {run_id}")
+            if not str(record["status"]).startswith("paused_"):
+                raise ValueError(f"Run {run_id!r} is not paused")
+            connection.execute(
+                """
+                UPDATE todos
+                SET status = resume_status,
+                    resume_status = '',
+                    stop_json = 'null',
+                    last_error = NULL,
+                    updated_at = ?
+                WHERE run_id = ? AND status = 'paused'
+                """,
+                (now, run_id),
             )
-        self._update(
-            run_id,
-            status="running",
-            active_stage="",
-            stop_json="null",
-            last_error=None,
-            resource_window_started_at=_now(),
-            resource_attempt_baseline=attempts,
-            resource_harness_baseline=harness_seconds,
-            resource_token_baseline=tokens,
-        )
+            connection.execute(
+                """
+                UPDATE runs
+                SET status = 'queued',
+                    active_stage = '',
+                    stop_json = 'null',
+                    last_error = NULL,
+                    error = '',
+                    resource_window_started_at = ?,
+                    resource_attempt_baseline = ?,
+                    resource_harness_baseline = ?,
+                    resource_token_baseline = ?,
+                    updated_at = ?
+                WHERE run_id = ?
+                """,
+                (
+                    now,
+                    attempts,
+                    harness_seconds,
+                    tokens,
+                    now,
+                    run_id,
+                ),
+            )
+            connection.execute(
+                "INSERT OR REPLACE INTO run_queue (run_id, enqueued_at) VALUES (?, ?)",
+                (run_id, now),
+            )
+            connection.execute("DELETE FROM run_leases WHERE run_id = ?", (run_id,))
+        return self.get(run_id)
 
     def fail(
         self,
