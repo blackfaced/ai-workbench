@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tempfile
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -14,7 +14,16 @@ import pytest
 TOOL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL_ROOT / "src"))
 
-from aiwb import AgentRequest, AgentResult, GoalRunner, RunReport  # noqa: E402
+from aiwb import (  # noqa: E402
+    Admission,
+    AdmissionRequest,
+    AgentRequest,
+    AgentResult,
+    GoalRunner,
+    LeaseConflictError,
+    RunReport,
+    SQLiteRunLedger,
+)
 from aiwb.repair import MergeConflictRepairError  # noqa: E402
 
 
@@ -101,6 +110,25 @@ class ScopeEscapingConflictAgent(ConflictingTodoAgent):
         return result
 
 
+class TakeoverAtConflictRepairLedger(SQLiteRunLedger):
+    def set_todo_stage(
+        self,
+        run_id: str,
+        todo_id: str,
+        stage: str,
+    ) -> None:
+        super().set_todo_stage(run_id, todo_id, stage)
+        if stage != "conflict_repairer":
+            return
+        replacement = self.claim(
+            run_id,
+            owner_id="daemon-b",
+            lease_seconds=30,
+            now=datetime.now(timezone.utc) + timedelta(seconds=31),
+        )
+        assert replacement is not None
+
+
 def test_candidate_repairs_a_todo_merge_conflict_with_a_fresh_agent_session() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -182,6 +210,42 @@ def test_conflict_repairer_cannot_change_paths_outside_the_conflict() -> None:
             ).run(contract)
 
         assert "unrelated.py" not in _git(repository, "ls-files").stdout
+
+
+def test_stale_worker_cannot_start_conflict_repair_after_lease_takeover() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        state_dir = root / "state"
+        ledger = TakeoverAtConflictRepairLedger(state_dir / "run-ledger.db")
+        admitted = Admission(
+            ledger,
+            engine_version="test-engine",
+            transition_policy_version="strict-v1",
+        ).admit(AdmissionRequest(contract_path=contract))
+        lease = ledger.claim(
+            admitted.run_id,
+            owner_id="daemon-a",
+            lease_seconds=30,
+        )
+        assert lease is not None
+        agent = ConflictingTodoAgent()
+
+        with pytest.raises(LeaseConflictError, match="stale Lease generation"):
+            GoalRunner(
+                state_dir=state_dir,
+                agent=agent,
+                max_workers=2,
+                ledger=ledger,
+            ).run_snapshot(
+                ledger.execution_snapshot(admitted.snapshot_id),
+                run_id=admitted.run_id,
+                lease=lease,
+                mutation_guard=lambda: ledger.prove(lease),
+            )
+
+        assert ("T-2", "conflict_repairer") not in agent.calls
 
 
 def _create_repository(root: Path) -> Path:

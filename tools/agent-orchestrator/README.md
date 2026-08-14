@@ -706,7 +706,7 @@ aiwb daemon install --no-load
 
 Omit `--no-load` to write the user LaunchAgent and bootstrap it with `launchctl`. Runtime logs are written under `~/.ai-workbench/logs/`.
 
-The direct command remains available as an operational fallback:
+The foreground command submits through the Daemon and follows that Run:
 
 ```bash
 aiwb goal run \
@@ -716,7 +716,52 @@ aiwb goal run \
   --image-poll-seconds 5
 ```
 
-Rerunning the same command after interruption reuses the immutable Contract hash and resumes from the last durable checkpoint. Runtime state and managed worktrees stay under the selected state directory, not in this repository.
+Closing the terminal does not terminate the submitted Run. Continue observing or
+resume that exact Run with `aiwb goal status <run-id>` and
+`aiwb goal resume <run-id>`. Running `aiwb goal run` again without an explicit
+idempotency key intentionally creates a distinct Run, even when the immutable
+ExecutionSnapshot is identical. Runtime state and managed worktrees stay under
+the selected state directory, not in this repository.
+
+### One-time legacy state reset
+
+The RunLedger state format is a breaking change. AI Workbench does not migrate
+the former `state.db` plus `daemon.db` durable-state pair. A Daemon presented
+with that legacy format exits with `incompatible_state` and does not modify or
+delete it.
+
+The current `run-ledger.db` carries an explicit schema-version marker. Before
+startup, the Daemon validates that marker, the complete schema, and SQLite
+integrity on an isolated recovery copy without writing to the original files.
+A normal crash WAL is accepted and recovered on restart. A corrupt, incomplete,
+or unsupported-version RunLedger is rejected with `incompatible_state` and
+preserved for diagnosis. It is not eligible for the legacy reset described
+below.
+
+Use setup to review the exact legacy databases, managed Run workspaces, and
+Run-owned temporary paths before an interactive confirmation:
+
+```bash
+aiwb setup \
+  --repo /path/to/project \
+  --state-dir ~/.ai-workbench
+```
+
+Declining leaves the state directory and project unchanged. For reviewed
+scripted initialization, request the same reset explicitly without a prompt:
+
+```bash
+aiwb setup \
+  --repo /path/to/project \
+  --state-dir ~/.ai-workbench \
+  --reset-incompatible-state
+```
+
+Reset removes the two legacy SQLite databases, their sidecars, and only the
+managed workspaces and temporary files associated with legacy Run IDs. It
+preserves Evidence objects, logs, Harness Setup worktrees, and unrelated files.
+The operation records an in-progress reset before deletion; rerun the same
+setup command if it is interrupted. Repeating a completed reset is a no-op.
 
 ## Planned Delivery Slices
 

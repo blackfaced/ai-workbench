@@ -15,6 +15,11 @@ This repository is a personal AI development workbench knowledge base.
 - Do not create new top-level directories without adding or updating an ADR.
 - Keep entries concise and practical: when to use, setup notes, evaluation status, and personal observations.
 - Treat engineering skills as lightweight and opt-in; do not impose a heavyweight process framework by default.
+- After Admission, execute only the immutable `ExecutionSnapshot` manifest. Do not reread a Contract, workflow, Harness policy, role guidance, branch ref, or other behavior-affecting input through its original path.
+- Route every durable Run, Todo, queue, Attempt, Checkpoint, Lease, Transition, and Evidence-reference mutation through the `RunLedger`; do not create a second queue, status, or report authority.
+- Keep status and report outputs as Projections over canonical ledger state, not independently persisted copies.
+- Treat destructive state-format changes as explicit setup/reset operations. A Daemon must fail safely on an incompatible state schema and must never silently delete state.
+- Keep the durable-state interface behavior-oriented and storage-neutral, while shipping only the SQLite implementation until another backend is required.
 
 ## Agent skills
 

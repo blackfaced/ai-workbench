@@ -8,11 +8,12 @@ import sqlite3
 import subprocess
 import threading
 import time
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 import yaml
 
@@ -28,6 +29,7 @@ from .harness import HarnessAdapter, HarnessError, HarnessRequest, LocalProcessH
 from .image import CommandImageBuilder, ImageBuildRequest
 from .kubernetes import JanitorReport, KubernetesHarness, KubernetesJanitor
 from .project import (
+    BrowserDiagnosticProfile,
     CandidatePublishProfile,
     HarnessProfile,
     ImageProfile,
@@ -96,16 +98,19 @@ class _Contract:
     base_ref: str
     todos: Tuple[_Todo, ...]
     resources: _ResourcePolicy
+    required_secrets: Tuple[str, ...]
     image_profile_name: str
     image_profile: Optional[ImageProfile]
     candidate_publish: Optional[CandidatePublishProfile]
     role_skill_texts: Mapping[str, Tuple[Tuple[str, str], ...]]
     policy: Mapping[str, object]
     policy_blockers: Tuple[Mapping[str, str], ...]
+    admitted_run_id: str = ""
+    pinned_base_commit: str = ""
 
     @property
     def run_id(self) -> str:
-        return f"{self.goal_id}-{self.contract_hash[:12]}"
+        return self.admitted_run_id or f"{self.goal_id}-{self.contract_hash[:12]}"
 
     @property
     def branch(self) -> str:
@@ -400,6 +405,7 @@ class GoalRunner:
         agent: AgentAdapter,
         max_workers: int = 1,
         image_poll_interval_seconds: float = 5.0,
+        ledger: Optional[object] = None,
     ) -> None:
         if max_workers < 1:
             raise ValueError("max_workers must be at least 1")
@@ -407,11 +413,17 @@ class GoalRunner:
             raise ValueError("image_poll_interval_seconds must be positive")
         self._state_dir = Path(state_dir).expanduser().resolve()
         self._state_dir.mkdir(parents=True, exist_ok=True)
-        self._store = _RunStore(self._state_dir / "state.db")
+        if ledger is None:
+            from .admission import SQLiteRunLedger
+
+            ledger = SQLiteRunLedger(self._state_dir / "state.db")
+        self._store = ledger
         self._evidence_store = EvidenceStore(self._state_dir)
         self._agent = agent
         self._max_workers = max_workers
         self._git_lock = threading.Lock()
+        self._external_guards: Dict[str, Callable[[], None]] = {}
+        self._external_guards_lock = threading.Lock()
         browser_diagnostics = McpBrowserDiagnosticAdapter()
         self._harnesses: Mapping[str, HarnessAdapter] = {
             "local_process": LocalProcessHarness(browser_diagnostics),
@@ -426,6 +438,21 @@ class GoalRunner:
     def prepare(self, contract_path: Path) -> RunReport:
         _, _, record = self._prepare(Path(contract_path))
         return self._report(record)
+
+    def prepare_snapshot(
+        self,
+        snapshot: object,
+        *,
+        run_id: str,
+        lease: Optional[object] = None,
+    ) -> RunReport:
+        """Prepare a Run from its immutable admitted ExecutionSnapshot."""
+        contract = _contract_from_snapshot(snapshot, run_id=run_id)
+        owner_id = str(getattr(lease, "owner_id", ""))
+        generation = int(getattr(lease, "generation", 0))
+        with self._store.guard_mutations(run_id, owner_id, generation):
+            _, _, record = self._prepare_contract(contract)
+            return self._report(record)
 
     def report(self, run_id: str) -> RunReport:
         return self._report(self._store.get(run_id))
@@ -482,6 +509,66 @@ class GoalRunner:
         except Exception as error:
             self._record_failure(contract, error)
             raise
+
+    def run_snapshot(
+        self,
+        snapshot: object,
+        *,
+        run_id: str,
+        lease: Optional[object] = None,
+        mutation_guard: Optional[Callable[[], None]] = None,
+    ) -> RunReport:
+        """Execute only the manifest retained by Admission."""
+        contract = _contract_from_snapshot(snapshot, run_id=run_id)
+        if mutation_guard is not None:
+            mutation_guard()
+        owner_id = str(getattr(lease, "owner_id", ""))
+        generation = int(getattr(lease, "generation", 0))
+        with self._store.guard_mutations(
+            run_id, owner_id, generation
+        ), self._guard_external_effects(run_id, mutation_guard):
+            contract, workspace, record = self._prepare_contract(contract)
+            try:
+                return self._run_dag(contract, workspace, record)
+            except RunPaused:
+                raise
+            except Exception as error:
+                self._record_failure(contract, error)
+                raise
+
+    @contextmanager
+    def _guard_external_effects(
+        self,
+        run_id: str,
+        guard: Optional[Callable[[], None]],
+    ) -> Iterator[None]:
+        if guard is None:
+            yield
+            return
+        with self._external_guards_lock:
+            self._external_guards[run_id] = guard
+        try:
+            yield
+        finally:
+            with self._external_guards_lock:
+                self._external_guards.pop(run_id, None)
+
+    def _prove_external_effect(self, run_id: str) -> None:
+        with self._external_guards_lock:
+            guard = self._external_guards.get(run_id)
+        if guard is not None:
+            guard()
+
+    def _external_effect(
+        self,
+        run_id: str,
+        operation: Callable[[], Any],
+    ) -> Any:
+        self._prove_external_effect(run_id)
+        try:
+            return operation()
+        finally:
+            self._prove_external_effect(run_id)
 
     def _record_failure(
         self,
@@ -625,7 +712,10 @@ class GoalRunner:
             todo_record = self._store.get_todo(contract.run_id, todo.todo_id)
             code_commit = _required_string(todo_record, "code_commit")
             if not candidate.contains(code_commit):
-                conflict_paths = candidate.merge(contract.todo_branch(todo))
+                conflict_paths = self._external_effect(
+                    contract.run_id,
+                    lambda: candidate.merge(contract.todo_branch(todo)),
+                )
                 if conflict_paths:
                     self._repair_todo_merge_conflict(
                         contract,
@@ -662,16 +752,23 @@ class GoalRunner:
         self._admit_agent(contract, todo.todo_id, "conflict_repairer")
         started = time.monotonic()
         try:
-            result = self._conflict_repairer.repair(
-                MergeConflictRepairRequest(
-                    worktree=candidate.worktree,
-                    todo_id=todo.todo_id,
-                    prompt=_conflict_repair_prompt(contract, todo, conflict_paths),
-                    conflict_paths=conflict_paths,
-                    provider=contract.agent_provider,
-                    model=contract.agent_model,
-                    timeout_seconds=todo.timeout_seconds,
-                )
+            result = self._external_effect(
+                contract.run_id,
+                lambda: self._conflict_repairer.repair(
+                    MergeConflictRepairRequest(
+                        worktree=candidate.worktree,
+                        todo_id=todo.todo_id,
+                        prompt=_conflict_repair_prompt(
+                            contract,
+                            todo,
+                            conflict_paths,
+                        ),
+                        conflict_paths=conflict_paths,
+                        provider=contract.agent_provider,
+                        model=contract.agent_model,
+                        timeout_seconds=todo.timeout_seconds,
+                    )
+                ),
             )
         except ProviderQuotaError as error:
             self._pause_for_provider_quota(
@@ -757,7 +854,7 @@ class GoalRunner:
             branch=contract.todo_branch(todo),
             base_ref=base_commit,
         )
-        workspace.ensure()
+        self._external_effect(contract.run_id, workspace.ensure)
         self._store.prepare_todo(
             contract.run_id,
             todo.todo_id,
@@ -794,16 +891,19 @@ class GoalRunner:
         self._admit_agent(contract, todo.todo_id, role)
         started = time.monotonic()
         try:
-            result = self._agent.run(
-                AgentRequest(
-                    role=role,
-                    prompt=prompt,
-                    worktree=str(worktree),
-                    todo_id=todo.todo_id,
-                    provider=contract.agent_provider,
-                    model=contract.agent_model,
-                    timeout_seconds=todo.timeout_seconds,
-                )
+            result = self._external_effect(
+                contract.run_id,
+                lambda: self._agent.run(
+                    AgentRequest(
+                        role=role,
+                        prompt=prompt,
+                        worktree=str(worktree),
+                        todo_id=todo.todo_id,
+                        provider=contract.agent_provider,
+                        model=contract.agent_model,
+                        timeout_seconds=todo.timeout_seconds,
+                    )
+                ),
             )
         except ProviderQuotaError as error:
             self._pause_for_provider_quota(
@@ -853,7 +953,12 @@ class GoalRunner:
         workspace: "_GitWorkspace",
     ) -> None:
         record = self._store.get_todo(contract.run_id, todo.todo_id)
-        workspace.restore_checkpoint(_required_string(record, "base_commit"))
+        self._external_effect(
+            contract.run_id,
+            lambda: workspace.restore_checkpoint(
+                _required_string(record, "base_commit")
+            ),
+        )
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "test_designer")
         result = self._run_todo_agent(
             contract,
@@ -887,8 +992,11 @@ class GoalRunner:
             )
             raise GateError(f"RED gate failed for {todo.todo_id}")
         with self._git_lock:
-            red_commit = workspace.commit(
-                f"test({todo.todo_id}): add RED acceptance test"
+            red_commit = self._external_effect(
+                contract.run_id,
+                lambda: workspace.commit(
+                    f"test({todo.todo_id}): add RED acceptance test"
+                ),
             )
         self._store.todo_checkpoint(
             contract.run_id,
@@ -907,7 +1015,12 @@ class GoalRunner:
         workspace: "_GitWorkspace",
         record: Mapping[str, Any],
     ) -> None:
-        workspace.restore_checkpoint(_required_string(record, "red_commit"))
+        self._external_effect(
+            contract.run_id,
+            lambda: workspace.restore_checkpoint(
+                _required_string(record, "red_commit")
+            ),
+        )
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "implementer")
         try:
             result = self._run_todo_agent(
@@ -950,8 +1063,11 @@ class GoalRunner:
                 + (evidence.stderr or evidence.stdout)
             )
         with self._git_lock:
-            code_commit = workspace.commit(
-                f"feat({todo.todo_id}): satisfy acceptance test"
+            code_commit = self._external_effect(
+                contract.run_id,
+                lambda: workspace.commit(
+                    f"feat({todo.todo_id}): satisfy acceptance test"
+                ),
             )
         self._store.todo_checkpoint(
             contract.run_id,
@@ -971,7 +1087,10 @@ class GoalRunner:
         record: Mapping[str, Any],
     ) -> None:
         code_commit = _required_string(record, "code_commit")
-        workspace.restore_checkpoint(code_commit)
+        self._external_effect(
+            contract.run_id,
+            lambda: workspace.restore_checkpoint(code_commit),
+        )
         self._store.set_todo_stage(contract.run_id, todo.todo_id, "verifier")
         result = self._run_todo_agent(
             contract,
@@ -981,7 +1100,10 @@ class GoalRunner:
             workspace.worktree,
         )
         if workspace.changed_paths():
-            workspace.restore_checkpoint(code_commit)
+            self._external_effect(
+                contract.run_id,
+                lambda: workspace.restore_checkpoint(code_commit),
+            )
             raise GateError(f"Verifier mutated Todo Candidate {todo.todo_id}")
         evidence = self._run_gate(
             contract,
@@ -1013,14 +1135,20 @@ class GoalRunner:
         contract_path: Path,
     ) -> Tuple[_Contract, "_GitWorkspace", Mapping[str, Any]]:
         contract = _load_contract(contract_path)
+        return self._prepare_contract(contract)
+
+    def _prepare_contract(
+        self,
+        contract: _Contract,
+    ) -> Tuple[_Contract, "_GitWorkspace", Mapping[str, Any]]:
         worktree = self._state_dir / "worktrees" / contract.run_id / "candidate"
         workspace = _GitWorkspace(
             repository=contract.repository,
             worktree=worktree,
             branch=contract.branch,
-            base_ref=contract.base_ref,
+            base_ref=contract.pinned_base_commit or contract.base_ref,
         )
-        workspace.ensure()
+        self._external_effect(contract.run_id, workspace.ensure)
         record = self._store.get_or_create(contract, workspace.worktree)
         return contract, workspace, record
 
@@ -1055,7 +1183,10 @@ class GoalRunner:
             contract.run_id,
             candidate_commit,
         )
-        workspace.restore_checkpoint(candidate_commit)
+        self._external_effect(
+            contract.run_id,
+            lambda: workspace.restore_checkpoint(candidate_commit),
+        )
         record = self._store.get(contract.run_id)
 
         if not record["candidate_verifier_completed"]:
@@ -1065,13 +1196,19 @@ class GoalRunner:
                     workspace,
                 )
             except Exception:
-                workspace.restore_checkpoint(candidate_commit)
+                self._external_effect(
+                    contract.run_id,
+                    lambda: workspace.restore_checkpoint(candidate_commit),
+                )
                 raise
             if (
                 workspace.head() != candidate_commit
                 or workspace.changed_paths()
             ):
-                workspace.restore_checkpoint(candidate_commit)
+                self._external_effect(
+                    contract.run_id,
+                    lambda: workspace.restore_checkpoint(candidate_commit),
+                )
                 error = "Final Candidate verifier mutated the immutable Candidate"
                 self._store.record_run_attempt(
                     contract.run_id,
@@ -1117,7 +1254,10 @@ class GoalRunner:
             stage = f"candidate_acceptance:{todo.todo_id}"
             if stage in completed_stages:
                 continue
-            workspace.restore_checkpoint(candidate_commit)
+            self._external_effect(
+                contract.run_id,
+                lambda: workspace.restore_checkpoint(candidate_commit),
+            )
             try:
                 evidence = self._run_gate(
                     contract=contract,
@@ -1126,7 +1266,10 @@ class GoalRunner:
                     cwd=workspace.worktree,
                 )
             finally:
-                workspace.restore_checkpoint(candidate_commit)
+                self._external_effect(
+                    contract.run_id,
+                    lambda: workspace.restore_checkpoint(candidate_commit),
+                )
             self._store.record_run_evidence(contract.run_id, evidence)
             if evidence.returncode != 0:
                 error = (
@@ -1146,19 +1289,22 @@ class GoalRunner:
         self._admit_agent(contract, "candidate", "candidate_verifier")
         started = time.monotonic()
         try:
-            result = self._agent.run(
-                AgentRequest(
-                    role="candidate_verifier",
-                    prompt=_candidate_verifier_prompt(contract),
-                    worktree=str(workspace.worktree),
-                    todo_id="candidate",
-                    sandbox="read-only",
-                    provider=contract.agent_provider,
-                    model=contract.agent_model,
-                    timeout_seconds=max(
-                        todo.timeout_seconds for todo in contract.todos
-                    ),
-                )
+            result = self._external_effect(
+                contract.run_id,
+                lambda: self._agent.run(
+                    AgentRequest(
+                        role="candidate_verifier",
+                        prompt=_candidate_verifier_prompt(contract),
+                        worktree=str(workspace.worktree),
+                        todo_id="candidate",
+                        sandbox="read-only",
+                        provider=contract.agent_provider,
+                        model=contract.agent_model,
+                        timeout_seconds=max(
+                            todo.timeout_seconds for todo in contract.todos
+                        ),
+                    )
+                ),
             )
         except ProviderQuotaError as error:
             self._pause_for_provider_quota(
@@ -1352,18 +1498,27 @@ class GoalRunner:
             operation_id = record["image_operation_id"]
             if not operation_id:
                 try:
-                    operation_id = self._image_builder.start(request)
+                    operation_id = self._external_effect(
+                        contract.run_id,
+                        lambda: self._image_builder.start(request),
+                    )
                 finally:
                     self._sync_image_artifacts(contract.run_id, request.artifact_dir)
                 self._store.start_image(contract.run_id, operation_id)
             try:
-                status = self._image_builder.status(request, operation_id)
+                status = self._external_effect(
+                    contract.run_id,
+                    lambda: self._image_builder.status(request, operation_id),
+                )
             finally:
                 self._sync_image_artifacts(contract.run_id, request.artifact_dir)
             self._store.set_image_status(contract.run_id, status)
             if status == "succeeded":
                 try:
-                    result = self._image_builder.result(request, operation_id)
+                    result = self._external_effect(
+                        contract.run_id,
+                        lambda: self._image_builder.result(request, operation_id),
+                    )
                 finally:
                     self._sync_image_artifacts(
                         contract.run_id,
@@ -1408,13 +1563,16 @@ class GoalRunner:
         if profile is None or record["published_commit"]:
             return self._report(record)
         try:
-            result = self._candidate_publisher.publish(
-                CandidatePublishRequest(
-                    repository=contract.repository,
-                    branch=contract.branch,
-                    commit=workspace.head(),
-                    profile=profile,
-                )
+            result = self._external_effect(
+                contract.run_id,
+                lambda: self._candidate_publisher.publish(
+                    CandidatePublishRequest(
+                        repository=contract.repository,
+                        branch=contract.branch,
+                        commit=workspace.head(),
+                        profile=profile,
+                    )
+                ),
             )
         except CandidatePublishError as error:
             self._store.record_interruption(contract.run_id, str(error))
@@ -1436,11 +1594,14 @@ class GoalRunner:
     ) -> CommandEvidence:
         self._admit_harness(contract, todo.todo_id, stage)
         if todo.harness is None:
-            evidence = _run_command(
-                stage=stage,
-                command=todo.test_command,
-                cwd=cwd,
-                timeout_seconds=todo.timeout_seconds,
+            evidence = self._external_effect(
+                contract.run_id,
+                lambda: _run_command(
+                    stage=stage,
+                    command=todo.test_command,
+                    cwd=cwd,
+                    timeout_seconds=todo.timeout_seconds,
+                ),
             )
         else:
             artifact_dir = (
@@ -1453,16 +1614,21 @@ class GoalRunner:
             adapter = self._harnesses[todo.harness.kind]
             started = time.monotonic()
             try:
-                result = adapter.execute(HarnessRequest(
-                    profile=todo.harness,
-                    command=todo.test_command,
-                    cwd=cwd,
-                    timeout_seconds=todo.timeout_seconds,
-                    run_id=contract.run_id,
-                    artifact_dir=artifact_dir,
-                    execution_id=f"{todo.todo_id}:{stage}",
-                    stage=stage,
-                ))
+                result = self._external_effect(
+                    contract.run_id,
+                    lambda: adapter.execute(
+                        HarnessRequest(
+                            profile=todo.harness,
+                            command=todo.test_command,
+                            cwd=cwd,
+                            timeout_seconds=todo.timeout_seconds,
+                            run_id=contract.run_id,
+                            artifact_dir=artifact_dir,
+                            execution_id=f"{todo.todo_id}:{stage}",
+                            stage=stage,
+                        )
+                    ),
+                )
             except HarnessError as error:
                 retained = self._retain_command_evidence(
                     contract.run_id,
@@ -1533,13 +1699,19 @@ class GoalRunner:
         evidence: CommandEvidence,
     ) -> CommandEvidence:
         label = f"{run_id}/{todo_id}/{evidence.stage}"
-        stdout, stdout_ref = self._evidence_store.retain_text(
-            evidence.stdout,
-            label=f"{label}/stdout",
+        stdout, stdout_ref = self._external_effect(
+            run_id,
+            lambda: self._evidence_store.retain_text(
+                evidence.stdout,
+                label=f"{label}/stdout",
+            ),
         )
-        stderr, stderr_ref = self._evidence_store.retain_text(
-            evidence.stderr,
-            label=f"{label}/stderr",
+        stderr, stderr_ref = self._external_effect(
+            run_id,
+            lambda: self._evidence_store.retain_text(
+                evidence.stderr,
+                label=f"{label}/stderr",
+            ),
         )
         return replace(
             evidence,
@@ -1566,9 +1738,12 @@ class GoalRunner:
             if not path.is_file():
                 continue
             references.append(
-                self._evidence_store.retain_file(
-                    path,
-                    label=f"{run_id}/{label}/artifact-{index}-{path.name}",
+                self._external_effect(
+                    run_id,
+                    lambda: self._evidence_store.retain_file(
+                        path,
+                        label=f"{run_id}/{label}/artifact-{index}-{path.name}",
+                    ),
                 )
             )
         return tuple(references)
@@ -1638,27 +1813,31 @@ class GoalRunner:
         )
 
 
-class _RunStore:
-    def __init__(self, database: Path) -> None:
-        database.parent.mkdir(parents=True, exist_ok=True)
-        self._database = database
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS runs (
+class _RunLedgerExecutionOperations:
+    """SQLite execution operations mixed into the canonical RunLedger."""
+
+    def _initialize_execution_state(self, connection: sqlite3.Connection) -> None:
+        self._mutation_guards: Dict[str, Tuple[str, int]] = {}
+        self._mutation_guards_lock = threading.Lock()
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runs (
                     run_id TEXT PRIMARY KEY,
-                    contract_hash TEXT NOT NULL UNIQUE,
+                    snapshot_id TEXT,
+                    contract_hash TEXT UNIQUE,
                     goal_id TEXT NOT NULL,
                     status TEXT NOT NULL,
-                    active_stage TEXT NOT NULL,
-                    repository TEXT NOT NULL,
-                    worktree TEXT NOT NULL,
-                    branch TEXT NOT NULL,
+                    error TEXT NOT NULL DEFAULT '',
+                    lease_generation INTEGER NOT NULL DEFAULT 0,
+                    active_stage TEXT NOT NULL DEFAULT '',
+                    repository TEXT NOT NULL DEFAULT '',
+                    worktree TEXT NOT NULL DEFAULT '',
+                    branch TEXT NOT NULL DEFAULT '',
                     red_commit TEXT,
                     code_commit TEXT,
-                    sessions_json TEXT NOT NULL,
+                    sessions_json TEXT NOT NULL DEFAULT '{}',
                     attempts_json TEXT NOT NULL DEFAULT '[]',
-                    evidence_json TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL DEFAULT '[]',
                     stop_json TEXT NOT NULL DEFAULT 'null',
                     resource_window_started_at TEXT NOT NULL DEFAULT '',
                     resource_attempt_baseline INTEGER NOT NULL DEFAULT 0,
@@ -1678,14 +1857,16 @@ class _RunStore:
                     published_commit TEXT NOT NULL DEFAULT '',
                     last_error TEXT,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (snapshot_id)
+                        REFERENCES execution_snapshots(snapshot_id)
             )
-            self._ensure_run_columns(connection)
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS todos (
+            """
+        )
+        self._ensure_run_columns(connection)
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS todos (
                     run_id TEXT NOT NULL,
                     todo_id TEXT NOT NULL,
                     title TEXT NOT NULL,
@@ -1707,36 +1888,41 @@ class _RunStore:
                     updated_at TEXT NOT NULL,
                     PRIMARY KEY (run_id, todo_id),
                     FOREIGN KEY (run_id) REFERENCES runs(run_id)
-                )
-                """
             )
-            self._ensure_todo_columns(connection)
+            """
+        )
+        self._ensure_todo_columns(connection)
 
     def get_or_create(self, contract: _Contract, worktree: Path) -> Mapping[str, Any]:
-        existing = self._find_by_hash(contract.contract_hash)
+        try:
+            existing = self.get(contract.run_id)
+        except KeyError:
+            existing = self._find_by_hash(contract.contract_hash)
         if existing:
-            if contract.image_profile_name and not existing["image_profile"]:
-                self._update(
-                    contract.run_id,
-                    image_profile=contract.image_profile_name,
+            initialization: Dict[str, object] = {}
+            if not existing["contract_hash"]:
+                initialization.update(
+                    contract_hash=contract.contract_hash,
+                    repository=str(contract.repository),
+                    worktree=str(worktree),
+                    branch=contract.branch,
                 )
+            if contract.image_profile_name and not existing["image_profile"]:
+                initialization["image_profile"] = contract.image_profile_name
             if not json.loads(existing["execution_envelope_json"]):
-                self._update(
-                    contract.run_id,
-                    execution_envelope_json=json.dumps(
-                        _execution_envelope(contract).to_dict(),
-                        sort_keys=True,
-                    ),
+                initialization["execution_envelope_json"] = json.dumps(
+                    _execution_envelope(contract).to_dict(),
+                    sort_keys=True,
                 )
             if not existing["resource_window_started_at"]:
-                self._update(
-                    contract.run_id,
-                    resource_window_started_at=existing["created_at"],
-                )
+                initialization["resource_window_started_at"] = existing["created_at"]
+            if initialization:
+                self._update(contract.run_id, **initialization)
             self._ensure_todos(contract)
             return self.get(contract.run_id)
         now = _now()
         with self._connect() as connection:
+            self._begin_worker_mutation(connection, contract.run_id)
             connection.execute(
                 """
                 INSERT INTO runs (
@@ -1771,6 +1957,7 @@ class _RunStore:
     def _ensure_todos(self, contract: _Contract) -> None:
         now = _now()
         with self._connect() as connection:
+            self._begin_worker_mutation(connection, contract.run_id)
             for todo in contract.todos:
                 connection.execute(
                     """
@@ -1839,33 +2026,61 @@ class _RunStore:
             last_error=stop.detail,
         )
 
-    def resume(self, run_id: str) -> None:
-        record = self.get(run_id)
-        if not str(record["status"]).startswith("paused_"):
-            raise ValueError(f"Run {run_id!r} is not paused")
+    def resume(self, run_id: str) -> Mapping[str, Any]:
         attempts, harness_seconds, tokens = self.resource_totals(run_id)
-        for todo in self.get_todos(run_id):
-            if todo["status"] != "paused":
-                continue
-            self._update_todo(
-                run_id,
-                todo["todo_id"],
-                status=todo["resume_status"],
-                resume_status="",
-                stop_json="null",
-                last_error=None,
+        now = _now()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            record = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?",
+                (run_id,),
+            ).fetchone()
+            if record is None:
+                raise KeyError(f"unknown run: {run_id}")
+            if not str(record["status"]).startswith("paused_"):
+                raise ValueError(f"Run {run_id!r} is not paused")
+            connection.execute(
+                """
+                UPDATE todos
+                SET status = resume_status,
+                    resume_status = '',
+                    stop_json = 'null',
+                    last_error = NULL,
+                    updated_at = ?
+                WHERE run_id = ? AND status = 'paused'
+                """,
+                (now, run_id),
             )
-        self._update(
-            run_id,
-            status="running",
-            active_stage="",
-            stop_json="null",
-            last_error=None,
-            resource_window_started_at=_now(),
-            resource_attempt_baseline=attempts,
-            resource_harness_baseline=harness_seconds,
-            resource_token_baseline=tokens,
-        )
+            connection.execute(
+                """
+                UPDATE runs
+                SET status = 'queued',
+                    active_stage = '',
+                    stop_json = 'null',
+                    last_error = NULL,
+                    error = '',
+                    resource_window_started_at = ?,
+                    resource_attempt_baseline = ?,
+                    resource_harness_baseline = ?,
+                    resource_token_baseline = ?,
+                    updated_at = ?
+                WHERE run_id = ?
+                """,
+                (
+                    now,
+                    attempts,
+                    harness_seconds,
+                    tokens,
+                    now,
+                    run_id,
+                ),
+            )
+            connection.execute(
+                "INSERT OR REPLACE INTO run_queue (run_id, enqueued_at) VALUES (?, ?)",
+                (run_id, now),
+            )
+            connection.execute("DELETE FROM run_leases WHERE run_id = ?", (run_id,))
+        return self.get(run_id)
 
     def fail(
         self,
@@ -2264,6 +2479,7 @@ class _RunStore:
         assignments = ", ".join(f"{name} = ?" for name in values)
         parameters = list(values.values()) + [run_id]
         with self._connect() as connection:
+            self._begin_worker_mutation(connection, run_id)
             connection.execute(
                 f"UPDATE runs SET {assignments} WHERE run_id = ?",
                 parameters,
@@ -2274,10 +2490,44 @@ class _RunStore:
         assignments = ", ".join(f"{name} = ?" for name in values)
         parameters = list(values.values()) + [run_id, todo_id]
         with self._connect() as connection:
+            self._begin_worker_mutation(connection, run_id)
             connection.execute(
                 f"UPDATE todos SET {assignments} WHERE run_id = ? AND todo_id = ?",
                 parameters,
             )
+
+    @contextmanager
+    def guard_mutations(
+        self,
+        run_id: str,
+        owner_id: str,
+        generation: int,
+    ) -> Iterator[None]:
+        if not owner_id:
+            yield
+            return
+        with self._mutation_guards_lock:
+            self._mutation_guards[run_id] = (owner_id, generation)
+        try:
+            yield
+        finally:
+            with self._mutation_guards_lock:
+                self._mutation_guards.pop(run_id, None)
+
+    def _begin_worker_mutation(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+    ) -> None:
+        with self._mutation_guards_lock:
+            fence = self._mutation_guards.get(run_id)
+        if fence is None:
+            return
+        connection.execute("BEGIN IMMEDIATE")
+        owner_id, generation = fence
+        self._assert_worker_lease(connection, run_id, owner_id, generation)
+        self._inject_worker_fault("after_worker_fence", connection, run_id)
+        self._assert_worker_lease(connection, run_id, owner_id, generation)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(str(self._database), timeout=30)
@@ -2291,6 +2541,10 @@ class _RunStore:
             row[1] for row in connection.execute("PRAGMA table_info(runs)").fetchall()
         }
         columns = {
+            "snapshot_id": "TEXT",
+            "contract_hash": "TEXT",
+            "error": "TEXT NOT NULL DEFAULT ''",
+            "lease_generation": "INTEGER NOT NULL DEFAULT 0",
             "attempts_json": "TEXT NOT NULL DEFAULT '[]'",
             "stop_json": "TEXT NOT NULL DEFAULT 'null'",
             "resource_window_started_at": "TEXT NOT NULL DEFAULT ''",
@@ -2458,14 +2712,186 @@ class _GitWorkspace:
         return _git(self.worktree, *arguments, check=check)
 
 
+def _contract_from_snapshot(snapshot: object, *, run_id: str) -> _Contract:
+    manifest = getattr(snapshot, "manifest", None)
+    snapshot_id = getattr(snapshot, "snapshot_id", None)
+    if not isinstance(manifest, Mapping) or not isinstance(snapshot_id, str):
+        raise ContractError("execution requires an admitted ExecutionSnapshot")
+    goal = _manifest_mapping_value(manifest, "goal")
+    agent = _manifest_mapping_value(manifest, "agent")
+    repository = _manifest_mapping_value(manifest, "repository")
+    resources = _manifest_mapping_value(manifest, "resources")
+    role_guidance = _manifest_mapping_value(manifest, "role_guidance")
+    policy = _manifest_mapping_value(manifest, "policy")
+
+    acceptance = tuple(
+        _Acceptance(
+            test_id=str(_manifest_mapping_item(item, "goal.acceptance")["test_id"]),
+            statement=str(_manifest_mapping_item(item, "goal.acceptance")["statement"]),
+        )
+        for item in _manifest_sequence(goal, "acceptance")
+    )
+    todos = tuple(_todo_from_manifest(item) for item in _manifest_sequence(manifest, "todos"))
+    image_value = manifest.get("image_profile")
+    image_profile = (
+        _image_from_manifest(_manifest_mapping_item(image_value, "image_profile"))
+        if image_value is not None
+        else None
+    )
+    publish_value = manifest.get("publish_policy")
+    publish_policy = (
+        _publish_from_manifest(_manifest_mapping_item(publish_value, "publish_policy"))
+        if publish_value is not None
+        else None
+    )
+    guidance = {
+        str(role): tuple(
+            (str(entry[0]), str(entry[1]))
+            for entry in entries
+            if isinstance(entry, (tuple, list)) and len(entry) == 2
+        )
+        for role, entries in role_guidance.items()
+        if isinstance(entries, (tuple, list))
+    }
+    required_secrets = tuple(str(item) for item in _manifest_sequence(manifest, "required_secrets"))
+    return _Contract(
+        contract_hash=hashlib.sha256(
+            f"{snapshot_id}\0{run_id}".encode("utf-8")
+        ).hexdigest(),
+        approval_status=str(manifest["approval_status"]),
+        goal_id=str(goal["id"]),
+        goal_title=str(goal["title"]),
+        requirement=str(goal["requirement"]),
+        acceptance=acceptance,
+        agent_provider=str(agent["provider"]),
+        agent_model=(str(agent["model"]) if agent.get("model") is not None else None),
+        repository=Path(str(repository["path"])).resolve(),
+        base_ref=str(repository["base_ref"]),
+        todos=todos,
+        resources=_ResourcePolicy(
+            agent_attempts=_optional_manifest_int(resources.get("agent_attempts")),
+            wall_clock_seconds=_optional_manifest_float(resources.get("wall_clock_seconds")),
+            harness_seconds=_optional_manifest_float(resources.get("harness_seconds")),
+            provider_tokens=_optional_manifest_int(resources.get("provider_tokens")),
+        ),
+        required_secrets=required_secrets,
+        image_profile_name=image_profile.name if image_profile is not None else "",
+        image_profile=image_profile,
+        candidate_publish=publish_policy,
+        role_skill_texts=guidance,
+        policy=dict(policy),
+        policy_blockers=(),
+        admitted_run_id=run_id,
+        pinned_base_commit=str(repository["base_commit"]),
+    )
+
+
+def _todo_from_manifest(value: object) -> _Todo:
+    todo = _manifest_mapping_item(value, "todos[]")
+    harness_value = todo.get("harness")
+    harness = (
+        _harness_from_manifest(_manifest_mapping_item(harness_value, "todos[].harness"))
+        if harness_value is not None
+        else None
+    )
+    return _Todo(
+        todo_id=str(todo["todo_id"]),
+        title=str(todo["title"]),
+        depends_on=tuple(str(item) for item in _manifest_sequence(todo, "depends_on")),
+        test_ids=tuple(str(item) for item in _manifest_sequence(todo, "test_ids")),
+        test_command=tuple(str(item) for item in _manifest_sequence(todo, "test_command")),
+        allowed_test_paths=tuple(
+            str(item) for item in _manifest_sequence(todo, "allowed_test_paths")
+        ),
+        timeout_seconds=int(todo["timeout_seconds"]),
+        harness_name=str(todo["harness_name"]),
+        harness=harness,
+    )
+
+
+def _harness_from_manifest(value: Mapping[str, object]) -> HarnessProfile:
+    browser_value = value.get("browser_diagnostic")
+    browser = None
+    if browser_value is not None:
+        item = _manifest_mapping_item(browser_value, "browser_diagnostic")
+        browser = BrowserDiagnosticProfile(
+            adapter=str(item["adapter"]),
+            command=tuple(str(part) for part in _manifest_sequence(item, "command")),
+            timeout_seconds=int(item["timeout_seconds"]),
+        )
+    return HarnessProfile(
+        name=str(value["name"]),
+        kind=str(value["kind"]),
+        environment=str(value["environment"]),
+        start_command=tuple(str(item) for item in value.get("start_command", ())),
+        ready_url=str(value.get("ready_url", "")),
+        ready_timeout_seconds=int(value.get("ready_timeout_seconds", 0)),
+        browser_gate=str(value.get("browser_gate", "")),
+        browser_diagnostic=browser,
+        kubernetes_context=str(value.get("kubernetes_context", "")),
+        namespace_prefix=str(value.get("namespace_prefix", "")),
+        ttl_seconds=int(value.get("ttl_seconds", 0)),
+        provision_command=tuple(str(item) for item in value.get("provision_command", ())),
+        collect_command=tuple(str(item) for item in value.get("collect_command", ())),
+        cleanup_command=tuple(str(item) for item in value.get("cleanup_command", ())),
+    )
+
+
+def _image_from_manifest(value: Mapping[str, object]) -> ImageProfile:
+    return ImageProfile(
+        name=str(value["name"]),
+        environment=str(value["environment"]),
+        start_command=tuple(str(item) for item in _manifest_sequence(value, "start_command")),
+        status_command=tuple(str(item) for item in _manifest_sequence(value, "status_command")),
+        result_command=tuple(str(item) for item in _manifest_sequence(value, "result_command")),
+    )
+
+
+def _publish_from_manifest(value: Mapping[str, object]) -> CandidatePublishProfile:
+    return CandidatePublishProfile(
+        remote=str(value["remote"]),
+        branch_prefix=str(value["branch_prefix"]),
+        remote_url=str(value["remote_url"]),
+    )
+
+
+def _manifest_mapping_value(
+    value: Mapping[str, object], name: str
+) -> Mapping[str, object]:
+    return _manifest_mapping_item(value.get(name), name)
+
+
+def _manifest_mapping_item(value: object, path: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ContractError(f"ExecutionManifest {path} must be a mapping")
+    return value
+
+
+def _manifest_sequence(value: Mapping[str, object], name: str) -> Sequence[object]:
+    item = value.get(name)
+    if not isinstance(item, (tuple, list)):
+        raise ContractError(f"ExecutionManifest {name} must be a sequence")
+    return item
+
+
+def _optional_manifest_int(value: object) -> Optional[int]:
+    return int(value) if value is not None else None
+
+
+def _optional_manifest_float(value: object) -> Optional[float]:
+    return float(value) if value is not None else None
+
+
 def _load_contract(
     path: Path,
     *,
     require_approval: bool = True,
     workflow_path: Optional[Path] = None,
     preflight: bool = False,
+    raw: Optional[bytes] = None,
 ) -> _Contract:
-    raw = path.read_bytes()
+    if raw is None:
+        raw = path.read_bytes()
     try:
         data = yaml.safe_load(raw)
     except yaml.YAMLError as error:
@@ -2547,6 +2973,7 @@ def _load_contract(
         preflight=preflight,
     )
     resources = _parse_resources(data.get("resources", {}))
+    required_secrets = _parse_required_secrets(data.get("required_secrets", []))
 
     return _Contract(
         contract_hash=_contract_hash(raw, role_skill_texts),
@@ -2561,6 +2988,7 @@ def _load_contract(
         base_ref=_text(project, "base_ref"),
         todos=todos,
         resources=resources,
+        required_secrets=required_secrets,
         image_profile_name=image_profile_name,
         image_profile=image_profile,
         candidate_publish=candidate_publish,
@@ -2572,6 +3000,26 @@ def _load_contract(
         },
         policy_blockers=tuple(policy_metadata.get("blockers", ())),
     )
+
+
+def _parse_required_secrets(value: object) -> Tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ContractError("required_secrets must be a list of references")
+    references: List[str] = []
+    reference_pattern = re.compile(
+        r"^(?:env:[A-Za-z_][A-Za-z0-9_]*|"
+        r"keychain:[A-Za-z0-9_][A-Za-z0-9._/@:-]*)$"
+    )
+    for item in value:
+        if not isinstance(item, str) or not reference_pattern.fullmatch(item):
+            raise ContractError(
+                "required_secrets entries must use supported references such as "
+                "env:OPENAI_API_KEY or keychain:aiwb/openai"
+            )
+        if item in references:
+            raise ContractError(f"required_secrets contains duplicate reference {item!r}")
+        references.append(item)
+    return tuple(references)
 
 
 def _parse_resources(value: object) -> _ResourcePolicy:
