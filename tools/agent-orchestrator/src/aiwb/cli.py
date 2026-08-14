@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional, Sequence, Tuple
 
@@ -29,8 +30,15 @@ from .project import (
     ProjectInitError,
 )
 from .recipe_catalog import RecipeCatalog
-from .runner import GoalRunner, preview_execution
+from .runner import preview_execution
 from .skills import SkillCatalog
+from .state import (
+    DurableStateSetup,
+    INCOMPATIBLE_CURRENT_STATE_MESSAGE,
+    StateAssessment,
+    StateFormat,
+    StateResetError,
+)
 from .supervisor import LaunchdError, LaunchdService
 from .tickets import TicketContractDraftBuilder
 
@@ -57,6 +65,7 @@ def main(arguments: Optional[Sequence[str]] = None) -> int:
         LaunchdError,
         ProjectConfigError,
         ProjectInitError,
+        StateResetError,
         ValueError,
         OSError,
     ) as error:
@@ -106,6 +115,7 @@ def _build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--apply-command", action="append", default=[])
     setup.add_argument("--apply-artifact", type=Path)
     setup.add_argument("--apply", action="store_true")
+    setup.add_argument("--reset-incompatible-state", action="store_true")
 
     skills = commands.add_parser("skills")
     skills_commands = skills.add_subparsers(dest="skills_command", required=True)
@@ -178,6 +188,8 @@ def _build_parser() -> argparse.ArgumentParser:
 
     submit = goal_commands.add_parser("submit")
     submit.add_argument("--contract", required=True, type=Path)
+    submit.add_argument("--workflow", type=Path)
+    submit.add_argument("--idempotency-key")
     _add_control_options(submit)
 
     goal_status = goal_commands.add_parser("status")
@@ -307,6 +319,52 @@ def _run_init(options: argparse.Namespace) -> int:
 
 
 def _run_setup(options: argparse.Namespace) -> int:
+    state_fields: dict[str, object] = {}
+    if options.planning_mode:
+        if options.reset_incompatible_state:
+            raise ValueError(
+                "--reset-incompatible-state cannot be combined with --planning-mode"
+            )
+    elif options.reset_incompatible_state and options.state_dir is None:
+        raise ValueError("--reset-incompatible-state requires --state-dir")
+    elif options.state_dir is not None:
+        state_setup = DurableStateSetup()
+        assessment = state_setup.inspect(options.state_dir)
+        decision = "not_needed"
+        if assessment.format == StateFormat.INCOMPATIBLE_CURRENT:
+            raise StateResetError(INCOMPATIBLE_CURRENT_STATE_MESSAGE)
+        if assessment.format == StateFormat.INCOMPATIBLE_LEGACY:
+            if not assessment.resettable:
+                raise StateResetError(assessment.detail)
+            if options.reset_incompatible_state:
+                decision = "explicit"
+            else:
+                _print_legacy_reset_preview(assessment)
+                if not _read_confirmation():
+                    _print_json(
+                        {
+                            "state": assessment.to_dict(),
+                            "state_reset": {
+                                "changed": False,
+                                "decision": "declined",
+                            },
+                        }
+                    )
+                    return 1
+                decision = "confirmed"
+            result = state_setup.reset(options.state_dir, confirmed=True)
+            assessment = result.assessment
+            changed = result.changed
+        elif options.reset_incompatible_state:
+            decision = "explicit"
+            changed = False
+        else:
+            changed = False
+        state_fields = {
+            "state": assessment.to_dict(),
+            "state_reset": {"changed": changed, "decision": decision},
+        }
+
     setup = HarnessSetup()
     targets = tuple(options.agent_target)
     plan = setup.plan(
@@ -410,7 +468,6 @@ def _run_setup(options: argparse.Namespace) -> int:
         or options.approve_apply
         or options.execute_apply
         or options.base_commit
-        or options.state_dir is not None
         or options.apply_command
         or options.apply_artifact is not None
     ):
@@ -437,6 +494,7 @@ def _run_setup(options: argparse.Namespace) -> int:
                 "agent_targets": result.agent_targets,
                 "installed_packs": result.installed_packs,
                 "next_actions": result.next_actions,
+                **state_fields,
             }
         )
     else:
@@ -450,9 +508,42 @@ def _run_setup(options: argparse.Namespace) -> int:
                 "skills": [skill.__dict__ for skill in result.catalog.skills],
                 "warnings": result.catalog.warnings,
                 "packs": [_pack_to_dict(pack) for pack in result.packs],
+                **state_fields,
             }
         )
     return 0
+
+
+def _print_legacy_reset_preview(assessment: StateAssessment) -> None:
+    print(
+        "Incompatible legacy Run state detected. This state cannot be migrated.",
+        file=sys.stderr,
+    )
+    print("The following legacy databases will be removed:", file=sys.stderr)
+    for path in assessment.legacy_databases:
+        print(f"  {path}", file=sys.stderr)
+    if assessment.managed_paths:
+        print(
+            "The following managed Run workspaces and temporary state will be removed:",
+            file=sys.stderr,
+        )
+        for path in assessment.managed_paths:
+            print(f"  {path}", file=sys.stderr)
+    print(
+        "Evidence, logs, harness-setup worktrees, and unrelated files are preserved.",
+        file=sys.stderr,
+    )
+
+
+def _read_confirmation() -> bool:
+    print(
+        "Reset incompatible legacy state? [y/N] ",
+        end="",
+        file=sys.stderr,
+        flush=True,
+    )
+    answer = sys.stdin.readline()
+    return answer.strip().lower() in {"y", "yes"}
 
 
 def _run_skills(options: argparse.Namespace) -> int:
@@ -566,18 +657,38 @@ def _run_goal(options: argparse.Namespace) -> int:
         _print_json(result.to_dict())
         return 0
     if options.goal_command == "run":
-        report = GoalRunner(
-            state_dir=options.state_dir,
-            agent=_agent_router(options),
-            max_workers=options.todo_workers,
-            image_poll_interval_seconds=options.image_poll_seconds,
-        ).run(options.contract)
-        _print_json(report.to_dict())
-        return 0
+        client = DaemonClient(_socket_path(options))
+        submitted = client.submit(options.contract)
+        terminal = {
+            "merge_ready",
+            "incompatible_engine",
+            "blocked",
+            "failed_cleanup",
+            "failed_acceptance",
+            "failed_harness",
+            "paused_resource",
+            "paused_deadline",
+            "paused_provider_quota",
+        }
+        status = submitted
+        while status.status not in terminal:
+            time.sleep(0.1)
+            status = client.status(submitted.run_id)
+        if status.status == "incompatible_engine":
+            _print_json(status.__dict__)
+            return 1
+        _print_json(client.report(submitted.run_id).to_dict())
+        return 0 if status.status == "merge_ready" else 1
 
     client = DaemonClient(_socket_path(options))
     if options.goal_command == "submit":
-        _print_json(client.submit(options.contract).__dict__)
+        _print_json(
+            client.submit(
+                options.contract,
+                workflow_path=options.workflow,
+                idempotency_key=options.idempotency_key,
+            ).__dict__
+        )
     elif options.goal_command == "status":
         _print_json(client.status(options.run_id).__dict__)
     elif options.goal_command == "report":

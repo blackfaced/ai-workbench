@@ -35,17 +35,18 @@ class CandidatePublisher:
                 "Candidate branch is outside the policy-approved namespace"
             )
         ref = f"refs/heads/{request.branch}"
+        remote_target = request.profile.remote_url or request.profile.remote
         self._git(request.repository, "check-ref-format", ref)
         self._git(
             request.repository,
             "push",
             "--porcelain",
-            request.profile.remote,
+            remote_target,
             f"{request.commit}:{ref}",
         )
         remote_commit = self._remote_commit(
             request.repository,
-            request.profile.remote,
+            remote_target,
             ref,
         )
         if remote_commit != request.commit:
