@@ -35,7 +35,9 @@ does not record a code Attempt for work that did not execute.
 
 Resume is explicit through the shared daemon control plane. It starts a new
 resource window from the durable checkpoint and preserves the Contract-fixed
-provider and model. Daemon restart never resumes a paused Run automatically.
+provider plus every Role Profile's model and reasoning effort. Role profiles
+inherit one default model unless the owner explicitly approves per-role values.
+Daemon restart never resumes a paused Run automatically.
 Independent Todos that were already admitted may reach a durable checkpoint;
 dependents of the paused Todo remain frozen.
 
@@ -45,7 +47,8 @@ distinct. Monetary cost remains unknown unless a future provider supplies a
 reviewed, trustworthy price signal.
 
 No resource boundary grants permission expansion, production access, provider
-fallback, model switching, test weakening, target-branch merge, or deployment.
+fallback, runtime model switching, test weakening, target-branch merge, or
+deployment.
 
 ## Consequences
 
