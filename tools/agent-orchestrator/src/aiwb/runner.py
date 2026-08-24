@@ -17,7 +17,13 @@ from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Seque
 
 import yaml
 
-from .agent import AgentAdapter, AgentRequest, AgentResult, ProviderQuotaError
+from .agent import (
+    AgentAdapter,
+    AgentExecutionError,
+    AgentRequest,
+    AgentResult,
+    ProviderQuotaError,
+)
 from .browser import McpBrowserDiagnosticAdapter
 from .evidence import (
     EvidencePayload,
@@ -37,7 +43,11 @@ from .project import (
     ProjectPolicy,
 )
 from .publish import CandidatePublishError, CandidatePublishRequest, CandidatePublisher
-from .repair import MergeConflictRepairRequest, MergeConflictRepairer
+from .repair import (
+    MergeConflictRepairError,
+    MergeConflictRepairRequest,
+    MergeConflictRepairer,
+)
 
 
 class ContractError(ValueError):
@@ -156,6 +166,8 @@ class StopReport:
     provider: str = ""
     model: str = ""
     known_usage: Optional[Mapping[str, int]] = None
+    stdout_ref: Optional[EvidenceReference] = None
+    stderr_ref: Optional[EvidenceReference] = None
 
 
 @dataclass(frozen=True)
@@ -170,6 +182,8 @@ class AttemptReport:
     recorded_at: str
     error: str = ""
     usage: Optional[Mapping[str, int]] = None
+    stdout_ref: Optional[EvidenceReference] = None
+    stderr_ref: Optional[EvidenceReference] = None
 
 
 @dataclass(frozen=True)
@@ -459,11 +473,23 @@ class GoalRunner:
 
     def evidence(self, run_id: str, artifact_id: str) -> EvidencePayload:
         report = self.report(run_id)
+        stop_references = (
+            (report.stop.stdout_ref, report.stop.stderr_ref)
+            if report.stop is not None
+            else ()
+        )
         evidence_items = (
             *report.evidence,
             *(item for todo in report.todos for item in todo.evidence),
         )
         references = [
+            *(reference for reference in stop_references if reference is not None),
+            *(
+                reference
+                for attempt in report.attempts
+                for reference in (attempt.stdout_ref, attempt.stderr_ref)
+                if reference is not None
+            ),
             *(
                 reference
                 for item in evidence_items
@@ -770,6 +796,8 @@ class GoalRunner:
                     )
                 ),
             )
+        except MergeConflictRepairError:
+            raise
         except ProviderQuotaError as error:
             self._pause_for_provider_quota(
                 contract,
@@ -778,27 +806,24 @@ class GoalRunner:
                 error,
             )
         except Exception as error:
+            attempt = self._failed_agent_attempt(
+                contract,
+                todo.todo_id,
+                "conflict_repairer",
+                error,
+                started,
+            )
             self._store.record_todo_attempt(
                 contract.run_id,
                 todo.todo_id,
-                AttemptReport(
-                    role="conflict_repairer",
-                    todo_id=todo.todo_id,
-                    provider=contract.agent_provider,
-                    model=contract.agent_model or "",
-                    session_id="",
-                    status="failed",
-                    elapsed_seconds=time.monotonic() - started,
-                    recorded_at=_now(),
-                    error=str(error),
-                ),
+                attempt,
             )
             self._store.record_todo_interruption(
                 contract.run_id,
                 todo.todo_id,
-                str(error),
+                attempt.error,
             )
-            raise
+            raise RuntimeError(attempt.error) from None
         self._store.record_todo_attempt(
             contract.run_id,
             todo.todo_id,
@@ -913,22 +938,19 @@ class GoalRunner:
                 error,
             )
         except Exception as error:
+            attempt = self._failed_agent_attempt(
+                contract,
+                todo.todo_id,
+                role,
+                error,
+                started,
+            )
             self._store.record_todo_attempt(
                 contract.run_id,
                 todo.todo_id,
-                AttemptReport(
-                    role=role,
-                    todo_id=todo.todo_id,
-                    provider=contract.agent_provider,
-                    model=contract.agent_model or "",
-                    session_id="",
-                    status="failed",
-                    elapsed_seconds=time.monotonic() - started,
-                    recorded_at=_now(),
-                    error=str(error),
-                ),
+                attempt,
             )
-            raise
+            raise RuntimeError(attempt.error) from None
         self._store.record_todo_attempt(
             contract.run_id,
             todo.todo_id,
@@ -945,6 +967,70 @@ class GoalRunner:
             ),
         )
         return result
+
+    def _failed_agent_attempt(
+        self,
+        contract: _Contract,
+        todo_id: str,
+        role: str,
+        error: Exception,
+        started: float,
+    ) -> AttemptReport:
+        if isinstance(error, AgentExecutionError):
+            detail = str(error)
+            stdout = error.stdout
+            stderr = error.stderr
+        else:
+            detail = (
+                f"{contract.agent_provider} role {role!r} failed: "
+                f"{type(error).__name__}"
+            )
+            stdout = ""
+            stderr = str(error)
+        return AttemptReport(
+            role=role,
+            todo_id=todo_id,
+            provider=contract.agent_provider,
+            model=contract.agent_model or "",
+            session_id="",
+            status="failed",
+            elapsed_seconds=time.monotonic() - started,
+            recorded_at=_now(),
+            error=detail,
+            stdout_ref=self._retain_agent_failure_output(
+                contract.run_id,
+                todo_id,
+                role,
+                "stdout",
+                stdout,
+            ),
+            stderr_ref=self._retain_agent_failure_output(
+                contract.run_id,
+                todo_id,
+                role,
+                "stderr",
+                stderr,
+            ),
+        )
+
+    def _retain_agent_failure_output(
+        self,
+        run_id: str,
+        todo_id: str,
+        role: str,
+        stream: str,
+        content: str,
+    ) -> Optional[EvidenceReference]:
+        if not content:
+            return None
+        return self._external_effect(
+            run_id,
+            lambda: self._evidence_store.retain_bytes(
+                content.encode("utf-8"),
+                label=f"{run_id}/{todo_id}/agent/{role}/{stream}",
+                media_type="text/plain; charset=utf-8",
+            ),
+        )
 
     def _create_todo_red_checkpoint(
         self,
@@ -1314,22 +1400,19 @@ class GoalRunner:
                 error,
             )
         except Exception as error:
+            attempt = self._failed_agent_attempt(
+                contract,
+                "candidate",
+                "candidate_verifier",
+                error,
+                started,
+            )
             self._store.record_run_attempt(
                 contract.run_id,
-                AttemptReport(
-                    role="candidate_verifier",
-                    todo_id="candidate",
-                    provider=contract.agent_provider,
-                    model=contract.agent_model or "",
-                    session_id="",
-                    status="failed",
-                    elapsed_seconds=time.monotonic() - started,
-                    recorded_at=_now(),
-                    error=str(error),
-                ),
+                attempt,
             )
-            self._store.record_interruption(contract.run_id, str(error))
-            raise
+            self._store.record_interruption(contract.run_id, attempt.error)
+            raise RuntimeError(attempt.error) from None
         return result, time.monotonic() - started
 
     def _pause_for_provider_quota(
@@ -1350,6 +1433,20 @@ class GoalRunner:
             provider=contract.agent_provider,
             model=contract.agent_model or "",
             known_usage=error.usage,
+            stdout_ref=self._retain_agent_failure_output(
+                contract.run_id,
+                todo_id,
+                role,
+                "stdout",
+                error.stdout,
+            ),
+            stderr_ref=self._retain_agent_failure_output(
+                contract.run_id,
+                todo_id,
+                role,
+                "stderr",
+                error.stderr,
+            ),
         )
         self._store.pause(contract.run_id, stop)
         raise RunPaused(stop)
@@ -3869,6 +3966,8 @@ def _stop_report_from_dict(value: object) -> Optional[StopReport]:
             if isinstance(known_usage, dict)
             else None
         ),
+        stdout_ref=_optional_evidence_reference(value.get("stdout_ref")),
+        stderr_ref=_optional_evidence_reference(value.get("stderr_ref")),
     )
 
 
@@ -3891,6 +3990,8 @@ def _attempt_report_from_dict(value: Mapping[str, object]) -> AttemptReport:
             if isinstance(usage, dict)
             else None
         ),
+        stdout_ref=_optional_evidence_reference(value.get("stdout_ref")),
+        stderr_ref=_optional_evidence_reference(value.get("stderr_ref")),
     )
 
 

@@ -58,6 +58,10 @@ def test_cli_renders_a_user_launch_agent_without_loading_it() -> None:
         assert service["Label"] == "com.ai-workbench.agent-orchestrator"
         assert service["KeepAlive"] is True
         assert service["RunAtLoad"] is True
+        assert service["EnvironmentVariables"] == {
+            "PATH": environment["PATH"],
+            "PYTHONPATH": str(TOOL_ROOT / "src"),
+        }
         assert service["ProgramArguments"] == [
             sys.executable,
             "-m",

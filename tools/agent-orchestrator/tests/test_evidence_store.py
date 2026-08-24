@@ -29,12 +29,14 @@ from aiwb import (  # noqa: E402
     GoalRunner,
     RunReport,
 )
+from aiwb.agent import AgentExecutionError, CodexCliAdapter  # noqa: E402
 from aiwb.mcp_server import McpServer  # noqa: E402
 
 
 class LargeOutputAgent:
     def __init__(self, fail_first_implementation: bool = False) -> None:
         self.fail_first_implementation = fail_first_implementation
+        self.pin_implementation_mtime = fail_first_implementation
         self.calls = []
 
     def run(self, request: AgentRequest) -> AgentResult:
@@ -51,13 +53,16 @@ class LargeOutputAgent:
                 encoding="utf-8",
             )
         elif request.role == "implementer":
-            value = "wrong" if self.fail_first_implementation else "hello"
+            value = "incorrect" if self.fail_first_implementation else "hello"
             self.fail_first_implementation = False
-            (worktree / "greeting.py").write_text(
+            implementation = worktree / "greeting.py"
+            implementation.write_text(
                 "def greeting():\n"
                 f"    return {value!r}\n",
                 encoding="utf-8",
             )
+            if self.pin_implementation_mtime:
+                os.utime(implementation, (1_700_000_000, 1_700_000_000))
         return AgentResult(
             session_id=f"large-{request.role}",
             final_output="completed",
@@ -67,6 +72,42 @@ class LargeOutputAgent:
 class UnusedAgent:
     def run(self, request: AgentRequest) -> AgentResult:
         raise AssertionError(f"unexpected Agent call after restart: {request.role}")
+
+
+class SensitiveFailureAgent:
+    def run(self, request: AgentRequest) -> AgentResult:
+        raise AgentExecutionError(
+            provider=request.provider,
+            role=request.role,
+            reason="nonzero_exit",
+            stdout="PRIVATE_AGENT_STDOUT_MARKER",
+            stderr="PRIVATE_AGENT_STDERR_MARKER",
+            returncode=42,
+        )
+
+
+class SensitiveTimeoutAgent:
+    def run(self, request: AgentRequest) -> AgentResult:
+        raise AgentExecutionError(
+            provider=request.provider,
+            role=request.role,
+            reason="timeout",
+            stdout="PRIVATE_TIMEOUT_STDOUT_MARKER",
+            stderr="PRIVATE_TIMEOUT_STDERR_MARKER",
+            timeout_seconds=request.timeout_seconds,
+        )
+
+
+class GenericSensitiveFailureAgent:
+    def run(self, request: AgentRequest) -> AgentResult:
+        raise RuntimeError("PRIVATE_GENERIC_AGENT_ERROR_MARKER")
+
+
+class SensitiveCandidateFailureAgent(LargeOutputAgent):
+    def run(self, request: AgentRequest) -> AgentResult:
+        if request.role == "candidate_verifier":
+            raise RuntimeError("PRIVATE_CANDIDATE_STDERR_MARKER")
+        return super().run(request)
 
 
 def test_content_addressed_store_bounds_text_and_detects_mutation() -> None:
@@ -273,6 +314,252 @@ def test_daemon_cli_and_mcp_fetch_full_evidence_only_when_requested() -> None:
             daemon.shutdown()
             thread.join(timeout=5)
         assert not thread.is_alive()
+
+
+@pytest.mark.parametrize(
+    ("agent", "marker_prefix"),
+    [
+        (SensitiveFailureAgent(), "PRIVATE_AGENT_"),
+        (SensitiveTimeoutAgent(), "PRIVATE_TIMEOUT_"),
+    ],
+    ids=("nonzero", "timeout"),
+)
+def test_agent_failure_outputs_are_only_available_as_explicit_evidence(
+    agent: object,
+    marker_prefix: str,
+) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        state_dir = root / "state"
+        socket_path = state_dir / "run" / "daemon.sock"
+        daemon = AgentDaemon(
+            state_dir=state_dir,
+            agent=agent,
+            socket_path=socket_path,
+        )
+        thread = threading.Thread(target=daemon.serve_forever, daemon=True)
+        thread.start()
+        client = DaemonClient(socket_path)
+        _wait_until(client.ping)
+        try:
+            submitted = client.submit(contract)
+            _wait_until(
+                lambda: client.status(submitted.run_id).status == "blocked",
+            )
+            status = client.status(submitted.run_id)
+            report = client.report(submitted.run_id)
+            attempt = report.attempts[0]
+
+            assert attempt.stdout_ref is not None
+            assert attempt.stderr_ref is not None
+            assert marker_prefix not in status.error
+            assert marker_prefix not in json.dumps(report.to_dict())
+            assert len(status.error.encode("utf-8")) <= 512
+
+            stdout = client.evidence(
+                submitted.run_id,
+                attempt.stdout_ref.artifact_id,
+            )
+            stderr = client.evidence(
+                submitted.run_id,
+                attempt.stderr_ref.artifact_id,
+            )
+            assert stdout.content == f"{marker_prefix}STDOUT_MARKER"
+            assert stderr.content == f"{marker_prefix}STDERR_MARKER"
+
+            with sqlite3.connect(state_dir / "run-ledger.db") as connection:
+                run_error = connection.execute(
+                    "SELECT error FROM runs WHERE run_id = ?",
+                    (submitted.run_id,),
+                ).fetchone()[0]
+                transition_errors = connection.execute(
+                    "SELECT error FROM run_transitions WHERE run_id = ?",
+                    (submitted.run_id,),
+                ).fetchall()
+            assert marker_prefix not in run_error
+            assert all(marker_prefix not in item[0] for item in transition_errors)
+            assert len(run_error.encode("utf-8")) <= 512
+        finally:
+            daemon.shutdown()
+            thread.join(timeout=5)
+        assert not thread.is_alive()
+
+
+def test_generic_agent_failure_is_redacted_across_ledger_projections() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        state_dir = root / "state"
+        socket_path = state_dir / "run" / "daemon.sock"
+        daemon = AgentDaemon(
+            state_dir=state_dir,
+            agent=GenericSensitiveFailureAgent(),
+            socket_path=socket_path,
+        )
+        thread = threading.Thread(target=daemon.serve_forever, daemon=True)
+        thread.start()
+        client = DaemonClient(socket_path)
+        _wait_until(client.ping)
+        try:
+            submitted = client.submit(contract)
+            _wait_until(
+                lambda: client.status(submitted.run_id).status == "blocked",
+            )
+            status = client.status(submitted.run_id)
+            report = client.report(submitted.run_id)
+            attempt = report.attempts[0]
+
+            assert attempt.stderr_ref is not None
+            assert "PRIVATE_GENERIC_AGENT_ERROR_MARKER" not in status.error
+            assert "PRIVATE_GENERIC_AGENT_ERROR_MARKER" not in json.dumps(
+                report.to_dict()
+            )
+            payload = client.evidence(
+                submitted.run_id,
+                attempt.stderr_ref.artifact_id,
+            )
+            assert payload.content == "PRIVATE_GENERIC_AGENT_ERROR_MARKER"
+
+            with sqlite3.connect(state_dir / "run-ledger.db") as connection:
+                run_error = connection.execute(
+                    "SELECT error FROM runs WHERE run_id = ?",
+                    (submitted.run_id,),
+                ).fetchone()[0]
+                todo_error = connection.execute(
+                    "SELECT last_error FROM todos WHERE run_id = ?",
+                    (submitted.run_id,),
+                ).fetchone()[0]
+                transition_errors = connection.execute(
+                    "SELECT error FROM run_transitions WHERE run_id = ?",
+                    (submitted.run_id,),
+                ).fetchall()
+            assert "PRIVATE_GENERIC_AGENT_ERROR_MARKER" not in run_error
+            assert "PRIVATE_GENERIC_AGENT_ERROR_MARKER" not in (todo_error or "")
+            assert all(
+                "PRIVATE_GENERIC_AGENT_ERROR_MARKER" not in item[0]
+                for item in transition_errors
+            )
+        finally:
+            daemon.shutdown()
+            thread.join(timeout=5)
+        assert not thread.is_alive()
+
+
+def test_daemon_persists_attempts_and_harness_evidence_after_agent_parent_exit() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        contract_data = yaml.safe_load(contract.read_text(encoding="utf-8"))
+        contract_data["test"]["timeout_seconds"] = 5
+        contract.write_text(
+            yaml.safe_dump(contract_data, sort_keys=False),
+            encoding="utf-8",
+        )
+        executable = root / "fake-codex"
+        executable.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, subprocess, sys\n"
+            "from pathlib import Path\n"
+            "args = sys.argv[1:]\n"
+            "worktree = Path(args[args.index('--cd') + 1])\n"
+            "prompt = args[-1]\n"
+            "if 'Test Designer' in prompt:\n"
+            "    tests = worktree / 'tests'\n"
+            "    tests.mkdir(exist_ok=True)\n"
+            "    (tests / 'test_greeting.py').write_text("
+            "\"from greeting import greeting\\n\\ndef test_greeting():\\n"
+            "    assert greeting() == 'hello'\\n\")\n"
+            "    subprocess.Popen([sys.executable, '-c', "
+            "'import time; time.sleep(10)'])\n"
+            "elif 'Implementer' in prompt:\n"
+            "    (worktree / 'greeting.py').write_text("
+            "\"def greeting():\\n    return 'hello'\\n\")\n"
+            "print(json.dumps({'type': 'thread.started', "
+            "'thread_id': 'thread-123'}), flush=True)\n"
+            "print(json.dumps({'type': 'item.completed', 'item': {"
+            "'type': 'agent_message', 'text': 'completed'}}), flush=True)\n",
+            encoding="utf-8",
+        )
+        executable.chmod(0o700)
+        state_dir = root / "state"
+        socket_path = state_dir / "run" / "daemon.sock"
+        daemon = AgentDaemon(
+            state_dir=state_dir,
+            agent=CodexCliAdapter(str(executable)),
+            socket_path=socket_path,
+        )
+        thread = threading.Thread(target=daemon.serve_forever, daemon=True)
+        thread.start()
+        client = DaemonClient(socket_path)
+        _wait_until(client.ping)
+        try:
+            submitted = client.submit(contract)
+            _wait_until(
+                lambda: client.status(submitted.run_id).status
+                in {
+                    "merge_ready",
+                    "blocked",
+                    "failed",
+                    "failed_cleanup",
+                    "paused",
+                },
+                timeout=30,
+            )
+            status = client.status(submitted.run_id)
+            report = client.report(submitted.run_id)
+
+            assert status.status == "merge_ready", status.error
+            assert report.status == "merge_ready"
+            assert report.todos[0].status == "integrated"
+            assert [attempt.status for attempt in report.attempts] == [
+                "succeeded",
+                "succeeded",
+                "succeeded",
+                "succeeded",
+            ]
+            assert {attempt.role for attempt in report.attempts} == {
+                "test_designer",
+                "implementer",
+                "verifier",
+                "candidate_verifier",
+            }
+            assert report.evidence
+            assert report.todos[0].evidence
+        finally:
+            daemon.shutdown()
+            thread.join(timeout=5)
+        assert not thread.is_alive()
+
+
+def test_candidate_verifier_failure_output_is_retained_as_evidence() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        runner = GoalRunner(
+            state_dir=root / "state",
+            agent=SensitiveCandidateFailureAgent(),
+        )
+        prepared = runner.prepare(contract)
+
+        with pytest.raises(RuntimeError):
+            runner.run(contract)
+
+        report = runner.report(prepared.run_id)
+        attempt = next(
+            item for item in report.attempts if item.role == "candidate_verifier"
+        )
+        assert attempt.stderr_ref is not None
+        assert "PRIVATE_CANDIDATE_STDERR_MARKER" not in attempt.error
+        payload = runner.evidence(
+            prepared.run_id,
+            attempt.stderr_ref.artifact_id,
+        )
+        assert payload.content == "PRIVATE_CANDIDATE_STDERR_MARKER"
 
 
 def test_explicit_retention_prune_removes_only_old_objects() -> None:

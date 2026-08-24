@@ -87,15 +87,11 @@ class ConflictingTodoAgent:
         )
 
 
-class PlannedRepairInterruption(RuntimeError):
-    pass
-
-
 class InterruptedConflictAgent(ConflictingTodoAgent):
     def run(self, request: AgentRequest) -> AgentResult:
         result = super().run(request)
         if request.role == "conflict_repairer":
-            raise PlannedRepairInterruption("simulated restart during conflict repair")
+            raise RuntimeError("PRIVATE_CONFLICT_REPAIR_MARKER")
         return result
 
 
@@ -172,15 +168,31 @@ def test_resume_repairs_an_interrupted_candidate_merge_without_rerunning_todos()
         contract = _write_contract(root, repository)
         state_dir = root / "state"
 
+        interrupted = GoalRunner(
+            state_dir=state_dir,
+            agent=InterruptedConflictAgent(),
+            max_workers=2,
+        )
+        prepared = interrupted.prepare(contract)
         with pytest.raises(
-            PlannedRepairInterruption,
-            match="simulated restart",
-        ):
-            GoalRunner(
-                state_dir=state_dir,
-                agent=InterruptedConflictAgent(),
-                max_workers=2,
-            ).run(contract)
+            RuntimeError,
+            match="codex role 'conflict_repairer' failed",
+        ) as raised:
+            interrupted.run(contract)
+
+        assert "PRIVATE_CONFLICT_REPAIR_MARKER" not in str(raised.value)
+        interrupted_report = interrupted.report(prepared.run_id)
+        failed_repair = next(
+            attempt
+            for attempt in interrupted_report.attempts
+            if attempt.role == "conflict_repairer"
+        )
+        assert failed_repair.stderr_ref is not None
+        assert "PRIVATE_CONFLICT_REPAIR_MARKER" not in failed_repair.error
+        assert interrupted.evidence(
+            interrupted_report.run_id,
+            failed_repair.stderr_ref.artifact_id,
+        ).content == "PRIVATE_CONFLICT_REPAIR_MARKER"
 
         resumed_agent = ConflictingTodoAgent()
         report = GoalRunner(

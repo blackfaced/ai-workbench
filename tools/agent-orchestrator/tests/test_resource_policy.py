@@ -87,6 +87,8 @@ class QuotaOnceAgent(ResourceAgent):
                 provider=request.provider,
                 detail="subscription usage limit reached",
                 usage={"total_tokens": 7},
+                stdout="PRIVATE_QUOTA_STDOUT_MARKER",
+                stderr="PRIVATE_QUOTA_STDERR_MARKER",
             )
         return super().run(request)
 
@@ -322,6 +324,17 @@ def test_provider_quota_pauses_without_consuming_a_code_attempt() -> None:
         assert paused.stop.provider == "claude-code"
         assert paused.stop.model == "sonnet"
         assert paused.stop.known_usage == {"total_tokens": 7}
+        assert paused.stop.stdout_ref is not None
+        assert paused.stop.stderr_ref is not None
+        assert "PRIVATE_QUOTA_" not in paused.stop.detail
+        assert runner.evidence(
+            prepared.run_id,
+            paused.stop.stdout_ref.artifact_id,
+        ).content == "PRIVATE_QUOTA_STDOUT_MARKER"
+        assert runner.evidence(
+            prepared.run_id,
+            paused.stop.stderr_ref.artifact_id,
+        ).content == "PRIVATE_QUOTA_STDERR_MARKER"
         assert [attempt.role for attempt in paused.attempts] == ["test_designer"]
         assert not (Path(paused.todos[0].worktree) / "greeting.py").exists()
 
