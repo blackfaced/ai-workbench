@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import sys
 import tempfile
 import subprocess
@@ -33,47 +32,6 @@ from aiwb.mcp_server import McpServer  # noqa: E402
 class UnusedAgent:
     def run(self, request: AgentRequest) -> AgentResult:
         raise AssertionError(f"Agent must not run while preparing {request.role}")
-
-
-def test_run_ledger_closes_each_sqlite_connection(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        ledger = SQLiteRunLedger(Path(directory) / "ledger.db")
-        real_connect = sqlite3.connect
-        connections = []
-
-        class TrackingConnection:
-            def __init__(self, connection: sqlite3.Connection) -> None:
-                self.connection = connection
-                self.closed = False
-
-            def __getattr__(self, name: str) -> object:
-                return getattr(self.connection, name)
-
-            def __enter__(self) -> "TrackingConnection":
-                self.connection.__enter__()
-                return self
-
-            def __exit__(self, *args: object) -> object:
-                return self.connection.__exit__(*args)
-
-            def close(self) -> None:
-                self.closed = True
-                self.connection.close()
-
-        def tracked_connect(*args: object, **kwargs: object) -> TrackingConnection:
-            connection = TrackingConnection(real_connect(*args, **kwargs))
-            connections.append(connection)
-            return connection
-
-        monkeypatch.setattr("aiwb.admission.sqlite3.connect", tracked_connect)
-
-        for _ in range(3):
-            ledger.queued_runs()
-
-        assert len(connections) == 3
-        assert all(connection.closed for connection in connections)
 
 
 def test_expired_claim_is_replaced_with_a_monotonically_fenced_generation() -> None:

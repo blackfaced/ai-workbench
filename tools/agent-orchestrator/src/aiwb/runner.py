@@ -166,6 +166,8 @@ class StopReport:
     provider: str = ""
     model: str = ""
     known_usage: Optional[Mapping[str, int]] = None
+    stdout_ref: Optional[EvidenceReference] = None
+    stderr_ref: Optional[EvidenceReference] = None
 
 
 @dataclass(frozen=True)
@@ -471,11 +473,17 @@ class GoalRunner:
 
     def evidence(self, run_id: str, artifact_id: str) -> EvidencePayload:
         report = self.report(run_id)
+        stop_references = (
+            (report.stop.stdout_ref, report.stop.stderr_ref)
+            if report.stop is not None
+            else ()
+        )
         evidence_items = (
             *report.evidence,
             *(item for todo in report.todos for item in todo.evidence),
         )
         references = [
+            *(reference for reference in stop_references if reference is not None),
             *(
                 reference
                 for attempt in report.attempts
@@ -815,9 +823,7 @@ class GoalRunner:
                 todo.todo_id,
                 attempt.error,
             )
-            if isinstance(error, AgentExecutionError):
-                raise RuntimeError(attempt.error) from None
-            raise
+            raise RuntimeError(attempt.error) from None
         self._store.record_todo_attempt(
             contract.run_id,
             todo.todo_id,
@@ -944,9 +950,7 @@ class GoalRunner:
                 todo.todo_id,
                 attempt,
             )
-            if isinstance(error, AgentExecutionError):
-                raise RuntimeError(attempt.error) from None
-            raise
+            raise RuntimeError(attempt.error) from None
         self._store.record_todo_attempt(
             contract.run_id,
             todo.todo_id,
@@ -1408,9 +1412,7 @@ class GoalRunner:
                 attempt,
             )
             self._store.record_interruption(contract.run_id, attempt.error)
-            if isinstance(error, AgentExecutionError):
-                raise RuntimeError(attempt.error) from None
-            raise
+            raise RuntimeError(attempt.error) from None
         return result, time.monotonic() - started
 
     def _pause_for_provider_quota(
@@ -1431,6 +1433,20 @@ class GoalRunner:
             provider=contract.agent_provider,
             model=contract.agent_model or "",
             known_usage=error.usage,
+            stdout_ref=self._retain_agent_failure_output(
+                contract.run_id,
+                todo_id,
+                role,
+                "stdout",
+                error.stdout,
+            ),
+            stderr_ref=self._retain_agent_failure_output(
+                contract.run_id,
+                todo_id,
+                role,
+                "stderr",
+                error.stderr,
+            ),
         )
         self._store.pause(contract.run_id, stop)
         raise RunPaused(stop)
@@ -3950,6 +3966,8 @@ def _stop_report_from_dict(value: object) -> Optional[StopReport]:
             if isinstance(known_usage, dict)
             else None
         ),
+        stdout_ref=_optional_evidence_reference(value.get("stdout_ref")),
+        stderr_ref=_optional_evidence_reference(value.get("stderr_ref")),
     )
 
 

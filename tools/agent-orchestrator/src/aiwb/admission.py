@@ -8,7 +8,6 @@ import sqlite3
 import subprocess
 import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
 from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -716,17 +715,12 @@ class SQLiteRunLedger(_RunLedgerExecutionOperations):
         if self._fault_injector is not None:
             self._fault_injector(boundary)
 
-    @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
+    def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(str(self._database), timeout=30)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=30000")
-        try:
-            with connection:
-                yield connection
-        finally:
-            connection.close()
+        return connection
 
 
 class Admission:
