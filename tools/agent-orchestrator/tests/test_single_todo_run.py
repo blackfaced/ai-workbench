@@ -202,7 +202,11 @@ class SingleTodoRunTest(unittest.TestCase):
             self.assertTrue(all(item.model == "sonnet" for item in report.attempts))
             self.assertTrue(all(item.elapsed_seconds >= 0 for item in report.attempts))
             self.assertEqual(report.attempts[1].session_id, "")
-            self.assertIn("simulated host restart", report.attempts[1].error)
+            self.assertEqual(
+                report.attempts[1].error,
+                "claude-code role 'implementer' failed: PlannedInterruption",
+            )
+            self.assertNotIn("simulated host restart", report.attempts[1].error)
             self.assertTrue(report.evidence)
             self.assertTrue(
                 all(item.duration_seconds >= 0 for item in report.evidence)
