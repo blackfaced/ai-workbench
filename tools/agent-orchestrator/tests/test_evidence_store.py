@@ -454,7 +454,7 @@ def test_daemon_persists_attempts_and_harness_evidence_after_agent_parent_exit()
         repository = _create_repository(root)
         contract = _write_contract(root, repository)
         contract_data = yaml.safe_load(contract.read_text(encoding="utf-8"))
-        contract_data["test"]["timeout_seconds"] = 1
+        contract_data["test"]["timeout_seconds"] = 5
         contract.write_text(
             yaml.safe_dump(contract_data, sort_keys=False),
             encoding="utf-8",
@@ -474,7 +474,7 @@ def test_daemon_persists_attempts_and_harness_evidence_after_agent_parent_exit()
             "\"from greeting import greeting\\n\\ndef test_greeting():\\n"
             "    assert greeting() == 'hello'\\n\")\n"
             "    subprocess.Popen([sys.executable, '-c', "
-            "'import time; time.sleep(2)'])\n"
+            "'import time; time.sleep(10)'])\n"
             "elif 'Implementer' in prompt:\n"
             "    (worktree / 'greeting.py').write_text("
             "\"def greeting():\\n    return 'hello'\\n\")\n"
