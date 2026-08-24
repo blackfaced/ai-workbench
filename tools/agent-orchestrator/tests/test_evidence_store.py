@@ -29,6 +29,7 @@ from aiwb import (  # noqa: E402
     GoalRunner,
     RunReport,
 )
+from aiwb.agent import AgentExecutionError  # noqa: E402
 from aiwb.mcp_server import McpServer  # noqa: E402
 
 
@@ -67,6 +68,30 @@ class LargeOutputAgent:
 class UnusedAgent:
     def run(self, request: AgentRequest) -> AgentResult:
         raise AssertionError(f"unexpected Agent call after restart: {request.role}")
+
+
+class SensitiveFailureAgent:
+    def run(self, request: AgentRequest) -> AgentResult:
+        raise AgentExecutionError(
+            provider=request.provider,
+            role=request.role,
+            reason="nonzero_exit",
+            stdout="PRIVATE_AGENT_STDOUT_MARKER",
+            stderr="PRIVATE_AGENT_STDERR_MARKER",
+            returncode=42,
+        )
+
+
+class SensitiveCandidateFailureAgent(LargeOutputAgent):
+    def run(self, request: AgentRequest) -> AgentResult:
+        if request.role == "candidate_verifier":
+            raise AgentExecutionError(
+                provider=request.provider,
+                role=request.role,
+                reason="reported_error",
+                stderr="PRIVATE_CANDIDATE_STDERR_MARKER",
+            )
+        return super().run(request)
 
 
 def test_content_addressed_store_bounds_text_and_detects_mutation() -> None:
@@ -273,6 +298,93 @@ def test_daemon_cli_and_mcp_fetch_full_evidence_only_when_requested() -> None:
             daemon.shutdown()
             thread.join(timeout=5)
         assert not thread.is_alive()
+
+
+def test_agent_failure_outputs_are_only_available_as_explicit_evidence() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        state_dir = root / "state"
+        socket_path = state_dir / "run" / "daemon.sock"
+        daemon = AgentDaemon(
+            state_dir=state_dir,
+            agent=SensitiveFailureAgent(),
+            socket_path=socket_path,
+        )
+        thread = threading.Thread(target=daemon.serve_forever, daemon=True)
+        thread.start()
+        client = DaemonClient(socket_path)
+        _wait_until(client.ping)
+        try:
+            submitted = client.submit(contract)
+            _wait_until(
+                lambda: client.status(submitted.run_id).status == "blocked",
+            )
+            status = client.status(submitted.run_id)
+            report = client.report(submitted.run_id)
+            attempt = report.attempts[0]
+
+            assert attempt.stdout_ref is not None
+            assert attempt.stderr_ref is not None
+            assert "PRIVATE_AGENT_" not in status.error
+            assert "PRIVATE_AGENT_" not in json.dumps(report.to_dict())
+            assert len(status.error.encode("utf-8")) <= 512
+
+            stdout = client.evidence(
+                submitted.run_id,
+                attempt.stdout_ref.artifact_id,
+            )
+            stderr = client.evidence(
+                submitted.run_id,
+                attempt.stderr_ref.artifact_id,
+            )
+            assert stdout.content == "PRIVATE_AGENT_STDOUT_MARKER"
+            assert stderr.content == "PRIVATE_AGENT_STDERR_MARKER"
+
+            with sqlite3.connect(state_dir / "run-ledger.db") as connection:
+                run_error = connection.execute(
+                    "SELECT error FROM runs WHERE run_id = ?",
+                    (submitted.run_id,),
+                ).fetchone()[0]
+                transition_errors = connection.execute(
+                    "SELECT error FROM run_transitions WHERE run_id = ?",
+                    (submitted.run_id,),
+                ).fetchall()
+            assert "PRIVATE_AGENT_" not in run_error
+            assert all("PRIVATE_AGENT_" not in item[0] for item in transition_errors)
+            assert len(run_error.encode("utf-8")) <= 512
+        finally:
+            daemon.shutdown()
+            thread.join(timeout=5)
+        assert not thread.is_alive()
+
+
+def test_candidate_verifier_failure_output_is_retained_as_evidence() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        repository = _create_repository(root)
+        contract = _write_contract(root, repository)
+        runner = GoalRunner(
+            state_dir=root / "state",
+            agent=SensitiveCandidateFailureAgent(),
+        )
+        prepared = runner.prepare(contract)
+
+        with pytest.raises(RuntimeError):
+            runner.run(contract)
+
+        report = runner.report(prepared.run_id)
+        attempt = next(
+            item for item in report.attempts if item.role == "candidate_verifier"
+        )
+        assert attempt.stderr_ref is not None
+        assert "PRIVATE_CANDIDATE_STDERR_MARKER" not in attempt.error
+        payload = runner.evidence(
+            prepared.run_id,
+            attempt.stderr_ref.artifact_id,
+        )
+        assert payload.content == "PRIVATE_CANDIDATE_STDERR_MARKER"
 
 
 def test_explicit_retention_prune_removes_only_old_objects() -> None:
