@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Protocol
 
@@ -31,11 +32,46 @@ class ProviderQuotaError(RuntimeError):
         provider: str,
         detail: str,
         usage: Optional[Mapping[str, int]] = None,
+        stdout: str = "",
+        stderr: str = "",
     ) -> None:
+        safe_detail = f"{provider} provider usage limit reached"
+        super().__init__(safe_detail)
+        self.provider = provider
+        self.detail = safe_detail
+        self.usage = dict(usage) if usage else None
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+class AgentExecutionError(RuntimeError):
+    """An Agent failure whose string form is safe for routine persistence."""
+
+    def __init__(
+        self,
+        *,
+        provider: str,
+        role: str,
+        reason: str,
+        stdout: str = "",
+        stderr: str = "",
+        returncode: Optional[int] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> None:
+        if reason == "timeout":
+            detail = f"{provider} role {role!r} timed out after {timeout_seconds} seconds"
+        else:
+            detail = f"{provider} role {role!r} failed"
+            if returncode is not None:
+                detail += f" with exit code {returncode}"
         super().__init__(detail)
         self.provider = provider
-        self.detail = detail
-        self.usage = dict(usage) if usage else None
+        self.role = role
+        self.reason = reason
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+        self.timeout_seconds = timeout_seconds
 
 
 class AgentAdapter(Protocol):
@@ -82,24 +118,36 @@ class CodexCliAdapter:
             command.extend(["--model", request.model])
         command.append(request.prompt)
 
-        completed = subprocess.run(
-            command,
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=request.timeout_seconds,
-        )
+        try:
+            completed = _run_captured(
+                command,
+                timeout=request.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise AgentExecutionError(
+                provider=request.provider,
+                role=request.role,
+                reason="timeout",
+                stdout=_output_text(error.stdout),
+                stderr=_output_text(error.stderr),
+                timeout_seconds=request.timeout_seconds,
+            ) from None
         if completed.returncode != 0:
             detail = completed.stderr.strip() or completed.stdout.strip()
             if _is_provider_quota(detail):
                 raise ProviderQuotaError(
                     provider=request.provider,
                     detail=detail,
+                    stdout=completed.stdout,
+                    stderr=completed.stderr,
                 )
-            raise RuntimeError(
-                f"Codex role {request.role!r} failed with exit code "
-                f"{completed.returncode}: {detail}"
+            raise AgentExecutionError(
+                provider=request.provider,
+                role=request.role,
+                reason="nonzero_exit",
+                stdout=completed.stdout,
+                stderr=completed.stderr,
+                returncode=completed.returncode,
             )
 
         session_id = ""
@@ -162,25 +210,37 @@ class ClaudeCodeCliAdapter:
             command.extend(["--model", request.model])
         command.append(request.prompt)
 
-        completed = subprocess.run(
-            command,
-            check=False,
-            cwd=request.worktree,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=request.timeout_seconds,
-        )
+        try:
+            completed = _run_captured(
+                command,
+                cwd=request.worktree,
+                timeout=request.timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise AgentExecutionError(
+                provider=request.provider,
+                role=request.role,
+                reason="timeout",
+                stdout=_output_text(error.stdout),
+                stderr=_output_text(error.stderr),
+                timeout_seconds=request.timeout_seconds,
+            ) from None
         if completed.returncode != 0:
             detail = completed.stderr.strip() or completed.stdout.strip()
             if _is_provider_quota(detail):
                 raise ProviderQuotaError(
                     provider=request.provider,
                     detail=detail,
+                    stdout=completed.stdout,
+                    stderr=completed.stderr,
                 )
-            raise RuntimeError(
-                f"Claude Code role {request.role!r} failed with exit code "
-                f"{completed.returncode}: {detail}"
+            raise AgentExecutionError(
+                provider=request.provider,
+                role=request.role,
+                reason="nonzero_exit",
+                stdout=completed.stdout,
+                stderr=completed.stderr,
+                returncode=completed.returncode,
             )
 
         try:
@@ -196,9 +256,15 @@ class ClaudeCodeCliAdapter:
                     provider=request.provider,
                     detail=detail,
                     usage=_normalize_usage(result.get("usage")),
+                    stdout=completed.stdout,
+                    stderr=completed.stderr,
                 )
-            raise RuntimeError(
-                f"Claude Code role {request.role!r} failed: {detail}"
+            raise AgentExecutionError(
+                provider=request.provider,
+                role=request.role,
+                reason="reported_error",
+                stdout=completed.stdout,
+                stderr=completed.stderr,
             )
         session_id = result.get("session_id")
         final_output = result.get("result")
@@ -227,6 +293,46 @@ def _find_string(value: object, keys: tuple[str, ...]) -> str:
             if found:
                 return found
     return ""
+
+
+def _run_captured(
+    command: list[str],
+    *,
+    cwd: Optional[str] = None,
+    timeout: float,
+) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stdout_file, \
+        tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_file:
+        try:
+            completed = subprocess.run(
+                command,
+                check=False,
+                cwd=cwd,
+                text=True,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired as error:
+            stdout_file.seek(0)
+            stderr_file.seek(0)
+            error.output = stdout_file.read()
+            error.stderr = stderr_file.read()
+            raise
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        return subprocess.CompletedProcess(
+            args=completed.args,
+            returncode=completed.returncode,
+            stdout=stdout_file.read(),
+            stderr=stderr_file.read(),
+        )
+
+
+def _output_text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value if isinstance(value, str) else ""
 
 
 def _agent_message(event: object) -> str:

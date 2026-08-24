@@ -62,6 +62,10 @@ class LaunchdService:
 
         service = {
             "Label": self.label,
+            "EnvironmentVariables": {
+                "PATH": os.environ.get("PATH", os.defpath),
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1]),
+            },
             "ProgramArguments": [
                 sys.executable,
                 "-m",
