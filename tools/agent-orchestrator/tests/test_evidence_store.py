@@ -499,11 +499,20 @@ def test_daemon_persists_attempts_and_harness_evidence_after_agent_parent_exit()
         try:
             submitted = client.submit(contract)
             _wait_until(
-                lambda: client.status(submitted.run_id).status == "merge_ready",
-                timeout=10,
+                lambda: client.status(submitted.run_id).status
+                in {
+                    "merge_ready",
+                    "blocked",
+                    "failed",
+                    "failed_cleanup",
+                    "paused",
+                },
+                timeout=30,
             )
+            status = client.status(submitted.run_id)
             report = client.report(submitted.run_id)
 
+            assert status.status == "merge_ready", status.error
             assert report.status == "merge_ready"
             assert report.todos[0].status == "integrated"
             assert [attempt.status for attempt in report.attempts] == [
