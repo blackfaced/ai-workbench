@@ -330,8 +330,9 @@ def test_interruption_keeps_downstream_frozen_and_resumes_other_checkpoints() ->
         prepared = interrupted_runner.prepare(contract)
         try:
             interrupted_runner.run(contract)
-        except PlannedInterruption:
-            pass
+        except RuntimeError as error:
+            assert str(error) == "codex role 'implementer' failed: PlannedInterruption"
+            assert "simulated host restart" not in str(error)
         else:
             raise AssertionError("the first run must be interrupted")
 

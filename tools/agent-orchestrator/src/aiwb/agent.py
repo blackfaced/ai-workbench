@@ -32,12 +32,16 @@ class ProviderQuotaError(RuntimeError):
         provider: str,
         detail: str,
         usage: Optional[Mapping[str, int]] = None,
+        stdout: str = "",
+        stderr: str = "",
     ) -> None:
         safe_detail = f"{provider} provider usage limit reached"
         super().__init__(safe_detail)
         self.provider = provider
         self.detail = safe_detail
         self.usage = dict(usage) if usage else None
+        self.stdout = stdout
+        self.stderr = stderr
 
 
 class AgentExecutionError(RuntimeError):
@@ -134,6 +138,8 @@ class CodexCliAdapter:
                 raise ProviderQuotaError(
                     provider=request.provider,
                     detail=detail,
+                    stdout=completed.stdout,
+                    stderr=completed.stderr,
                 )
             raise AgentExecutionError(
                 provider=request.provider,
@@ -225,6 +231,8 @@ class ClaudeCodeCliAdapter:
                 raise ProviderQuotaError(
                     provider=request.provider,
                     detail=detail,
+                    stdout=completed.stdout,
+                    stderr=completed.stderr,
                 )
             raise AgentExecutionError(
                 provider=request.provider,
@@ -248,6 +256,8 @@ class ClaudeCodeCliAdapter:
                     provider=request.provider,
                     detail=detail,
                     usage=_normalize_usage(result.get("usage")),
+                    stdout=completed.stdout,
+                    stderr=completed.stderr,
                 )
             raise AgentExecutionError(
                 provider=request.provider,

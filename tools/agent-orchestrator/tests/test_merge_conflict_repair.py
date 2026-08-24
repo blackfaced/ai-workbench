@@ -24,7 +24,6 @@ from aiwb import (  # noqa: E402
     RunReport,
     SQLiteRunLedger,
 )
-from aiwb.agent import AgentExecutionError  # noqa: E402
 from aiwb.repair import MergeConflictRepairError  # noqa: E402
 
 
@@ -92,12 +91,7 @@ class InterruptedConflictAgent(ConflictingTodoAgent):
     def run(self, request: AgentRequest) -> AgentResult:
         result = super().run(request)
         if request.role == "conflict_repairer":
-            raise AgentExecutionError(
-                provider=request.provider,
-                role=request.role,
-                reason="interrupted",
-                stderr="PRIVATE_CONFLICT_REPAIR_MARKER",
-            )
+            raise RuntimeError("PRIVATE_CONFLICT_REPAIR_MARKER")
         return result
 
 

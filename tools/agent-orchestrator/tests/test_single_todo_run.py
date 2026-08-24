@@ -141,8 +141,12 @@ class SingleTodoRunTest(unittest.TestCase):
             )
 
             interrupted_adapter = ScriptedAgentAdapter(interrupt_implementer=True)
-            with self.assertRaisesRegex(PlannedInterruption, "simulated host restart"):
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "claude-code role 'implementer' failed: PlannedInterruption",
+            ) as raised:
                 GoalRunner(state_dir=state_dir, agent=interrupted_adapter).run(contract_path)
+            self.assertNotIn("simulated host restart", str(raised.exception))
 
             self.assertEqual(
                 interrupted_adapter.roles,
