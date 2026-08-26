@@ -34,6 +34,7 @@ class SetupApplyResult:
     changed: bool
     agent_targets: Tuple[str, ...]
     installed_packs: Tuple[str, ...] = ()
+    updated_packs: Tuple[str, ...] = ()
     next_actions: Tuple[str, ...] = ()
 
 
@@ -81,6 +82,7 @@ class WorkbenchSetup:
         install_skills: Tuple[str, ...] = (),
         pack_skills: Optional[Mapping[str, Sequence[str]]] = None,
         pack_profiles: Optional[Mapping[str, Sequence[str]]] = None,
+        update_packs: Tuple[str, ...] = (),
     ) -> SetupApplyResult:
         plan = self._setup.plan(
             HarnessSetupRequest(
@@ -96,6 +98,7 @@ class WorkbenchSetup:
                 install_skills=install_skills,
                 pack_skills=pack_skills,
                 pack_profiles=pack_profiles,
+                update_packs=update_packs,
             )
         )
         return SetupApplyResult(
@@ -104,5 +107,6 @@ class WorkbenchSetup:
             changed=candidate.changed,
             agent_targets=candidate.agent_targets,
             installed_packs=candidate.installed_packs,
+            updated_packs=candidate.updated_packs,
             next_actions=candidate.next_actions,
         )

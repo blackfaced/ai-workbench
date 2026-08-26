@@ -25,6 +25,15 @@ engineering routes, pinned to the reviewed source commit. `ask-ai-workbench`
 recommends an installed `ask-matt` router for general engineering work instead
 of copying its routing logic.
 
+Offer `karpathy-guidelines` as a separate reviewed, project-local `karpathy`
+profile. It is useful only where equivalent engineering doctrine is absent.
+Installing the Skill must not also append its `CLAUDE.md` content or create a
+second instruction authority in repositories that already carry those rules.
+
+Pack updates are explicit. `--update-pack` re-applies the named profile from
+the catalog's new reviewed commit and reports it as an update, not an install.
+It never updates from a moving branch or changes user-global Skills.
+
 AI Workbench owns only a thin local `tickets.md` to Contract-draft bridge. It
 preserves ticket slices, acceptance criteria, and blocking edges, but generates
 an intentionally unapproved Contract with test placeholders. The owner must

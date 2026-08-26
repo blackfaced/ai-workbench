@@ -293,8 +293,14 @@ class SkillPackCatalog:
         SkillPackDescriptor(
             name="matt",
             description="Selected small engineering Skills from mattpocock/skills.",
-            source="https://github.com/mattpocock/skills/tree/d574778f94cf620fcc8ce741584093bc650a61d3",
-            revision="v1.1.0 (resolved d574778f94cf620fcc8ce741584093bc650a61d3)",
+            source=(
+                "https://github.com/mattpocock/skills/tree/"
+                "0ab1b63a410a03d3627979a109c8695de27af954"
+            ),
+            revision=(
+                "main snapshot 2026-08-20 "
+                "(0ab1b63a410a03d3627979a109c8695de27af954)"
+            ),
             installable=True,
             setup_action="$setup-matt-pocock-skills",
             profiles=(
@@ -324,9 +330,38 @@ class SkillPackCatalog:
                         "diagnosing-bugs",
                         "wayfinder",
                         "research",
+                        "resolving-merge-conflicts",
                         "teach",
-                        "writing-great-skills",
+                        "to-questionnaire",
+                        "wizard",
+                        "wait-what",
+                        "writing-for-agents",
                     ),
+                ),
+            ),
+        ),
+        SkillPackDescriptor(
+            name="karpathy",
+            description=(
+                "Karpathy-inspired guardrails for small, verifiable code changes."
+            ),
+            source=(
+                "https://github.com/multica-ai/andrej-karpathy-skills/tree/"
+                "2c606141936f1eeef17fa3043a72095b4765b9c2"
+            ),
+            revision=(
+                "main snapshot 2026-04-20 "
+                "(2c606141936f1eeef17fa3043a72095b4765b9c2)"
+            ),
+            installable=True,
+            profiles=(
+                SkillPackProfileDescriptor(
+                    name="guidelines",
+                    description=(
+                        "One opt-in Skill for explicit assumptions, simple designs, "
+                        "surgical changes, and verifiable goals."
+                    ),
+                    skills=("karpathy-guidelines",),
                 ),
             ),
         ),

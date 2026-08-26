@@ -143,7 +143,8 @@ def test_setup_installs_selected_matt_skills_with_a_project_target() -> None:
                     "--yes",
                     "skills@1.5.9",
                     "add",
-                    "https://github.com/mattpocock/skills/tree/d574778f94cf620fcc8ce741584093bc650a61d3",
+                    "https://github.com/mattpocock/skills/tree/"
+                    "0ab1b63a410a03d3627979a109c8695de27af954",
                     "--copy",
                     "--yes",
                     "--agent",
@@ -179,7 +180,10 @@ def test_setup_installs_the_reviewed_matt_engineering_profile() -> None:
         )
         assert result.installed_packs == ("matt",)
         assert cwd == repository.resolve()
-        assert command[4] == "https://github.com/mattpocock/skills/tree/d574778f94cf620fcc8ce741584093bc650a61d3"
+        assert command[4] == (
+            "https://github.com/mattpocock/skills/tree/"
+            "0ab1b63a410a03d3627979a109c8695de27af954"
+        )
         assert selected[:4] == (
             "setup-matt-pocock-skills",
             "ask-matt",
@@ -190,6 +194,61 @@ def test_setup_installs_the_reviewed_matt_engineering_profile() -> None:
         assert "to-tickets" in selected
         assert "tdd" in selected
         assert "improve-codebase-architecture" in selected
+        assert "resolving-merge-conflicts" in selected
+        assert "to-questionnaire" in selected
+        assert "writing-for-agents" in selected
+        assert "writing-great-skills" not in selected
+
+
+def test_setup_updates_a_reviewed_pack_without_repeating_setup_actions() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        calls = []
+
+        setup = WorkbenchSetup(
+            command_runner=lambda command, cwd: calls.append((command, cwd))
+        )
+        result = setup.apply(
+            repository,
+            confirmed=True,
+            agent_targets=("codex",),
+            pack_profiles={"matt": ("engineering",)},
+            update_packs=("matt",),
+        )
+
+        assert len(calls) == 1
+        assert result.installed_packs == ()
+        assert result.updated_packs == ("matt",)
+        assert result.next_actions == ()
+
+
+def test_setup_installs_the_reviewed_karpathy_guidelines_profile() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+        calls = []
+
+        setup = WorkbenchSetup(
+            command_runner=lambda command, cwd: calls.append((command, cwd))
+        )
+        result = setup.apply(
+            repository,
+            confirmed=True,
+            agent_targets=("codex",),
+            pack_profiles={"karpathy": ("guidelines",)},
+        )
+
+        command, cwd = calls[0]
+        assert result.installed_packs == ("karpathy",)
+        assert result.updated_packs == ()
+        assert result.next_actions == ()
+        assert cwd == repository.resolve()
+        assert command[4] == (
+            "https://github.com/multica-ai/andrej-karpathy-skills/tree/"
+            "2c606141936f1eeef17fa3043a72095b4765b9c2"
+        )
+        assert command[-2:] == ("--skill", "karpathy-guidelines")
 
 
 def test_setup_keeps_reference_only_packs_uninstallable() -> None:

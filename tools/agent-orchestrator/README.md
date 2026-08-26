@@ -397,9 +397,9 @@ The lightweight setup-and-ask tracer adds:
 - an explicit `--apply` boundary for draft workflow creation, role-guidance selection, and optional project-local Skill copies;
 - Codex and Claude Code project targets only when selected, with no writes to user-global Agent configuration;
 - destination containment checks that reject Skill paths escaping the selected repository.
-- a reviewed optional-pack catalog: selected Matt Skills install project-locally
-  from the fixed `v1.1.0` release through `skills@1.5.9`, while Anthropic
-  remains a reference-only design collection.
+- a reviewed optional-pack catalog: selected Matt and Karpathy profiles install
+  or explicitly update project-locally from immutable commits through
+  `skills@1.5.9`, while Anthropic remains a reference-only design collection.
 
 The orchestrator does not build images itself, call `kubectl` directly, or need to run in a container. Project commands may wrap a local builder, `docker buildx`, remote CI, Helm, or another cluster tool, while ownership and credentials stay with those external systems. Playwright MCP and Chrome DevTools MCP are diagnostic aids, never pass gates.
 
@@ -639,11 +639,32 @@ aiwb setup --repo /path/to/project --agent-target codex \
 The `engineering` profile is the reviewed dependency closure of upstream
 `ask-matt`'s engineering flow, not the whole upstream collection. This invokes
 the fixed `skills@1.5.9` installer against the reviewed commit
-`d574778f94cf620fcc8ce741584093bc650a61d3`, with `--copy` and no global or
+`0ab1b63a410a03d3627979a109c8695de27af954`, with `--copy` and no global or
 all-Skills option. It writes project-local Skill directories and the
 installer's lock file. Then invoke `$setup-matt-pocock-skills` yourself to
 choose its issue-tracker, label, and document settings. Anthropic is listed as
 reference-only until separately reviewed.
+
+Install the reviewed Karpathy guidelines only where equivalent repository
+doctrine is absent:
+
+```bash
+aiwb setup --repo /path/to/project --agent-target codex \
+  --install-pack karpathy \
+  --pack-profile karpathy=guidelines \
+  --apply
+```
+
+When this catalog advances a reviewed pin, update an existing managed profile
+explicitly. The selected project-local Skill directories are replaced; no
+global Skills or unrelated profiles are touched:
+
+```bash
+aiwb setup --repo /path/to/project --agent-target codex \
+  --update-pack matt \
+  --pack-profile matt=engineering \
+  --apply
+```
 
 ## From Matt tickets to an AI Workbench Contract
 

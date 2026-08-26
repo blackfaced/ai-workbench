@@ -146,6 +146,7 @@ class HarnessApplyRequest:
     install_skills: Tuple[str, ...] = ()
     pack_skills: Optional[Mapping[str, Sequence[str]]] = None
     pack_profiles: Optional[Mapping[str, Sequence[str]]] = None
+    update_packs: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,7 @@ class HarnessCandidate:
     changed: bool
     agent_targets: Tuple[str, ...]
     installed_packs: Tuple[str, ...] = ()
+    updated_packs: Tuple[str, ...] = ()
     next_actions: Tuple[str, ...] = ()
     status: str = ""
     suggestions: int = 0
@@ -470,6 +472,10 @@ class HarnessSetup:
 
         selected_packs = request.pack_skills or {}
         selected_profiles = request.pack_profiles or {}
+        update_packs = tuple(dict.fromkeys(request.update_packs))
+        selected_pack_names = set(selected_packs) | set(selected_profiles)
+        if any(name not in selected_pack_names for name in update_packs):
+            raise ValueError("updated packs require selected Skills or profiles")
         if (
             request.install_skills or selected_packs or selected_profiles
         ) and not plan.request.agent_targets:
@@ -549,13 +555,24 @@ class HarnessSetup:
             changed=changed,
             agent_targets=plan.request.agent_targets,
             installed_packs=tuple(
-                dict.fromkeys(pack_plan.name for pack_plan in pack_plans)
+                dict.fromkeys(
+                    pack_plan.name
+                    for pack_plan in pack_plans
+                    if pack_plan.name not in update_packs
+                )
+            ),
+            updated_packs=tuple(
+                dict.fromkeys(
+                    pack_plan.name
+                    for pack_plan in pack_plans
+                    if pack_plan.name in update_packs
+                )
             ),
             next_actions=tuple(
                 dict.fromkeys(
                     pack_plan.setup_action
                     for pack_plan in pack_plans
-                    if pack_plan.setup_action
+                    if pack_plan.setup_action and pack_plan.name not in update_packs
                 )
             ),
         )

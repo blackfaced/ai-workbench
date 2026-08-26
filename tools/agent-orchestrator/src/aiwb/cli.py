@@ -98,7 +98,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     setup.add_argument("--role-skill", action="append", default=[])
     setup.add_argument("--install-skill", action="append", default=[])
-    setup.add_argument("--install-pack", action="append", default=[])
+    pack_operation = setup.add_mutually_exclusive_group()
+    pack_operation.add_argument("--install-pack", action="append", default=[])
+    pack_operation.add_argument("--update-pack", action="append", default=[])
     setup.add_argument("--pack-skill", action="append", default=[])
     setup.add_argument("--pack-profile", action="append", default=[])
     setup.add_argument("--planning-mode", choices=("python-l0",))
@@ -473,8 +475,9 @@ def _run_setup(options: argparse.Namespace) -> int:
     ):
         raise ValueError("Plan Approval requires --planning-mode")
     role_skills = _role_skills(options.role_skill)
-    pack_skills = _pack_skills(options.install_pack, options.pack_skill)
-    pack_profiles = _pack_profiles(options.install_pack, options.pack_profile)
+    selected_packs = tuple(options.install_pack or options.update_pack)
+    pack_skills = _pack_skills(selected_packs, options.pack_skill)
+    pack_profiles = _pack_profiles(selected_packs, options.pack_profile)
     if options.apply:
         result = setup.apply(
             HarnessApplyRequest(
@@ -484,6 +487,7 @@ def _run_setup(options: argparse.Namespace) -> int:
                 install_skills=tuple(options.install_skill),
                 pack_skills=pack_skills,
                 pack_profiles=pack_profiles,
+                update_packs=tuple(options.update_pack),
             )
         )
         _print_json(
@@ -493,6 +497,7 @@ def _run_setup(options: argparse.Namespace) -> int:
                 "changed": result.changed,
                 "agent_targets": result.agent_targets,
                 "installed_packs": result.installed_packs,
+                "updated_packs": result.updated_packs,
                 "next_actions": result.next_actions,
                 **state_fields,
             }

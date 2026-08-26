@@ -24,7 +24,7 @@ The tool will use:
 - project-owned `.ai-workbench/workflow.yaml` files for approved commands, paths, Harness profiles, and capabilities;
 - optional, project-owned role guidance loaded from explicitly approved local `SKILL.md` files, with bounded content and no ambient Skill discovery at execution time;
 - a shared advisory `SkillCatalog`, plus confirmation-gated project setup that can copy only selected bundled Skills into selected repository-local Codex or Claude Code directories;
-- an optional-pack catalog that permits only selected Matt Skills from a reviewed fixed release, installed project-locally through the standard Skills CLI; other catalog entries remain reference-only until reviewed;
+- an optional-pack catalog that permits reviewed Matt and Karpathy profiles, installed or explicitly updated project-locally through the standard Skills CLI; unreviewed catalog entries remain reference-only;
 - isolated Git worktrees and fresh sessions for independent roles;
 - bounded, dependency-layer scheduling for Todo DAGs, with one branch and worktree per Todo;
 - deterministic integration of verified Todo branches into a separate Candidate worktree;
@@ -57,7 +57,7 @@ Role guidance is intentionally not a workflow engine. A project may opt in per s
 
 Setup and ask are likewise interaction helpers, not a second workflow engine. Setup is inspect-first and requires a separate explicit apply action before creating a draft workflow, changing role guidance, or copying a bundled Skill. The catalog may describe malformed local files as unavailable but never runs their contents. Router results are bounded to two optional recommendations and have no daemon, Goal, permission, or filesystem side effect. Selected Codex or Claude Code setup writes stay under the repository; it never edits user-global configuration, selects a provider for a Run, or introduces a provider-specific external host adapter.
 
-Optional packs follow the same rule. The first installable pack is selected Matt Skills from a reviewed release, through a pinned public installer and project target. Callers must name the target and individual Skills; setup never requests an all-Skills or global install. Matt's own interactive setup remains a subsequent user-invoked action because it decides project issue-tracker, label, and document conventions. Anthropic remains cataloged as a reference-only source until its content and installation behavior are reviewed.
+Optional packs follow the same rule. Installable packs are reviewed profiles from immutable source commits, through a pinned public installer and project target. Callers must name the target and profile or individual Skills; setup never requests an all-Skills or global install. Updates are explicit and replace only the selected managed project copies from the next reviewed commit. Matt's own interactive setup remains a subsequent user-invoked action because it decides project issue-tracker, label, and document conventions. Anthropic remains cataloged as a reference-only source until its content and installation behavior are reviewed.
 
 The daemon intentionally does not own a container runtime or a provider-specific build API. This keeps the core adapter shallow: projects retain their existing image scripts, CI systems, credentials, logs, and retention rules. The tradeoff is that every image profile must provide stable status and result lookup for an operation that can outlive the orchestrator process.
 

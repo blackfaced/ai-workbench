@@ -118,12 +118,12 @@ directory. It never writes to user-global Agent configuration.
 
 ## Optional packs
 
-Offer packs only after inspection and only by explicit user choice. `matt` is
-an installable, project-local pack pinned to a reviewed public release;
+Offer packs only after inspection and only by explicit user choice. `matt` and
+`karpathy` are installable project-local packs pinned to reviewed commits;
 `anthropic` is reference-only and must not be installed. Ask the user to choose
-either a reviewed Matt profile or specific Skills, rather than installing the
-collection wholesale. Show the source, revision, target Agent, selected profile
-or Skill names, and resulting project paths before applying.
+a reviewed profile or specific Skills rather than installing a collection
+wholesale. Show the source, revision, target Agent, selected profile or Skill
+names, and resulting project paths before applying.
 
 For a reviewed, complete engineering flow after confirmation:
 
@@ -140,6 +140,32 @@ only project-local Agent Skill directories plus its project lock file. Do not
 pass global, bypass, or all-Skills options. After a Matt install, tell the user
 to invoke `$setup-matt-pocock-skills`; do not run that interactive
 configuration Skill automatically.
+
+For the reviewed Karpathy guidelines:
+
+```bash
+aiwb setup --repo /path/to/repository --agent-target codex \
+  --install-pack karpathy \
+  --pack-profile karpathy=guidelines \
+  --apply
+```
+
+Skip this profile when the repository already has equivalent rules in its
+Development Doctrine or Agent instructions; do not append upstream
+`CLAUDE.md` content alongside the Skill.
+
+When a catalog pin changes, use `--update-pack` with the same reviewed profile:
+
+```bash
+aiwb setup --repo /path/to/repository --agent-target codex \
+  --update-pack matt \
+  --pack-profile matt=engineering \
+  --apply
+```
+
+An update replaces the selected managed project Skill directories from the new
+reviewed pin. It does not change global Skills, run interactive setup again, or
+update any unselected pack.
 
 ## Finish
 
