@@ -13,3 +13,4 @@ Use this directory for durable repository rules. Personal tasks belong in `todo/
 - [0005 - Keep Run Evidence Complete but Bounded](0005-content-addressed-evidence.md)
 - [0006 - Make ExecutionSnapshot and RunLedger the Durable Control Authority](0006-execution-snapshot-run-ledger.md)
 - [0007 - Optimize Runs for Minimal Sufficient Change](0007-minimal-sufficient-change.md)
+- [0008 - Delegate the Agent Loop to Agent Harnesses](0008-delegate-agent-loop-to-agent-harnesses.md)
