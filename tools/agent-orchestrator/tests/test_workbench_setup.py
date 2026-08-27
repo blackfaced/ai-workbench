@@ -96,6 +96,32 @@ def test_setup_installs_an_explicit_bundled_skill_into_a_selected_project_target
         assert second.changed is False
 
 
+def test_setup_installs_the_first_party_engineering_principles() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        repository = Path(directory) / "project"
+        repository.mkdir()
+
+        result = WorkbenchSetup().apply(
+            repository,
+            confirmed=True,
+            agent_targets=("codex",),
+            install_skills=("engineering-principles",),
+        )
+
+        installed = (
+            repository
+            / ".codex"
+            / "skills"
+            / "engineering-principles"
+            / "SKILL.md"
+        )
+        assert result.changed is True
+        assert installed.is_file()
+        assert "Complexity must earn its existence" in installed.read_text(
+            encoding="utf-8"
+        )
+
+
 def test_setup_rejects_a_skill_target_that_escapes_the_repository() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -144,7 +170,7 @@ def test_setup_installs_selected_matt_skills_with_a_project_target() -> None:
                     "skills@1.5.9",
                     "add",
                     "https://github.com/mattpocock/skills/tree/"
-                    "0ab1b63a410a03d3627979a109c8695de27af954",
+                    "v1.2.3",
                     "--copy",
                     "--yes",
                     "--agent",
@@ -182,7 +208,7 @@ def test_setup_installs_the_reviewed_matt_engineering_profile() -> None:
         assert cwd == repository.resolve()
         assert command[4] == (
             "https://github.com/mattpocock/skills/tree/"
-            "0ab1b63a410a03d3627979a109c8695de27af954"
+            "v1.2.3"
         )
         assert selected[:4] == (
             "setup-matt-pocock-skills",
@@ -223,7 +249,7 @@ def test_setup_updates_a_reviewed_pack_without_repeating_setup_actions() -> None
         assert result.next_actions == ()
 
 
-def test_setup_installs_the_reviewed_karpathy_guidelines_profile() -> None:
+def test_setup_installs_only_the_on_demand_ponytail_review_profile() -> None:
     with tempfile.TemporaryDirectory() as directory:
         repository = Path(directory) / "project"
         repository.mkdir()
@@ -236,19 +262,24 @@ def test_setup_installs_the_reviewed_karpathy_guidelines_profile() -> None:
             repository,
             confirmed=True,
             agent_targets=("codex",),
-            pack_profiles={"karpathy": ("guidelines",)},
+            pack_profiles={"ponytail": ("review",)},
         )
 
         command, cwd = calls[0]
-        assert result.installed_packs == ("karpathy",)
+        assert result.installed_packs == ("ponytail",)
         assert result.updated_packs == ()
         assert result.next_actions == ()
         assert cwd == repository.resolve()
         assert command[4] == (
-            "https://github.com/multica-ai/andrej-karpathy-skills/tree/"
-            "2c606141936f1eeef17fa3043a72095b4765b9c2"
+            "https://github.com/DietrichGebert/ponytail/tree/"
+            "v4.9.0"
         )
-        assert command[-2:] == ("--skill", "karpathy-guidelines")
+        selected = tuple(
+            command[index + 1]
+            for index, item in enumerate(command)
+            if item == "--skill"
+        )
+        assert selected == ("ponytail-review",)
 
 
 def test_setup_keeps_reference_only_packs_uninstallable() -> None:

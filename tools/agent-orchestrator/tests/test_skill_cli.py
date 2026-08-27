@@ -126,17 +126,24 @@ def test_setup_cli_lists_the_optional_reviewed_packs_without_installing_them() -
         )
         assert matt["installable"] is True
         assert matt["revision"] == (
-            "main snapshot 2026-08-20 "
-            "(0ab1b63a410a03d3627979a109c8695de27af954)"
+            "v1.2.3 (resolved 6acc160e4e0cd062dbbbd7a1b26ae92855edf07e)"
         )
         assert matt["profiles"][0]["name"] == "engineering"
-        karpathy = next(
+        ponytail = next(
             pack
             for pack in json.loads(completed.stdout)["packs"]
-            if pack["name"] == "karpathy"
+            if pack["name"] == "ponytail"
         )
-        assert karpathy["installable"] is True
-        assert karpathy["profiles"][0]["skills"] == ["karpathy-guidelines"]
+        assert ponytail["installable"] is True
+        assert ponytail["revision"] == (
+            "v4.9.0 (resolved 0a4dd63ad4541f4f655c4108a295916f3c1d8fda)"
+        )
+        assert ponytail["profiles"][0]["name"] == "review"
+        assert ponytail["profiles"][0]["skills"] == ["ponytail-review"]
+        assert all(
+            pack["name"] != "karpathy"
+            for pack in json.loads(completed.stdout)["packs"]
+        )
         assert not (repository / ".agents").exists()
 
 

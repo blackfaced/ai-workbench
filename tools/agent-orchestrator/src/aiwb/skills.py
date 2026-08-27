@@ -110,6 +110,15 @@ class SkillCatalog:
             source="bundled",
             path="skills/refresh-harness-recipes/SKILL.md",
         ),
+        SkillDescriptor(
+            name="engineering-principles",
+            description=(
+                "Apply simple, surgical, verifiable engineering principles and "
+                "stop when the requested work is complete."
+            ),
+            source="bundled",
+            path="skills/engineering-principles/SKILL.md",
+        ),
     )
 
     def recommend(
@@ -295,11 +304,10 @@ class SkillPackCatalog:
             description="Selected small engineering Skills from mattpocock/skills.",
             source=(
                 "https://github.com/mattpocock/skills/tree/"
-                "0ab1b63a410a03d3627979a109c8695de27af954"
+                "v1.2.3"
             ),
             revision=(
-                "main snapshot 2026-08-20 "
-                "(0ab1b63a410a03d3627979a109c8695de27af954)"
+                "v1.2.3 (resolved 6acc160e4e0cd062dbbbd7a1b26ae92855edf07e)"
             ),
             installable=True,
             setup_action="$setup-matt-pocock-skills",
@@ -341,27 +349,24 @@ class SkillPackCatalog:
             ),
         ),
         SkillPackDescriptor(
-            name="karpathy",
-            description=(
-                "Karpathy-inspired guardrails for small, verifiable code changes."
-            ),
+            name="ponytail",
+            description="On-demand review for unnecessary implementation complexity.",
             source=(
-                "https://github.com/multica-ai/andrej-karpathy-skills/tree/"
-                "2c606141936f1eeef17fa3043a72095b4765b9c2"
+                "https://github.com/DietrichGebert/ponytail/tree/"
+                "v4.9.0"
             ),
             revision=(
-                "main snapshot 2026-04-20 "
-                "(2c606141936f1eeef17fa3043a72095b4765b9c2)"
+                "v4.9.0 (resolved 0a4dd63ad4541f4f655c4108a295916f3c1d8fda)"
             ),
             installable=True,
             profiles=(
                 SkillPackProfileDescriptor(
-                    name="guidelines",
+                    name="review",
                     description=(
-                        "One opt-in Skill for explicit assumptions, simple designs, "
-                        "surgical changes, and verifiable goals."
+                        "Review-only delete list for over-engineering; excludes the "
+                        "always-on Ponytail mode and Caveman."
                     ),
-                    skills=("karpathy-guidelines",),
+                    skills=("ponytail-review",),
                 ),
             ),
         ),

@@ -397,7 +397,7 @@ The lightweight setup-and-ask tracer adds:
 - an explicit `--apply` boundary for draft workflow creation, role-guidance selection, and optional project-local Skill copies;
 - Codex and Claude Code project targets only when selected, with no writes to user-global Agent configuration;
 - destination containment checks that reject Skill paths escaping the selected repository.
-- a reviewed optional-pack catalog: selected Matt and Karpathy profiles install
+- a reviewed optional-pack catalog: selected Matt and on-demand Ponytail Review profiles install
   or explicitly update project-locally from immutable commits through
   `skills@1.5.9`, while Anthropic remains a reference-only design collection.
 
@@ -612,7 +612,7 @@ codex mcp list
 
 Registration is intentionally a user action; the repository never edits global Codex configuration. The MCP server needs no network access or OpenAI API key. It connects only to the local `0600` daemon socket. Start or install the daemon separately before using the tools.
 
-The bundled interaction Skills live in [`skills/`](skills/): `run-approved-goal`, `draft-aiwb-contract`, `setup-ai-workbench`, `ask-ai-workbench`, and `intake-aiwb-goal`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `run-approved-goal` submits an approved Contract and observes its durable Run; `draft-aiwb-contract` converts approved local `tickets.md` content into a non-runnable Contract draft; `$setup-ai-workbench` inspects first and requires explicit confirmation before project-local setup; `$ask-ai-workbench` is advisory and can return no recommendation; `$intake-aiwb-goal` chooses the interactive or unattended handoff and reports readiness without taking action.
+The bundled interaction Skills live in [`skills/`](skills/), including `run-approved-goal`, `draft-aiwb-contract`, `setup-ai-workbench`, `ask-ai-workbench`, `intake-aiwb-goal`, and `engineering-principles`. To make one globally discoverable, the user may copy or link its directory into `$CODEX_HOME/skills/<name>` (or `~/.codex/skills/<name>` when `CODEX_HOME` is unset). The repository never performs that global change itself. `engineering-principles` is the optional first-party doctrine for simple, surgical, verifiable changes; setup skips it where equivalent repository instructions already exist.
 
 For direct CLI use, inspect first and add `--apply` only after reviewing the exact planned changes:
 
@@ -638,22 +638,35 @@ aiwb setup --repo /path/to/project --agent-target codex \
 
 The `engineering` profile is the reviewed dependency closure of upstream
 `ask-matt`'s engineering flow, not the whole upstream collection. This invokes
-the fixed `skills@1.5.9` installer against the reviewed commit
-`0ab1b63a410a03d3627979a109c8695de27af954`, with `--copy` and no global or
+the fixed `skills@1.5.9` installer against reviewed tag `v1.2.3`, resolved to
+commit `6acc160e4e0cd062dbbbd7a1b26ae92855edf07e`, with `--copy` and no global or
 all-Skills option. It writes project-local Skill directories and the
 installer's lock file. Then invoke `$setup-matt-pocock-skills` yourself to
 choose its issue-tracker, label, and document settings. Anthropic is listed as
 reference-only until separately reviewed.
 
-Install the reviewed Karpathy guidelines only where equivalent repository
-doctrine is absent:
+Install the first-party engineering doctrine only where equivalent repository
+instructions are absent:
 
 ```bash
 aiwb setup --repo /path/to/project --agent-target codex \
-  --install-pack karpathy \
-  --pack-profile karpathy=guidelines \
+  --install-skill engineering-principles \
   --apply
 ```
+
+Install the upstream complexity reviewer only when an on-demand deletion pass
+is desired:
+
+```bash
+aiwb setup --repo /path/to/project --agent-target codex \
+  --install-pack ponytail \
+  --pack-profile ponytail=review \
+  --apply
+```
+
+The profile installs only `ponytail-review` from tag `v4.9.0`, resolved to
+`0a4dd63ad4541f4f655c4108a295916f3c1d8fda`; the always-on Ponytail Skill,
+hooks, intensity modes, and Caveman are excluded.
 
 When this catalog advances a reviewed pin, update an existing managed profile
 explicitly. The selected project-local Skill directories are replaced; no

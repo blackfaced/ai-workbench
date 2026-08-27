@@ -119,7 +119,8 @@ directory. It never writes to user-global Agent configuration.
 ## Optional packs
 
 Offer packs only after inspection and only by explicit user choice. `matt` and
-`karpathy` are installable project-local packs pinned to reviewed commits;
+the review-only `ponytail` profile are installable project-local packs pinned to
+reviewed release tags with their resolved commits displayed;
 `anthropic` is reference-only and must not be installed. Ask the user to choose
 a reviewed profile or specific Skills rather than installing a collection
 wholesale. Show the source, revision, target Agent, selected profile or Skill
@@ -141,18 +142,28 @@ pass global, bypass, or all-Skills options. After a Matt install, tell the user
 to invoke `$setup-matt-pocock-skills`; do not run that interactive
 configuration Skill automatically.
 
-For the reviewed Karpathy guidelines:
+For the first-party engineering doctrine:
 
 ```bash
 aiwb setup --repo /path/to/repository --agent-target codex \
-  --install-pack karpathy \
-  --pack-profile karpathy=guidelines \
+  --install-skill engineering-principles \
   --apply
 ```
 
-Skip this profile when the repository already has equivalent rules in its
-Development Doctrine or Agent instructions; do not append upstream
-`CLAUDE.md` content alongside the Skill.
+Skip it when the repository already has equivalent rules in its Development
+Doctrine or Agent instructions.
+
+For an explicit, review-only over-engineering pass:
+
+```bash
+aiwb setup --repo /path/to/repository --agent-target codex \
+  --install-pack ponytail \
+  --pack-profile ponytail=review \
+  --apply
+```
+
+This installs only `ponytail-review`. Do not install the always-on Ponytail
+Skill, hooks, intensity modes, or Caveman through setup.
 
 When a catalog pin changes, use `--update-pack` with the same reviewed profile:
 

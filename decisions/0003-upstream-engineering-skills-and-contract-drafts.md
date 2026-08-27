@@ -14,24 +14,36 @@ splitting, TDD, and architecture review.
 
 `mattpocock/skills` supplies those small, composable Skills. Its engineering
 router is useful only when its referenced Skills are present, and its public
-release should be consumed at a reviewed immutable revision rather than a
-moving installer default or tag.
+release should be consumed at a reviewed release tag with the resolved commit
+recorded rather than a moving installer default or branch.
 
 ## Decision
 
 Keep Matt Skills optional and project-local. Offer one reviewed `matt`
 `engineering` profile containing the dependency closure of `ask-matt`'s
-engineering routes, pinned to the reviewed source commit. `ask-ai-workbench`
+engineering routes, pinned to the reviewed release tag and recorded commit. `ask-ai-workbench`
 recommends an installed `ask-matt` router for general engineering work instead
 of copying its routing logic.
 
-Offer `karpathy-guidelines` as a separate reviewed, project-local `karpathy`
-profile. It is useful only where equivalent engineering doctrine is absent.
-Installing the Skill must not also append its `CLAUDE.md` content or create a
-second instruction authority in repositories that already carry those rules.
+Maintain one first-party `engineering-principles` Skill as the installable
+engineering doctrine. It semantically synthesizes the reviewed Karpathy
+guidelines with Ponytail's implementation ladder, adds an explicit
+complexity-justification check and Stop When Done rule, and avoids copying two
+overlapping upstream Skills into every repository. Skip it where equivalent
+repository instructions are already authoritative.
+
+An intentional simplification with a non-obvious known ceiling may use a
+`lazy:` comment. That marker means complete but deliberately limited, not
+unfinished or incorrect; it points to an Issue only when a concrete future
+trigger needs tracking.
+
+Offer only upstream `ponytail-review` through a reviewed, project-local
+`ponytail=review` profile. It is an on-demand complexity-detection pass, not a
+second always-on doctrine. Do not install the main Ponytail Skill, lifecycle
+hooks, intensity modes, or Caveman through this profile.
 
 Pack updates are explicit. `--update-pack` re-applies the named profile from
-the catalog's new reviewed commit and reports it as an update, not an install.
+the catalog's new reviewed release and reports it as an update, not an install.
 It never updates from a moving branch or changes user-global Skills.
 
 AI Workbench owns only a thin local `tickets.md` to Contract-draft bridge. It

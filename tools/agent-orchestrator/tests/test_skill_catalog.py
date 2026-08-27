@@ -120,6 +120,7 @@ def test_project_local_skill_mirrors_match_the_bundled_sources() -> None:
         "setup-ai-workbench",
         "draft-aiwb-contract",
         "intake-aiwb-goal",
+        "engineering-principles",
     ):
         bundled = TOOL_ROOT / "skills" / name / "SKILL.md"
         mirrored = repository / ".codex" / "skills" / name / "SKILL.md"

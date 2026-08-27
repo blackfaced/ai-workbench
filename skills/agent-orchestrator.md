@@ -14,7 +14,8 @@ The bundled interaction Skills are:
 - [`draft-aiwb-contract`](../tools/agent-orchestrator/skills/draft-aiwb-contract/), which turns an approved local `tickets.md` breakdown into a deliberately unapproved Contract draft;
 - [`setup-ai-workbench`](../tools/agent-orchestrator/skills/setup-ai-workbench/), which inspects first and requires explicit confirmation before project-local setup;
 - [`ask-ai-workbench`](../tools/agent-orchestrator/skills/ask-ai-workbench/), which only recommends up to two optional Skills for a task.
+- [`engineering-principles`](../tools/agent-orchestrator/skills/engineering-principles/), the optional first-party doctrine for simple, surgical, verifiable changes.
 
-The three interactive Skills are mirrored under [`.codex/skills`](../.codex/skills/)
+The project-used interaction Skills are mirrored under [`.codex/skills`](../.codex/skills/)
 so a Codex Agent operating this repository can invoke them without a global
 installation.
