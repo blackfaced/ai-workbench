@@ -12,6 +12,28 @@ first-party Skills may extend them or synthesize a small local doctrine when one
 instruction authority is simpler than overlapping always-on Skills (see
 `decisions/0003`).
 
+## Install a first-party Skill
+
+Use `$setup-ai-workbench` for project-local installation. The Agent must first
+run the read-only inspection and show the selected Agent target, Skill, and
+destination. Only after explicit confirmation may it apply the installation:
+
+```bash
+aiwb setup --repo /absolute/path/to/project
+aiwb setup --repo /absolute/path/to/project --agent-target codex \
+  --install-skill engineering-principles --apply
+```
+
+Use `claude-code` instead of `codex` for a Claude Code project. Installation is
+complete when the command succeeds and the installed `SKILL.md` matches the
+bundled source under `tools/agent-orchestrator/skills/`. Report the exact
+project-local path. Do not change user-global Agent configuration or invoke the
+installed Skill automatically.
+
+For optional third-party packs, updates, or equivalent-doctrine checks, follow
+[`setup-ai-workbench`](../tools/agent-orchestrator/skills/setup-ai-workbench/SKILL.md)
+rather than copying a pack by hand.
+
 ## Index
 
 - [Anthropic Skills](anthropic-skills.md)

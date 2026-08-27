@@ -48,6 +48,10 @@ For each non-trivial addition ask:
 
 If the last question has no concrete answer, remove the addition.
 
+Do not introduce an interface with only one current implementation or a
+factory for a single product unless a current specification or constraint
+explicitly requires that seam.
+
 ### Record deliberate compromises
 
 When a deliberately simple implementation has a known ceiling that a future
@@ -73,7 +77,9 @@ adjacent improvements separately.
 
 Translate the request into a checkable outcome. Leave one proportionate,
 runnable verification for non-trivial behavior and report what was actually run.
-Never trade correctness, clarity, or necessary coverage for a smaller diff.
+Do not introduce a test framework or fixture system solely to satisfy this
+rule. Never trade correctness, clarity, or necessary coverage for a smaller
+diff.
 
 ## Stop when done
 

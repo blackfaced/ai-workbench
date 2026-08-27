@@ -115,6 +115,9 @@ aiwb setup --repo /path/to/repository --agent-target codex \
 
 This writes only under the repository's `.codex/skills/` or `.claude/skills/`
 directory. It never writes to user-global Agent configuration.
+Installation is complete only when the command succeeds and the installed
+`SKILL.md` matches the bundled source. Report the exact destination and do not
+invoke the installed Skill automatically.
 
 ## Optional packs
 

@@ -6,7 +6,7 @@ This repository is a workbench, not a public skill registry. It records useful s
 
 ## Structure
 
-- [skills/](skills/README.md) - agent skills and reusable instruction packs.
+- [skills/](skills/README.md) - discover and install agent skills and reusable instruction packs.
 - [tools/](tools/README.md) - MCP servers, plugins, CLIs, browser tools, and integrations.
 - [workflows/](workflows/README.md) - repeatable multi-step processes and domain workflows.
 - [todo/](todo/README.md) - personal action queue for evaluating, installing, and improving entries.
