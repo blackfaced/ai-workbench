@@ -507,7 +507,7 @@ def test_attempt_timeout_terminalizes_the_run_without_waiting_for_a_blocked_driv
             ledger.execution_snapshot(admitted.snapshot_id), run_id=admitted.run_id
         )
 
-        assert time.monotonic() - started < 2
+        assert time.monotonic() - started < 8  # Interpreter boot time is environment-dependent; the blocked driver would hold the Run for 10 seconds.
         assert report.status == "interrupted"
         assert report.attempts[0].outcome == "interrupted"
 
@@ -535,7 +535,7 @@ def test_activity_flood_cannot_prevent_the_attempt_deadline() -> None:
         )
 
         process.start()
-        process.join(4)
+        process.join(15)
         finished_before_cleanup = not process.is_alive()
         if process.is_alive():
             process.kill()

@@ -97,6 +97,16 @@ def test_harness_setup_plans_a_python_l0_profile_from_repository_evidence() -> N
             stderr=subprocess.PIPE,
             text=True,
         )
+        # Keep the fixture tree stable: background auto-maintenance would
+        # transiently create .git/objects/maintenance.lock during the test.
+        subprocess.run(
+            ["git", "config", "maintenance.auto", "false"],
+            cwd=str(repository),
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         subprocess.run(
             ["git", "add", "."],
             cwd=str(repository),
