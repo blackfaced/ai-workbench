@@ -459,7 +459,7 @@ class RunCheckpoint:
     attempt_id: str = ""
     candidate_commit: str = ""
     operation_id: str = ""
-    publish_result: Mapping[str, object] = MappingProxyType({})
+    publish_result: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
 
 
 @dataclass(frozen=True)
