@@ -155,6 +155,7 @@ def _supervised_process_entry(
     arguments: Tuple[object, ...],
     worker_pid: object,
     parent_liveness: object,
+    operation_ready: Optional[object] = None,
 ) -> None:
     """Own the process group and parent watchdog before external execution."""
     os.setsid()
@@ -177,6 +178,8 @@ def _supervised_process_entry(
     watchdog_done.close()
     parent_liveness.close()
     ready.wait()
+    if operation_ready is not None:
+        operation_ready.set()
     try:
         target(*arguments)
     finally:
@@ -302,6 +305,7 @@ class _SupervisedProcess:
     worker: multiprocessing.Process
     parent_liveness: object
     worker_pid: object
+    operation_ready: object
 
     def close(self) -> None:
         _terminate_process(self.worker)
@@ -320,15 +324,16 @@ def _start_supervised_process(
     try:
         child_liveness, parent_liveness = context.Pipe(duplex=False)
         worker_pid = context.Value("q", 0)
+        operation_ready = context.Event()
         worker = context.Process(
             target=_supervised_process_entry,
-            args=(target, arguments, worker_pid, child_liveness),
+            args=(target, arguments, worker_pid, child_liveness, operation_ready),
             name=f"aiwb-{operation}",
         )
         lease_provider()
         worker.start()
         child_liveness.close()
-        return _SupervisedProcess(worker, parent_liveness, worker_pid)
+        return _SupervisedProcess(worker, parent_liveness, worker_pid, operation_ready)
     except BaseException:
         if worker is not None and worker.pid is not None:
             _terminate_process(worker)
@@ -337,6 +342,29 @@ def _start_supervised_process(
         if child_liveness is not None:
             child_liveness.close()
         raise
+
+
+def _await_operation_ready(
+    supervised: _SupervisedProcess,
+    deadline: float,
+    lease_provider: Callable[[], Optional["RunLease"]],
+) -> float:
+    """Start the admitted timeout only once the supervised operation is ready.
+
+    Interpreter boot and watchdog startup are runner overhead, not part of the
+    operation's admitted budget; the wait itself stays bounded by that budget.
+    """
+    budget = max(0.0, deadline - time.monotonic())
+    boot_deadline = time.monotonic() + budget
+    worker = supervised.worker
+    while (
+        worker.is_alive()
+        and not supervised.operation_ready.is_set()
+        and time.monotonic() < boot_deadline
+    ):
+        lease_provider()
+        worker.join(min(0.05, max(0.0, boot_deadline - time.monotonic())))
+    return time.monotonic() + budget
 
 
 def _terminate_process(worker: multiprocessing.Process) -> None:
@@ -1198,7 +1226,11 @@ class GoalRunner:
             return AttemptOutcome.failed(f"Agent Harness Attempt isolation is unsupported: {error}")
         worker = supervised.worker
         try:
-            deadline = time.monotonic() + spec.profile.timeout_seconds
+            deadline = _await_operation_ready(
+                supervised,
+                time.monotonic() + spec.profile.timeout_seconds,
+                lease_provider,
+            )
             recorded_events = 0
             while worker.is_alive() and time.monotonic() < deadline:
                 lease_provider()
@@ -1294,6 +1326,7 @@ class GoalRunner:
             ) from error
         worker = supervised.worker
         try:
+            deadline = _await_operation_ready(supervised, deadline, lease_provider)
             while worker.is_alive() and time.monotonic() < deadline:
                 lease_provider()
                 worker.join(min(0.05, max(0.0, deadline - time.monotonic())))
