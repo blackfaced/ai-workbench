@@ -52,6 +52,22 @@ class HarnessAdapter(Protocol):
         ...
 
 
+class CommandHarness:
+    """Run a policy-approved command when no service profile is required."""
+
+    def execute(self, request: HarnessRequest) -> HarnessExecution:
+        completed = subprocess.run(
+            list(request.command), cwd=str(request.cwd), check=False, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=request.timeout_seconds,
+        )
+        return HarnessExecution(
+            returncode=completed.returncode, stdout=completed.stdout,
+            stderr=completed.stderr, base_url="", artifacts=(),
+            environment=request.profile.environment,
+        )
+
+
 class LocalProcessHarness:
     """Run one command against a disposable loopback service."""
 

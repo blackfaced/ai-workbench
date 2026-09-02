@@ -12,8 +12,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
-from .agent import AgentAdapter
-from .admission import (
+from .agent_harness import AgentHarnessDriver
+from .harness_native import (
     ADMISSION_SCHEMA_VERSION,
     Admission,
     AdmissionError,
@@ -23,7 +23,7 @@ from .admission import (
     SQLiteRunLedger,
 )
 from .evidence import EvidencePayload, EvidencePruneReport
-from .runner import GoalRunner, RunReport
+from .harness_native import GoalRunner, RunReport
 from .state import (
     DurableStateSetup,
     INCOMPATIBLE_CURRENT_STATE_MESSAGE,
@@ -47,13 +47,6 @@ class RunStatus:
     run_id: str
     status: str
     error: str = ""
-    reason: str = ""
-    boundary: str = ""
-    todo_id: str = ""
-    role: str = ""
-    stage: str = ""
-    provider: str = ""
-    model: str = ""
     resumable: bool = False
     snapshot_id: str = ""
     goal_id: str = ""
@@ -64,13 +57,6 @@ class RunStatus:
             run_id=str(value["run_id"]),
             status=str(value["status"]),
             error=str(value.get("error", "")),
-            reason=str(value.get("reason", "")),
-            boundary=str(value.get("boundary", "")),
-            todo_id=str(value.get("todo_id", "")),
-            role=str(value.get("role", "")),
-            stage=str(value.get("stage", "")),
-            provider=str(value.get("provider", "")),
-            model=str(value.get("model", "")),
             resumable=bool(value.get("resumable", False)),
             snapshot_id=str(value.get("snapshot_id", "")),
             goal_id=str(value.get("goal_id", "")),
@@ -189,11 +175,9 @@ class AgentDaemon:
     def __init__(
         self,
         state_dir: Path,
-        agent: AgentAdapter,
+        driver: AgentHarnessDriver,
         socket_path: Optional[Path] = None,
         max_workers: int = 1,
-        todo_workers: int = 2,
-        image_poll_interval_seconds: float = 5.0,
         janitor_interval_seconds: float = 60.0,
         lease_seconds: float = 2.0,
         engine_version: str = ENGINE_VERSION,
@@ -201,8 +185,6 @@ class AgentDaemon:
     ) -> None:
         if (
             max_workers <= 0
-            or todo_workers <= 0
-            or image_poll_interval_seconds <= 0
             or janitor_interval_seconds <= 0
             or lease_seconds <= 0
         ):
@@ -232,13 +214,7 @@ class AgentDaemon:
             else self._state_dir / "run" / "daemon.sock"
         )
         self._ledger = SQLiteRunLedger(self._state_dir / "run-ledger.db")
-        self._runner = GoalRunner(
-            self._state_dir,
-            agent,
-            max_workers=todo_workers,
-            image_poll_interval_seconds=image_poll_interval_seconds,
-            ledger=self._ledger,
-        )
+        self._runner = GoalRunner(self._state_dir, driver, ledger=self._ledger)
         self._admission = Admission(
             self._ledger,
             engine_version=engine_version,
@@ -273,7 +249,6 @@ class AgentDaemon:
         server.agent_daemon = self
         self._server = server
         os.chmod(self.socket_path, 0o600)
-        self._runner.sweep_kubernetes()
         self._janitor_thread = threading.Thread(
             target=self._janitor_loop,
             name="aiwb-kubernetes-janitor",
@@ -403,23 +378,28 @@ class AgentDaemon:
             future.add_done_callback(lambda _: self._forget(run_id))
 
     def _execute(self, run_id: str) -> None:
-        lease = self._ledger.claim(
-            run_id,
-            owner_id=self._owner_id,
-            lease_seconds=self._lease_seconds,
-            supported_engine_versions={self._engine_version},
-            supported_admission_schema_versions={ADMISSION_SCHEMA_VERSION},
-            supported_transition_policy_versions={self._transition_policy_version},
-        )
+        try:
+            lease = self._ledger.claim(
+                run_id,
+                owner_id=self._owner_id,
+                lease_seconds=self._lease_seconds,
+                supported_engine_versions={self._engine_version},
+                supported_admission_schema_versions={ADMISSION_SCHEMA_VERSION},
+                supported_transition_policy_versions={self._transition_policy_version},
+            )
+        except RuntimeError as error:
+            self._ledger.fail(run_id, str(error))
+            return
         if lease is None:
             return
         run = self._ledger.run(run_id)
         snapshot = self._ledger.execution_snapshot(run.snapshot_id)
         heartbeat_stop = threading.Event()
+        lease_lost = threading.Event()
         lease_state: List[RunLease] = [lease]
         heartbeat = threading.Thread(
             target=self._renew_lease,
-            args=(lease_state, heartbeat_stop),
+            args=(lease_state, heartbeat_stop, lease_lost),
             name=f"aiwb-lease-{run_id}",
             daemon=True,
         )
@@ -427,12 +407,19 @@ class AgentDaemon:
         report: Optional[RunReport] = None
         error_text = ""
         try:
+            def current_lease() -> RunLease:
+                if lease_lost.is_set():
+                    raise LeaseConflictError("Run lease was lost")
+                return self._ledger.prove(lease_state[0])
+
             report = self._runner.run_snapshot(
                 snapshot,
                 run_id=run_id,
-                lease=lease,
-                mutation_guard=lambda: self._ledger.prove(lease_state[0]),
+                lease=lease_state[0],
+                lease_provider=current_lease,
             )
+        except LeaseConflictError:
+            return
         except Exception as error:
             error_text = str(error)
             try:
@@ -442,27 +429,14 @@ class AgentDaemon:
         finally:
             heartbeat_stop.set()
             heartbeat.join(timeout=max(1.0, self._lease_seconds))
-        status = (
-            report.status
-            if report is not None and report.status != "running"
-            else "blocked"
-        )
-        try:
-            self._ledger.transition(
-                run_id,
-                owner_id=self._owner_id,
-                generation=lease_state[0].generation,
-                status=status,
-                error=error_text,
-            )
-        except LeaseConflictError:
-            # A superseded worker must not write durable Run state.
-            return
+        if error_text:
+            self._ledger.fail(run_id, error_text, lease=lease_state[0])
 
     def _renew_lease(
         self,
         lease_state: List[RunLease],
         stop: threading.Event,
+        lost: threading.Event,
     ) -> None:
         interval = self._lease_seconds / 3
         while not stop.wait(interval):
@@ -471,7 +445,8 @@ class AgentDaemon:
                     lease_state[0],
                     lease_seconds=self._lease_seconds,
                 )
-            except LeaseConflictError:
+            except Exception:
+                lost.set()
                 return
 
     def _forget(self, run_id: str) -> None:
@@ -483,26 +458,11 @@ class AgentDaemon:
             run = self._ledger.run(run_id)
         except KeyError as error:
             raise DaemonError("run_not_found", str(error)) from error
-        stop: Mapping[str, object] = {}
-        try:
-            report = self._runner.report(run_id)
-        except KeyError:
-            pass
-        else:
-            if report.stop is not None:
-                stop = asdict(report.stop)
         return RunStatus(
             run_id=run.run_id,
             status=run.status,
             error=run.error,
-            reason=str(stop.get("reason", "")),
-            boundary=str(stop.get("boundary", "")),
-            todo_id=str(stop.get("todo_id", "")),
-            role=str(stop.get("role", "")),
-            stage=str(stop.get("stage", "")),
-            provider=str(stop.get("provider", "")),
-            model=str(stop.get("model", "")),
-            resumable=bool(stop.get("resumable", False)),
+            resumable=run.status in {"interrupted", "failed"},
             snapshot_id=run.snapshot_id,
             goal_id=run.goal_id,
         )

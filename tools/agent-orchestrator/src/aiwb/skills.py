@@ -7,8 +7,14 @@ from typing import Mapping, Optional, Sequence, Tuple
 
 import yaml
 
+from ._paths import contains_symlink
+
 
 _STOP_TERMS = frozenset({"a", "an", "and", "for", "its", "the", "to", "with"})
+AGENT_SKILL_ROOTS = {
+    "codex": ".codex/skills",
+    "claude-code": ".claude/skills",
+}
 
 
 @dataclass(frozen=True)
@@ -75,12 +81,6 @@ class SkillCatalog:
             description="Submit and observe an approved unattended Goal with Evidence.",
             source="bundled",
             path="skills/run-approved-goal/SKILL.md",
-        ),
-        SkillDescriptor(
-            name="draft-aiwb-contract",
-            description="Create an unapproved Contract draft from approved local tickets.",
-            source="bundled",
-            path="skills/draft-aiwb-contract/SKILL.md",
         ),
         SkillDescriptor(
             name="setup-ai-workbench",
@@ -203,6 +203,26 @@ class SkillCatalog:
         if not source.is_file():
             raise ValueError(f"bundled Skill is unavailable: {name}")
         return source
+
+    def install_source(self, repository: Path, name: str, agent_target: str) -> Path:
+        repository = Path(repository).expanduser().resolve()
+        target_root = AGENT_SKILL_ROOTS.get(agent_target)
+        if target_root is None:
+            raise ValueError(f"unknown Agent target: {agent_target}")
+        target_source = Path(target_root) / name / "SKILL.md"
+        if contains_symlink(repository, target_source):
+            raise ValueError("Agent target Skill root must not contain symlinks")
+        for root in (target_root, ".agents/skills", "skills"):
+            source = repository / root / name / "SKILL.md"
+            if not source.exists():
+                continue
+            if contains_symlink(repository, source.relative_to(repository)):
+                raise ValueError("Skill source must not contain symlinks")
+            descriptor = self._project_skill(repository, source)
+            if descriptor is None or descriptor.name != name:
+                raise ValueError(f"project Skill identity is invalid: {name}")
+            return source.resolve()
+        return self.bundled_source(name)
 
     @staticmethod
     def _project_skill(

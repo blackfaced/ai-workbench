@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
+import signal
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +15,7 @@ from typing import Callable, Mapping, Optional, Sequence, Tuple
 
 import yaml
 
+from ._paths import contains_symlink
 from ._python_setup import (
     CommandCandidate,
     ExternalAnalysisEvidence,
@@ -36,11 +41,16 @@ from .github_pipeline import (
 from .project import DoctorReport, ProjectDoctor, ProjectInitializer
 from .recipe_catalog import RecipeCatalog
 from .skills import (
+    AGENT_SKILL_ROOTS,
     SkillCatalog,
     SkillCatalogSnapshot,
     SkillPackCatalog,
     SkillPackDescriptor,
 )
+
+
+_EXTENSION_PROBE_TIMEOUT_SECONDS = 30.0
+_EXTENSION_PROBE_REAP_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -142,10 +152,52 @@ class HarnessApplyRequest:
     plan: HarnessPlan
     confirmed: bool
     force: bool = False
-    role_skills: Optional[Mapping[str, Sequence[str]]] = None
     install_skills: Tuple[str, ...] = ()
+    install_extensions: Tuple[Path, ...] = ()
     pack_skills: Optional[Mapping[str, Sequence[str]]] = None
     pack_profiles: Optional[Mapping[str, Sequence[str]]] = None
+
+
+@dataclass(frozen=True)
+class HarnessExtensionResolution:
+    identity: str
+    agent_target: str
+    source: str
+    destination: str
+    entrypoint: str
+    descriptor_sha256: str
+    entrypoint_sha256: str
+    harness_probe: Tuple[str, ...]
+
+    def to_dict(self) -> Mapping[str, object]:
+        return {
+            "identity": self.identity,
+            "agent_target": self.agent_target,
+            "source": self.source,
+            "destination": self.destination,
+            "entrypoint": self.entrypoint,
+            "descriptor_sha256": self.descriptor_sha256,
+            "entrypoint_sha256": self.entrypoint_sha256,
+            "harness_probe": list(self.harness_probe),
+        }
+
+
+@dataclass(frozen=True)
+class HarnessSkillResolution:
+    name: str
+    agent_target: str
+    source: str
+    destination: str
+    sha256: str
+
+    def to_dict(self) -> Mapping[str, object]:
+        return {
+            "name": self.name,
+            "agent_target": self.agent_target,
+            "source": self.source,
+            "destination": self.destination,
+            "sha256": self.sha256,
+        }
 
 
 @dataclass(frozen=True)
@@ -155,6 +207,8 @@ class HarnessCandidate:
     workflow_action: str
     changed: bool
     agent_targets: Tuple[str, ...]
+    extensions: Tuple[HarnessExtensionResolution, ...] = ()
+    selected_skills: Tuple[HarnessSkillResolution, ...] = ()
     installed_packs: Tuple[str, ...] = ()
     next_actions: Tuple[str, ...] = ()
     status: str = ""
@@ -176,6 +230,30 @@ class HarnessVerification:
     report: DoctorReport
 
 
+@dataclass(frozen=True)
+class _ExtensionInstall:
+    identity: str
+    agent_target: str
+    source: Path
+    source_bytes: bytes
+    descriptor_sha256: str
+    destination: Path
+    descriptor: Mapping[str, object]
+    repository: Path
+    entrypoint: Path
+    entrypoint_sha256: str
+    harness_probe: Tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _SkillInstall:
+    resolution: HarnessSkillResolution
+    repository: Path
+    source: Path
+    source_bytes: bytes
+    destination: Path
+
+
 class HarnessSetup:
     """Own the project Harness setup lifecycle behind one public seam."""
 
@@ -189,6 +267,9 @@ class HarnessSetup:
         ] = None,
         recipe_catalog: Optional[RecipeCatalog] = None,
         project_recipe_catalog: Optional[Path] = None,
+        extension_probe: Optional[
+            Callable[[str, Mapping[str, object], Path, Path], None]
+        ] = None,
     ) -> None:
         self._catalog = catalog or SkillCatalog()
         self._pack_catalog = pack_catalog or SkillPackCatalog()
@@ -196,6 +277,7 @@ class HarnessSetup:
         self._analysis_provider = analysis_provider
         self._recipe_catalog = recipe_catalog or RecipeCatalog()
         self._project_recipe_catalog = project_recipe_catalog
+        self._extension_probe = extension_probe or _run_declared_harness_probe
         self._initializer = ProjectInitializer()
 
     def inspect(self, request: HarnessSetupRequest) -> HarnessAssessment:
@@ -429,6 +511,42 @@ class HarnessSetup:
         )
         return result
 
+    def preview_extensions(
+        self,
+        repository: Path,
+        sources: Sequence[Path],
+        agent_targets: Tuple[str, ...],
+    ) -> Tuple[HarnessExtensionResolution, ...]:
+        repository = Path(repository).expanduser().resolve()
+        if sources and not agent_targets:
+            raise ValueError(
+                "installing a Harness Extension requires an explicit agent target"
+            )
+        installs = tuple(
+            _extension_install(repository, source, agent_targets)
+            for source in sources
+        )
+        _require_unique_extension_destinations(installs)
+        return tuple(_extension_resolution(install) for install in installs)
+
+    def preview_skills(
+        self,
+        repository: Path,
+        names: Sequence[str],
+        agent_targets: Tuple[str, ...],
+    ) -> Tuple[HarnessSkillResolution, ...]:
+        repository = Path(repository).expanduser().resolve()
+        if names and not agent_targets:
+            raise ValueError(
+                "installing a Harness Extension requires an explicit agent target"
+            )
+        return tuple(
+            install.resolution
+            for install in _skill_installs(
+                repository, names, agent_targets, self._catalog
+            )
+        )
+
     def apply(self, request: HarnessApplyRequest) -> HarnessCandidate:
         if request.plan.state != "planned":
             raise ValueError("apply requires a planned Harness Plan")
@@ -471,9 +589,32 @@ class HarnessSetup:
         selected_packs = request.pack_skills or {}
         selected_profiles = request.pack_profiles or {}
         if (
-            request.install_skills or selected_packs or selected_profiles
+            request.install_skills
+            or request.install_extensions
+            or selected_packs
+            or selected_profiles
         ) and not plan.request.agent_targets:
-            raise ValueError("installing a Skill requires an explicit agent target")
+            raise ValueError("installing a Harness Extension requires an explicit agent target")
+        extension_installs = tuple(
+            _extension_install(repository, source, plan.request.agent_targets)
+            for source in request.install_extensions
+        )
+        _require_unique_extension_destinations(extension_installs)
+        skill_installs = _skill_installs(
+            repository,
+            request.install_skills,
+            plan.request.agent_targets,
+            self._catalog,
+        )
+        for install in extension_installs:
+            _assert_extension_entrypoint(install)
+            self._extension_probe(
+                install.agent_target,
+                install.descriptor,
+                repository,
+                install.entrypoint,
+            )
+            _assert_extension_entrypoint(install)
         pack_plans = self._pack_catalog.plans(
             selected_packs,
             plan.request.agent_targets,
@@ -486,52 +627,32 @@ class HarnessSetup:
         document = _workflow_document(workflow)
         changed = created
         workflow_changed = created
-        known_local_paths = {
-            skill.path for skill in assessment.catalog.skills if skill.source == "project"
-        }
-        selected = request.role_skills or {}
         capabilities = document.setdefault("capabilities", {})
         if not isinstance(capabilities, dict):
             raise ValueError("workflow capabilities must be a mapping")
-        configured_skills = capabilities.setdefault("skills", {})
-        if not isinstance(configured_skills, dict):
-            raise ValueError("workflow capabilities.skills must be a mapping")
-        for role, paths in selected.items():
-            if role not in _ROLE_NAMES:
-                raise ValueError(f"unsupported role: {role}")
-            paths = tuple(paths)
-            if not paths or any(path not in known_local_paths for path in paths):
-                raise ValueError(
-                    f"role skills must be discovered project-local Skills: {role}"
-                )
-            configured = configured_skills.setdefault(role, [])
-            if not isinstance(configured, list):
-                raise ValueError(
-                    f"workflow capabilities.skills.{role} must be a list"
-                )
-            for path in paths:
-                if path not in configured:
-                    configured.append(path)
-                    changed = True
-                    workflow_changed = True
-        for target in plan.request.agent_targets:
-            target_root = repository / _TARGET_SKILL_ROOTS[target]
-            _require_within_repository(target_root.parent, repository)
-            for name in request.install_skills:
-                source = self._catalog.bundled_source(name)
-                destination = target_root / name / "SKILL.md"
-                _require_within_repository(destination.parent, repository)
-                if destination.is_symlink():
-                    raise ValueError(
-                        "Skill destination must remain inside the repository"
-                    )
-                source_bytes = source.read_bytes()
-                if destination.is_file() and destination.read_bytes() == source_bytes:
-                    continue
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                _require_within_repository(destination.parent, repository)
-                destination.write_bytes(source_bytes)
-                changed = True
+        for install in skill_installs:
+            _assert_skill_install(install)
+            if (
+                install.destination.is_file()
+                and install.destination.read_bytes() == install.source_bytes
+            ):
+                continue
+            install.destination.parent.mkdir(parents=True, exist_ok=True)
+            _assert_skill_install(install)
+            _write_bytes_atomically(install.destination, install.source_bytes)
+            changed = True
+        for install in extension_installs:
+            destination = install.destination
+            _assert_extension_destination(install)
+            if (
+                destination.is_file()
+                and destination.read_bytes() == install.source_bytes
+            ):
+                continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            _assert_extension_destination(install)
+            _write_bytes_atomically(destination, install.source_bytes)
+            changed = True
         for pack_plan in pack_plans:
             self._command_runner(pack_plan.command, repository)
             changed = True
@@ -548,6 +669,13 @@ class HarnessSetup:
             ),
             changed=changed,
             agent_targets=plan.request.agent_targets,
+            extensions=tuple(
+                _extension_resolution(install)
+                for install in extension_installs
+            ),
+            selected_skills=tuple(
+                install.resolution for install in skill_installs
+            ),
             installed_packs=tuple(
                 dict.fromkeys(pack_plan.name for pack_plan in pack_plans)
             ),
@@ -575,13 +703,266 @@ class HarnessSetup:
         )
 
 
-_ROLE_NAMES = frozenset(
-    {"test_designer", "implementer", "verifier", "conflict_repairer"}
-)
-_TARGET_SKILL_ROOTS = {
-    "codex": ".codex/skills",
-    "claude-code": ".claude/skills",
-}
+def _extension_install(
+    repository: Path,
+    source: Path,
+    agent_targets: Tuple[str, ...],
+) -> _ExtensionInstall:
+    source = Path(source).expanduser().resolve()
+    try:
+        source.relative_to(repository)
+    except ValueError as error:
+        raise ValueError(
+            "Harness Extension source must remain inside the repository"
+        ) from error
+    try:
+        source_bytes = source.read_bytes()
+        descriptor = yaml.safe_load(source_bytes)
+    except (OSError, yaml.YAMLError) as error:
+        raise ValueError(f"cannot read Harness Extension descriptor: {error}") from error
+    if not isinstance(descriptor, dict):
+        raise ValueError("Harness Extension descriptor must be a mapping")
+    kind = descriptor.get("kind")
+    name = descriptor.get("name")
+    version = str(descriptor.get("version", ""))
+    agent_target = descriptor.get("driver")
+    configuration = descriptor.get("configuration")
+    if kind not in {"mcp", "plugin", "hook", "command"}:
+        raise ValueError("Harness Extension kind is unsupported")
+    if not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9._-]+", name) is None:
+        raise ValueError("Harness Extension name is invalid")
+    if re.fullmatch(r"[A-Za-z0-9._-]+", version) is None:
+        raise ValueError("Harness Extension version is invalid")
+    if agent_target not in agent_targets:
+        raise ValueError(
+            "Harness Extension Driver must match an explicit Agent target"
+        )
+    if not isinstance(configuration, dict):
+        raise ValueError("Harness Extension configuration must be a mapping")
+    declared_probe = configuration.get("harness_probe")
+    if declared_probe is None:
+        harness_probe: Tuple[str, ...] = ()
+    elif (
+        isinstance(declared_probe, list)
+        and declared_probe
+        and all(isinstance(value, str) and value for value in declared_probe)
+    ):
+        harness_probe = tuple(declared_probe)
+    else:
+        raise ValueError("Harness Extension availability probe is invalid")
+    entrypoint = configuration.get("entrypoint")
+    entrypoint_path = Path(entrypoint) if isinstance(entrypoint, str) else Path()
+    if (
+        not isinstance(entrypoint, str)
+        or not entrypoint
+        or entrypoint_path.is_absolute()
+        or ".." in entrypoint_path.parts
+    ):
+        raise ValueError("Harness Extension entrypoint is invalid")
+    if contains_symlink(repository, entrypoint_path):
+        raise ValueError("Harness Extension entrypoint must not contain symlinks")
+    executable = (repository / entrypoint_path).resolve()
+    try:
+        executable.relative_to(repository)
+    except ValueError as error:
+        raise ValueError(
+            "Harness Extension entrypoint must remain inside the repository"
+        ) from error
+    if not executable.is_file() or not os.access(executable, os.X_OK):
+        raise ValueError("Harness Extension entrypoint is not executable")
+    try:
+        entrypoint_sha256 = hashlib.sha256(executable.read_bytes()).hexdigest()
+    except OSError as error:
+        raise ValueError(f"cannot read Harness Extension entrypoint: {error}") from error
+    return _ExtensionInstall(
+        identity=f"{kind}:{name}@{version}",
+        agent_target=agent_target,
+        source=source,
+        source_bytes=source_bytes,
+        descriptor_sha256=hashlib.sha256(source_bytes).hexdigest(),
+        destination=(
+            repository / ".ai-workbench" / "extensions" / kind / f"{name}.yaml"
+        ),
+        descriptor=descriptor,
+        repository=repository,
+        entrypoint=executable,
+        entrypoint_sha256=entrypoint_sha256,
+        harness_probe=harness_probe,
+    )
+
+
+def _skill_installs(
+    repository: Path,
+    names: Sequence[str],
+    agent_targets: Tuple[str, ...],
+    catalog: SkillCatalog,
+) -> Tuple[_SkillInstall, ...]:
+    installs = []
+    for target in agent_targets:
+        target_root = repository / AGENT_SKILL_ROOTS[target]
+        for name in names:
+            source = catalog.install_source(repository, name, target)
+            source_bytes = source.read_bytes()
+            destination = target_root / name / "SKILL.md"
+            resolution = HarnessSkillResolution(
+                name=name,
+                agent_target=target,
+                source=str(source),
+                destination=str(destination),
+                sha256=hashlib.sha256(source_bytes).hexdigest(),
+            )
+            install = _SkillInstall(
+                resolution=resolution,
+                repository=repository,
+                source=source,
+                source_bytes=source_bytes,
+                destination=destination,
+            )
+            _assert_skill_install(install)
+            installs.append(install)
+    return tuple(installs)
+
+
+def _assert_skill_install(install: _SkillInstall) -> None:
+    relative = install.destination.relative_to(install.repository)
+    if contains_symlink(install.repository, relative):
+        raise ValueError("Agent target Skill root must not contain symlinks")
+    try:
+        source_bytes = install.source.read_bytes()
+    except OSError as error:
+        raise ValueError(f"Skill source changed during Setup: {error}") from error
+    if (
+        source_bytes != install.source_bytes
+        or hashlib.sha256(source_bytes).hexdigest()
+        != install.resolution.sha256
+    ):
+        raise ValueError("Skill source changed during Setup")
+
+
+def _extension_resolution(
+    install: _ExtensionInstall,
+) -> HarnessExtensionResolution:
+    return HarnessExtensionResolution(
+        identity=install.identity,
+        agent_target=install.agent_target,
+        source=str(install.source),
+        destination=str(install.destination),
+        entrypoint=str(install.entrypoint),
+        descriptor_sha256=install.descriptor_sha256,
+        entrypoint_sha256=install.entrypoint_sha256,
+        harness_probe=install.harness_probe,
+    )
+
+
+def _require_unique_extension_destinations(
+    installs: Sequence[_ExtensionInstall],
+) -> None:
+    destinations = tuple(install.destination for install in installs)
+    if len(set(destinations)) != len(destinations):
+        raise ValueError("duplicate Harness Extension installation target")
+    for install in installs:
+        _assert_extension_destination(install)
+
+
+def _assert_extension_destination(install: _ExtensionInstall) -> None:
+    relative = install.destination.relative_to(install.repository)
+    if contains_symlink(install.repository, relative):
+        raise ValueError("Harness Extension destination must not contain symlinks")
+    try:
+        install.destination.parent.resolve().relative_to(install.repository)
+    except ValueError as error:
+        raise ValueError(
+            "Harness Extension destination must remain inside the repository"
+        ) from error
+
+
+def _assert_extension_entrypoint(install: _ExtensionInstall) -> None:
+    configured = install.descriptor["configuration"]["entrypoint"]
+    if contains_symlink(install.repository, Path(configured)):
+        raise ValueError("Harness Extension entrypoint changed during Setup")
+    current = (install.repository / configured).resolve()
+    try:
+        current_digest = hashlib.sha256(current.read_bytes()).hexdigest()
+    except OSError as error:
+        raise ValueError(
+            f"Harness Extension entrypoint changed during Setup: {error}"
+        ) from error
+    if (
+        current != install.entrypoint
+        or current_digest != install.entrypoint_sha256
+        or not os.access(current, os.X_OK)
+    ):
+        raise ValueError("Harness Extension entrypoint changed during Setup")
+
+
+def _run_declared_harness_probe(
+    agent_target: str,
+    descriptor: Mapping[str, object],
+    repository: Path,
+    entrypoint: Path,
+) -> None:
+    configuration = descriptor["configuration"]
+    command = configuration.get("harness_probe")
+    if (
+        not isinstance(command, list)
+        or not command
+        or not all(isinstance(value, str) and value for value in command)
+    ):
+        raise ValueError(
+            "Agent Harness extension availability probe is unavailable"
+        )
+    environment = os.environ.copy()
+    environment["AIWB_AGENT_TARGET"] = agent_target
+    environment["AIWB_EXTENSION_ENTRYPOINT"] = str(entrypoint)
+    process: Optional[subprocess.Popen[bytes]] = None
+    try:
+        process = subprocess.Popen(
+            tuple(command),
+            cwd=repository,
+            env=environment,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        try:
+            returncode = process.wait(timeout=_EXTENSION_PROBE_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired as error:
+            raise ValueError(
+                "Agent Harness extension availability probe failed: TimeoutExpired"
+            ) from error
+    except OSError as error:
+        raise ValueError(
+            f"Agent Harness extension availability probe failed: {type(error).__name__}"
+        ) from error
+    finally:
+        if process is not None:
+            _terminate_process_group(process.pid)
+            try:
+                process.wait(timeout=_EXTENSION_PROBE_REAP_SECONDS)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                try:
+                    process.wait(timeout=_EXTENSION_PROBE_REAP_SECONDS)
+                except subprocess.TimeoutExpired as error:
+                    raise ValueError(
+                        "Agent Harness extension availability probe cleanup timed out"
+                    ) from error
+    if returncode:
+        raise ValueError(
+            "Agent Harness extension availability probe rejected the Extension"
+        )
+
+
+def _terminate_process_group(process_group: int) -> None:
+    try:
+        os.killpg(process_group, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        return
+    time.sleep(0.2)
+    try:
+        os.killpg(process_group, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 def _workflow_document(path: Path) -> dict[str, object]:
@@ -592,13 +973,6 @@ def _workflow_document(path: Path) -> dict[str, object]:
     if not isinstance(document, dict):
         raise ValueError("workflow must be a mapping")
     return document
-
-
-def _require_within_repository(path: Path, repository: Path) -> None:
-    try:
-        path.resolve().relative_to(repository)
-    except ValueError as error:
-        raise ValueError("Skill destination must remain inside the repository") from error
 
 
 def _run_pack_command(command: Tuple[str, ...], repository: Path) -> None:
@@ -629,6 +1003,24 @@ def _write_json_atomically(path: Path, value: Mapping[str, object]) -> None:
             json.dump(value, output, indent=2, sort_keys=True)
             output.write("\n")
         temporary_path.replace(path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def _write_bytes_atomically(path: Path, value: bytes) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(value)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary_path, path)
     except BaseException:
         temporary_path.unlink(missing_ok=True)
         raise

@@ -8,9 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional, Sequence, Tuple
 
-from .agent import AgentRouter, ClaudeCodeCliAdapter, CodexCliAdapter
 from .daemon import AgentDaemon, DaemonClient, DaemonError
-from .handoff_bridge import GoalHandoffBridge
 from .github_pipeline import (
     GhApiGitHubSource,
     GitHubActionsAdapter,
@@ -30,7 +28,7 @@ from .project import (
     ProjectInitError,
 )
 from .recipe_catalog import RecipeCatalog
-from .runner import preview_execution
+from .runner import approve_execution, preview_execution
 from .skills import SkillCatalog
 from .state import (
     DurableStateSetup,
@@ -40,7 +38,6 @@ from .state import (
     StateResetError,
 )
 from .supervisor import LaunchdError, LaunchdService
-from .tickets import TicketContractDraftBuilder
 
 
 def main(arguments: Optional[Sequence[str]] = None) -> int:
@@ -96,8 +93,10 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=("codex", "claude-code"),
         default=[],
     )
-    setup.add_argument("--role-skill", action="append", default=[])
     setup.add_argument("--install-skill", action="append", default=[])
+    setup.add_argument(
+        "--install-extension", action="append", type=Path, default=[]
+    )
     setup.add_argument("--install-pack", action="append", default=[])
     setup.add_argument("--pack-skill", action="append", default=[])
     setup.add_argument("--pack-profile", action="append", default=[])
@@ -176,15 +175,6 @@ def _build_parser() -> argparse.ArgumentParser:
     run = goal_commands.add_parser("run")
     run.add_argument("--contract", required=True, type=Path)
     _add_control_options(run)
-    run.add_argument("--codex-bin", default="codex")
-    run.add_argument("--claude-bin", default="claude")
-    run.add_argument(
-        "--claude-permission-mode",
-        choices=("auto", "acceptEdits", "dontAsk"),
-        default="auto",
-    )
-    run.add_argument("--todo-workers", type=int, default=2)
-    run.add_argument("--image-poll-seconds", type=float, default=5.0)
 
     submit = goal_commands.add_parser("submit")
     submit.add_argument("--contract", required=True, type=Path)
@@ -206,11 +196,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     intake = goal_commands.add_parser("intake")
     intake.add_argument("--repo", required=True, type=Path)
-    intake_source = intake.add_mutually_exclusive_group(required=True)
-    intake_source.add_argument("--contract", type=Path)
-    intake_source.add_argument("--tickets", type=Path)
-    intake_source.add_argument("--handoff", type=Path)
-    intake.add_argument("--task", default="")
+    intake.add_argument("--contract", required=True, type=Path)
     _add_control_options(intake)
 
     goal_evidence = goal_commands.add_parser("evidence")
@@ -220,36 +206,19 @@ def _build_parser() -> argparse.ArgumentParser:
 
     preflight = goal_commands.add_parser("preflight")
     preflight.add_argument("--contract", required=True, type=Path)
-    preflight_policy = preflight.add_mutually_exclusive_group()
-    preflight_policy.add_argument("--workflow", type=Path)
-    preflight_policy.add_argument("--policy", dest="workflow", type=Path)
+    preflight.add_argument("--workflow", type=Path)
 
-    draft = goal_commands.add_parser("draft")
-    draft.add_argument("--repo", required=True, type=Path)
-    draft.add_argument("--tickets", required=True, type=Path)
-    draft.add_argument("--output", required=True, type=Path)
-    draft.add_argument("--force", action="store_true")
-
-    bridge = goal_commands.add_parser("bridge")
-    bridge.add_argument("--repo", required=True, type=Path)
-    bridge.add_argument("--handoff", required=True, type=Path)
-    bridge.add_argument("--policy", required=True, type=Path)
-    bridge.add_argument("--output", required=True, type=Path)
+    approve = goal_commands.add_parser("approve")
+    approve.add_argument("--contract", required=True, type=Path)
+    approve.add_argument("--workflow", type=Path)
+    approve.add_argument("--approved-by", required=True)
+    approve.add_argument("--approval-artifact", required=True, type=Path)
 
     daemon = commands.add_parser("daemon")
     daemon_commands = daemon.add_subparsers(dest="daemon_command", required=True)
     serve = daemon_commands.add_parser("serve")
     _add_control_options(serve)
-    serve.add_argument("--codex-bin", default="codex")
-    serve.add_argument("--claude-bin", default="claude")
-    serve.add_argument(
-        "--claude-permission-mode",
-        choices=("auto", "acceptEdits", "dontAsk"),
-        default="auto",
-    )
     serve.add_argument("--max-workers", type=int, default=1)
-    serve.add_argument("--todo-workers", type=int, default=2)
-    serve.add_argument("--image-poll-seconds", type=float, default=5.0)
 
     daemon_status = daemon_commands.add_parser("status")
     _add_control_options(daemon_status)
@@ -257,16 +226,7 @@ def _build_parser() -> argparse.ArgumentParser:
     install = daemon_commands.add_parser("install")
     _add_control_options(install)
     install.add_argument("--plist", type=Path)
-    install.add_argument("--codex-bin", default="codex")
-    install.add_argument("--claude-bin", default="claude")
-    install.add_argument(
-        "--claude-permission-mode",
-        choices=("auto", "acceptEdits", "dontAsk"),
-        default="auto",
-    )
     install.add_argument("--max-workers", type=int, default=1)
-    install.add_argument("--todo-workers", type=int, default=2)
-    install.add_argument("--image-poll-seconds", type=float, default=5.0)
     install.add_argument("--no-load", action="store_true")
 
     janitor = commands.add_parser("janitor")
@@ -472,16 +432,25 @@ def _run_setup(options: argparse.Namespace) -> int:
         or options.apply_artifact is not None
     ):
         raise ValueError("Plan Approval requires --planning-mode")
-    role_skills = _role_skills(options.role_skill)
     pack_skills = _pack_skills(options.install_pack, options.pack_skill)
     pack_profiles = _pack_profiles(options.install_pack, options.pack_profile)
+    extension_resolutions = setup.preview_extensions(
+        options.repo,
+        tuple(options.install_extension),
+        tuple(options.agent_target),
+    )
+    skill_resolutions = setup.preview_skills(
+        options.repo,
+        tuple(options.install_skill),
+        tuple(options.agent_target),
+    )
     if options.apply:
         result = setup.apply(
             HarnessApplyRequest(
                 plan=plan,
                 confirmed=True,
-                role_skills=role_skills,
                 install_skills=tuple(options.install_skill),
+                install_extensions=tuple(options.install_extension),
                 pack_skills=pack_skills,
                 pack_profiles=pack_profiles,
             )
@@ -492,6 +461,14 @@ def _run_setup(options: argparse.Namespace) -> int:
                 "workflow_action": result.workflow_action,
                 "changed": result.changed,
                 "agent_targets": result.agent_targets,
+                "extensions": [
+                    resolution.to_dict()
+                    for resolution in result.extensions
+                ],
+                "selected_skills": [
+                    resolution.to_dict()
+                    for resolution in result.selected_skills
+                ],
                 "installed_packs": result.installed_packs,
                 "next_actions": result.next_actions,
                 **state_fields,
@@ -508,6 +485,14 @@ def _run_setup(options: argparse.Namespace) -> int:
                 "skills": [skill.__dict__ for skill in result.catalog.skills],
                 "warnings": result.catalog.warnings,
                 "packs": [_pack_to_dict(pack) for pack in result.packs],
+                "extensions": [
+                    resolution.to_dict()
+                    for resolution in extension_resolutions
+                ],
+                "selected_skills": [
+                    resolution.to_dict()
+                    for resolution in skill_resolutions
+                ],
                 **state_fields,
             }
         )
@@ -619,29 +604,20 @@ def _run_recipes(options: argparse.Namespace) -> int:
 
 
 def _run_goal(options: argparse.Namespace) -> int:
-    if options.goal_command == "bridge":
-        result = GoalHandoffBridge().create(
-            repository=options.repo,
-            handoff_path=options.handoff,
-            policy_path=options.policy,
-            output_path=options.output,
-        )
-        _print_json(result.to_dict())
-        return 0
-    if options.goal_command == "draft":
-        result = TicketContractDraftBuilder().create(
-            tickets_path=options.tickets,
-            repository=options.repo,
-            output_path=options.output,
-            force=options.force,
-        )
-        _print_json(result.__dict__)
-        return 0
     if options.goal_command == "preflight":
         _print_json(
             preview_execution(
+                options.contract, workflow_path=options.workflow
+            ).to_dict()
+        )
+        return 0
+    if options.goal_command == "approve":
+        _print_json(
+            approve_execution(
                 options.contract,
                 workflow_path=options.workflow,
+                approved_by=options.approved_by,
+                artifact_path=options.approval_artifact,
             ).to_dict()
         )
         return 0
@@ -650,9 +626,6 @@ def _run_goal(options: argparse.Namespace) -> int:
         result = GoalIntake(daemon_probe=client.ping).inspect(
             repository=options.repo,
             contract_path=options.contract,
-            tickets_path=options.tickets,
-            handoff_path=options.handoff,
-            task=options.task,
         )
         _print_json(result.to_dict())
         return 0
@@ -660,25 +633,16 @@ def _run_goal(options: argparse.Namespace) -> int:
         client = DaemonClient(_socket_path(options))
         submitted = client.submit(options.contract)
         terminal = {
-            "merge_ready",
-            "incompatible_engine",
-            "blocked",
-            "failed_cleanup",
-            "failed_acceptance",
-            "failed_harness",
-            "paused_resource",
-            "paused_deadline",
-            "paused_provider_quota",
+            "candidate",
+            "failed",
+            "interrupted",
         }
         status = submitted
         while status.status not in terminal:
             time.sleep(0.1)
             status = client.status(submitted.run_id)
-        if status.status == "incompatible_engine":
-            _print_json(status.__dict__)
-            return 1
         _print_json(client.report(submitted.run_id).to_dict())
-        return 0 if status.status == "merge_ready" else 1
+        return 0 if status.status == "candidate" else 1
 
     client = DaemonClient(_socket_path(options))
     if options.goal_command == "submit":
@@ -706,19 +670,18 @@ def _run_goal(options: argparse.Namespace) -> int:
 
 def _run_daemon(options: argparse.Namespace) -> int:
     if options.daemon_command == "serve":
-        daemon = AgentDaemon(
-            state_dir=options.state_dir,
-            agent=_agent_router(options),
-            socket_path=_socket_path(options),
-            max_workers=options.max_workers,
-            todo_workers=options.todo_workers,
-            image_poll_interval_seconds=options.image_poll_seconds,
+        assessment = DurableStateSetup().inspect(options.state_dir)
+        if assessment.format == StateFormat.INCOMPATIBLE_LEGACY:
+            raise DaemonError(
+                "incompatible_state",
+                "incompatible legacy Run state; no migration is available; review and reset "
+                "it with aiwb setup --repo <path> --state-dir <state-dir>",
+            )
+        if assessment.format == StateFormat.INCOMPATIBLE_CURRENT:
+            raise DaemonError("incompatible_state", INCOMPATIBLE_CURRENT_STATE_MESSAGE)
+        raise ValueError(
+            "no production Agent Harness Driver is installed; issue #56 owns Codex"
         )
-        try:
-            daemon.serve_forever()
-        except KeyboardInterrupt:
-            daemon.shutdown()
-        return 0
     if options.daemon_command == "status":
         socket_path = _socket_path(options)
         status = "ok" if DaemonClient(socket_path).ping() else "unavailable"
@@ -729,12 +692,7 @@ def _run_daemon(options: argparse.Namespace) -> int:
             state_dir=options.state_dir,
             socket_path=_socket_path(options),
             plist_path=options.plist,
-            codex_bin=options.codex_bin,
-            claude_bin=options.claude_bin,
-            claude_permission_mode=options.claude_permission_mode,
             max_workers=options.max_workers,
-            todo_workers=options.todo_workers,
-            image_poll_interval_seconds=options.image_poll_seconds,
             load=not options.no_load,
         )
         _print_json(result.__dict__)
@@ -767,16 +725,6 @@ def _add_control_options(parser: argparse.ArgumentParser) -> None:
         default=Path("~/.ai-workbench").expanduser(),
     )
     parser.add_argument("--socket", type=Path)
-
-
-def _role_skills(values: Sequence[str]) -> dict[str, Tuple[str, ...]]:
-    result = {}
-    for value in values:
-        role, separator, path = value.partition("=")
-        if not separator or not role or not path:
-            raise ValueError("role skills must use ROLE=PATH")
-        result.setdefault(role, []).append(path)
-    return {role: tuple(paths) for role, paths in result.items()}
 
 
 def _pack_skills(
@@ -832,18 +780,6 @@ def _pack_to_dict(pack) -> dict[str, object]:
         "setup_action": pack.setup_action,
         "profiles": [profile.__dict__ for profile in pack.profiles],
     }
-
-
-def _agent_router(options: argparse.Namespace) -> AgentRouter:
-    return AgentRouter(
-        {
-            "codex": CodexCliAdapter(options.codex_bin),
-            "claude-code": ClaudeCodeCliAdapter(
-                options.claude_bin,
-                permission_mode=options.claude_permission_mode,
-            ),
-        }
-    )
 
 
 def _socket_path(options: argparse.Namespace) -> Path:

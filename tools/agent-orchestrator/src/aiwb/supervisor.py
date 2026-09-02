@@ -34,18 +34,11 @@ class LaunchdService:
         state_dir: Path,
         socket_path: Path,
         plist_path: Optional[Path] = None,
-        codex_bin: str = "codex",
-        claude_bin: str = "claude",
-        claude_permission_mode: str = "auto",
         max_workers: int = 1,
-        todo_workers: int = 2,
-        image_poll_interval_seconds: float = 5.0,
         load: bool = True,
     ) -> LaunchdInstallResult:
         if (
             max_workers <= 0
-            or todo_workers <= 0
-            or image_poll_interval_seconds <= 0
         ):
             raise ValueError("worker counts must be positive")
         state_dir = Path(state_dir).expanduser().resolve()
@@ -76,18 +69,8 @@ class LaunchdService:
                 str(state_dir),
                 "--socket",
                 str(socket_path),
-                "--codex-bin",
-                codex_bin,
-                "--claude-bin",
-                claude_bin,
-                "--claude-permission-mode",
-                claude_permission_mode,
                 "--max-workers",
                 str(max_workers),
-                "--todo-workers",
-                str(todo_workers),
-                "--image-poll-seconds",
-                str(image_poll_interval_seconds),
             ],
             "RunAtLoad": True,
             "KeepAlive": True,

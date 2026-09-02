@@ -118,9 +118,44 @@ def test_project_local_skill_mirrors_match_the_bundled_sources() -> None:
     for name in (
         "ask-ai-workbench",
         "setup-ai-workbench",
-        "draft-aiwb-contract",
         "intake-aiwb-goal",
     ):
         bundled = TOOL_ROOT / "skills" / name / "SKILL.md"
         mirrored = repository / ".codex" / "skills" / name / "SKILL.md"
         assert mirrored.read_text(encoding="utf-8") == bundled.read_text(encoding="utf-8")
+
+
+def test_intake_skill_does_not_route_to_removed_ticket_or_handoff_commands() -> None:
+    content = (
+        TOOL_ROOT / "skills" / "intake-aiwb-goal" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+
+    assert "--tickets" not in content
+    assert "--handoff" not in content
+    assert "goal bridge" not in content
+
+
+def test_setup_skill_install_example_names_the_agent_target() -> None:
+    repository = TOOL_ROOT.parents[1]
+    expected = (
+        "aiwb setup --repo /path/to/repository --agent-target codex --apply \\\n"
+        "  --install-skill ask-ai-workbench"
+    )
+    for path in (
+        TOOL_ROOT / "skills" / "setup-ai-workbench" / "SKILL.md",
+        repository / ".codex" / "skills" / "setup-ai-workbench" / "SKILL.md",
+    ):
+        assert expected in path.read_text(encoding="utf-8")
+
+
+def test_setup_skill_documents_fail_closed_non_skill_extension_install() -> None:
+    repository = TOOL_ROOT.parents[1]
+    for path in (
+        TOOL_ROOT / "skills" / "setup-ai-workbench" / "SKILL.md",
+        repository / ".codex" / "skills" / "setup-ai-workbench" / "SKILL.md",
+    ):
+        content = path.read_text(encoding="utf-8")
+        assert "--install-extension" in content
+        assert "configuration.harness_probe" in content
+        assert "without a shell and with a bounded timeout" in content
+        assert "Setup fails before writing" in content

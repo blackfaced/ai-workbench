@@ -7,10 +7,9 @@ from pathlib import Path
 from typing import IO, Dict, Mapping, Optional, Sequence
 
 from .daemon import DaemonClient, DaemonError
-from .handoff_bridge import GoalHandoffBridge
 from .harness_setup import HarnessSetup, HarnessSetupRequest
 from .intake import GoalIntake
-from .runner import preview_execution
+from .runner import approve_execution, preview_execution
 
 
 _PROTOCOL_VERSION = "2025-06-18"
@@ -93,15 +92,6 @@ class McpServer:
                     "socket": str(self._socket_path),
                     "status": "ok" if self._client.ping() else "unavailable",
                 }
-            elif name == "aiwb_handoff_bridge":
-                value = GoalHandoffBridge().create(
-                    repository=Path(_string_argument(arguments, "repository")),
-                    handoff_path=Path(
-                        _string_argument(arguments, "handoff_path")
-                    ),
-                    policy_path=Path(_string_argument(arguments, "policy_path")),
-                    output_path=Path(_string_argument(arguments, "output_path")),
-                ).to_dict()
             elif name == "aiwb_harness_plan":
                 repository = _string_argument(arguments, "repository")
                 planning_mode = arguments.get("planning_mode", "python-l0")
@@ -116,64 +106,31 @@ class McpServer:
             elif name == "aiwb_goal_preflight":
                 contract_path = _string_argument(arguments, "contract_path")
                 workflow_path = arguments.get("workflow_path")
-                policy_path = arguments.get("policy_path")
-                if workflow_path is not None and policy_path is not None:
-                    raise ValueError(
-                        "preflight accepts only one workflow_path or policy_path"
-                    )
-                selected_path = (
-                    workflow_path if workflow_path is not None else policy_path
-                )
-                if selected_path is not None and (
-                    not isinstance(selected_path, str) or not selected_path
-                ):
-                    raise ValueError(
-                        "workflow_path or policy_path must be a non-empty string"
-                    )
                 value = preview_execution(
                     Path(contract_path),
-                    workflow_path=(
-                        Path(selected_path)
-                        if isinstance(selected_path, str)
-                        else None
-                    ),
+                    workflow_path=Path(workflow_path)
+                    if isinstance(workflow_path, str)
+                    else None,
+                ).to_dict()
+            elif name == "aiwb_goal_approve":
+                contract_path = _string_argument(arguments, "contract_path")
+                approved_by = _string_argument(arguments, "approved_by")
+                artifact_path = _string_argument(arguments, "approval_artifact")
+                workflow_path = arguments.get("workflow_path")
+                value = approve_execution(
+                    Path(contract_path),
+                    approved_by=approved_by,
+                    artifact_path=Path(artifact_path),
+                    workflow_path=Path(workflow_path)
+                    if isinstance(workflow_path, str)
+                    else None,
                 ).to_dict()
             elif name == "aiwb_goal_intake":
                 repository = _string_argument(arguments, "repository")
-                contract_path = arguments.get("contract_path")
-                tickets_path = arguments.get("tickets_path")
-                handoff_path = arguments.get("handoff_path")
-                sources = tuple(
-                    value
-                    for value in (contract_path, tickets_path, handoff_path)
-                    if value is not None
-                )
-                if len(sources) != 1:
-                    raise ValueError(
-                        "intake requires exactly one contract_path, tickets_path, "
-                        "or handoff_path"
-                    )
-                task = arguments.get("task", "")
-                if not isinstance(task, str):
-                    raise ValueError("task must be a string")
+                contract_path = _string_argument(arguments, "contract_path")
                 value = GoalIntake(daemon_probe=self._client.ping).inspect(
                     repository=Path(repository),
-                    contract_path=(
-                        Path(contract_path)
-                        if isinstance(contract_path, str) and contract_path
-                        else None
-                    ),
-                    tickets_path=(
-                        Path(tickets_path)
-                        if isinstance(tickets_path, str) and tickets_path
-                        else None
-                    ),
-                    handoff_path=(
-                        Path(handoff_path)
-                        if isinstance(handoff_path, str) and handoff_path
-                        else None
-                    ),
-                    task=task,
+                    contract_path=Path(contract_path),
                 ).to_dict()
             elif name == "aiwb_goal_submit":
                 contract_path = _string_argument(arguments, "contract_path")
@@ -238,29 +195,6 @@ def _tools():
             },
         },
         {
-            "name": "aiwb_handoff_bridge",
-            "description": (
-                "Create an external unapproved Contract or non-executable "
-                "policy draft from a planning handoff and reviewed policy."
-            ),
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "repository": string_argument,
-                    "handoff_path": string_argument,
-                    "policy_path": string_argument,
-                    "output_path": string_argument,
-                },
-                "required": [
-                    "repository",
-                    "handoff_path",
-                    "policy_path",
-                    "output_path",
-                ],
-                "additionalProperties": False,
-            },
-        },
-        {
             "name": "aiwb_harness_plan",
             "description": (
                 "Inspect a repository and return a read-only Harness assessment "
@@ -282,19 +216,37 @@ def _tools():
         {
             "name": "aiwb_goal_intake",
             "description": (
-                "Inspect accepted tickets, a planning handoff, or a draft Contract "
-                "and recommend the cheapest viable path without taking action."
+                "Inspect one Contract for Admission readiness without taking action."
             ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "repository": string_argument,
                     "contract_path": string_argument,
-                    "tickets_path": string_argument,
-                    "handoff_path": string_argument,
-                    "task": {"type": "string"},
                 },
-                "required": ["repository"],
+                "required": ["repository", "contract_path"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "aiwb_goal_approve",
+            "description": (
+                "Write an external owner Approval artifact for the exact "
+                "resolved execution returned by preflight."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "contract_path": string_argument,
+                    "workflow_path": string_argument,
+                    "approved_by": string_argument,
+                    "approval_artifact": string_argument,
+                },
+                "required": [
+                    "contract_path",
+                    "approved_by",
+                    "approval_artifact",
+                ],
                 "additionalProperties": False,
             },
         },
@@ -310,7 +262,6 @@ def _tools():
                 "properties": {
                     "contract_path": string_argument,
                     "workflow_path": string_argument,
-                    "policy_path": string_argument,
                 },
                 "required": ["contract_path"],
                 "additionalProperties": False,
@@ -329,8 +280,8 @@ def _tools():
         {
             "name": "aiwb_goal_resume",
             "description": (
-                "Resume a Run paused at a durable resource, deadline, or "
-                "provider-quota checkpoint without changing provider or model."
+                "Queue a fresh Agent Harness Attempt for an interrupted or failed Run; "
+                "it never resumes a prior Harness session."
             ),
             "inputSchema": {
                 "type": "object",
