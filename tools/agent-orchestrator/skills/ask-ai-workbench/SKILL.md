@@ -1,5 +1,6 @@
 ---
 name: ask-ai-workbench
+version: 1
 description: Recommend up to two optional AI Workbench Skills for a task without taking action. Use when the user asks which optional Skill or flow may help.
 ---
 

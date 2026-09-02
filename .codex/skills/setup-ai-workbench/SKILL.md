@@ -1,5 +1,6 @@
 ---
 name: setup-ai-workbench
+version: 1
 description: Inspect and explicitly configure AI Workbench for one repository. Use when the user asks to onboard a repository, discover optional Skills, or create a draft workflow policy.
 ---
 
@@ -93,28 +94,34 @@ written and ask for explicit confirmation. Only then run:
 aiwb setup --repo /path/to/repository --apply
 ```
 
-To add reviewed project-local role guidance, include one or more explicit
-paths, for example:
+To install an explicitly selected bundled or repository-local Harness Extension,
+include its Skill name and exact Agent target, for example:
 
 ```bash
-aiwb setup --repo /path/to/repository --apply \
-  --role-skill implementer=.agents/skills/focused/SKILL.md
+aiwb setup --repo /path/to/repository --agent-target codex --apply \
+  --install-skill ask-ai-workbench
 ```
 
-The selected Skill must already exist under the repository. Do not download,
+Resolve and display the selected Extension before applying it. Do not download,
 run, link, or modify global Skills/configuration on the user's behalf.
-
-To copy one bundled AI Workbench Skill into an explicitly selected
-project-local Agent target, show the exact destination and require confirmation
-before using `--apply`:
-
-```bash
-aiwb setup --repo /path/to/repository --agent-target codex \
-  --install-skill ask-ai-workbench --apply
-```
 
 This writes only under the repository's `.codex/skills/` or `.claude/skills/`
 directory. It never writes to user-global Agent configuration.
+
+For an MCP, plugin, hook, or command, select one repository-local descriptor
+and its exact Agent target:
+
+```bash
+aiwb setup --repo /path/to/repository --agent-target codex --apply \
+  --install-extension /path/to/repository/extensions/focused-mcp.yaml
+```
+
+The descriptor must name a repository-local executable and an exact native
+Harness load/health command under `configuration.harness_probe`. Setup runs the
+command without a shell and with a bounded timeout. Apply succeeds only after
+that probe confirms the selected Harness can load the Extension; if the probe
+is unavailable or rejects it, Setup fails before writing. Do not treat
+descriptor metadata or an executable bit alone as proof of availability.
 
 ## Optional packs
 

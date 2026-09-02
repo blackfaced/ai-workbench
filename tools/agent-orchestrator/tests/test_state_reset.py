@@ -69,6 +69,24 @@ def test_current_marker_requires_complete_run_ledger_schema() -> None:
         assert assessment.resettable is False
 
 
+def test_explicit_reset_accepts_a_previous_run_ledger_schema() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        state_dir = Path(directory) / "state"
+        state_dir.mkdir()
+        database = state_dir / "run-ledger.db"
+        with sqlite3.connect(database) as connection:
+            connection.execute(
+                "CREATE TABLE run_ledger_schema (singleton INTEGER PRIMARY KEY, schema_version INTEGER NOT NULL)"
+            )
+            connection.execute("INSERT INTO run_ledger_schema VALUES (1, 1)")
+
+        result = DurableStateSetup().reset(state_dir, confirmed=True)
+
+        assert result.changed is True
+        assert result.assessment.format == "missing"
+        assert not database.exists()
+
+
 def test_confirmed_reset_removes_only_legacy_run_owned_state_and_is_idempotent() -> None:
     with tempfile.TemporaryDirectory() as directory:
         state_dir = Path(directory) / "state"

@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 
 RUN_LEDGER_SCHEMA_TABLE = "run_ledger_schema"
-RUN_LEDGER_SCHEMA_VERSION = 1
+RUN_LEDGER_SCHEMA_VERSION = 5
 INCOMPATIBLE_CURRENT_STATE_MESSAGE = (
     "incompatible current RunLedger state; preserve it for diagnosis; "
     "the explicit legacy reset does not apply"
@@ -24,11 +24,14 @@ _CURRENT_RUN_LEDGER_TABLES = frozenset(
         RUN_LEDGER_SCHEMA_TABLE,
         "execution_snapshots",
         "runs",
-        "todos",
         "run_queue",
         "idempotency_keys",
         "run_leases",
         "run_transitions",
+        "attempts",
+        "activity_events",
+        "verification_evidence",
+        "run_checkpoints",
     }
 )
 _CURRENT_RUN_LEDGER_COLUMNS = {
@@ -40,61 +43,14 @@ _CURRENT_RUN_LEDGER_COLUMNS = {
         {
             "run_id",
             "snapshot_id",
-            "contract_hash",
             "goal_id",
             "status",
             "error",
-            "lease_generation",
-            "active_stage",
             "repository",
             "worktree",
             "branch",
-            "red_commit",
-            "code_commit",
-            "sessions_json",
-            "attempts_json",
-            "evidence_json",
-            "stop_json",
-            "resource_window_started_at",
-            "resource_attempt_baseline",
-            "resource_harness_baseline",
-            "resource_token_baseline",
-            "execution_envelope_json",
             "candidate_commit",
-            "candidate_verifier_completed",
-            "image_profile",
-            "image_operation_id",
-            "image_status",
-            "image_digest",
-            "image_artifacts_json",
-            "image_artifact_refs_json",
-            "published_remote",
-            "published_ref",
-            "published_commit",
-            "last_error",
-            "created_at",
-            "updated_at",
-        }
-    ),
-    "todos": frozenset(
-        {
-            "run_id",
-            "todo_id",
-            "title",
-            "status",
-            "active_stage",
-            "branch",
-            "worktree",
-            "base_commit",
-            "red_commit",
-            "code_commit",
-            "sessions_json",
-            "attempts_json",
-            "evidence_json",
-            "repair_commits_json",
-            "resume_status",
-            "stop_json",
-            "last_error",
+            "lease_generation",
             "created_at",
             "updated_at",
         }
@@ -115,6 +71,10 @@ _CURRENT_RUN_LEDGER_COLUMNS = {
             "recorded_at",
         }
     ),
+    "attempts": frozenset({"attempt_id", "run_id", "status", "outcome", "summary", "session_id", "started_at", "finished_at"}),
+    "activity_events": frozenset({"event_id", "attempt_id", "kind", "summary", "session_id", "usage_tokens", "recorded_at"}),
+    "verification_evidence": frozenset({"evidence_id", "run_id", "attempt_id", "candidate_commit", "stage", "command_json", "returncode", "stdout", "stderr", "duration_seconds", "stdout_ref_json", "stderr_ref_json", "artifacts_json", "environment", "artifact_refs_json", "recorded_at"}),
+    "run_checkpoints": frozenset({"run_id", "stage", "attempt_id", "candidate_commit", "operation_id", "publish_result_json", "updated_at"}),
 }
 _RESET_MARKER = ".legacy-state-reset.json"
 _RESET_MARKER_TEMPORARY = ".legacy-state-reset.json.tmp"
@@ -202,6 +162,14 @@ class DurableStateSetup:
                     format=StateFormat.CURRENT,
                     state_dir=str(root),
                     current_database=str(run_ledger_database),
+                )
+            if _is_legacy_run_ledger(run_ledger_database):
+                return StateAssessment(
+                    format=StateFormat.INCOMPATIBLE_LEGACY,
+                    state_dir=str(root),
+                    legacy_databases=(str(run_ledger_database),),
+                    resettable=True,
+                    detail="legacy RunLedger state has no supported migration",
                 )
             return StateAssessment(
                 format=StateFormat.INCOMPATIBLE_CURRENT,
@@ -382,6 +350,34 @@ def _has_current_run_ledger_schema(connection: sqlite3.Connection) -> bool:
     return rows == [(1, RUN_LEDGER_SCHEMA_VERSION)] and integrity == [("ok",)]
 
 
+def _is_legacy_run_ledger(database: Path) -> bool:
+    try:
+        with tempfile.TemporaryDirectory(prefix="aiwb-run-ledger-inspect-") as directory:
+            snapshot = Path(directory) / database.name
+            shutil.copyfile(database, snapshot)
+            for suffix in ("-journal", "-wal"):
+                sidecar = Path(f"{database}{suffix}")
+                if sidecar.exists():
+                    shutil.copyfile(sidecar, Path(f"{snapshot}{suffix}"))
+            connection = sqlite3.connect(snapshot)
+            try:
+                rows = connection.execute(
+                    f"SELECT singleton, schema_version FROM {RUN_LEDGER_SCHEMA_TABLE}"
+                ).fetchall()
+                integrity = connection.execute("PRAGMA quick_check").fetchall()
+            finally:
+                connection.close()
+    except sqlite3.DatabaseError:
+        return False
+    return (
+        len(rows) == 1
+        and rows[0][0] == 1
+        and isinstance(rows[0][1], int)
+        and rows[0][1] < RUN_LEDGER_SCHEMA_VERSION
+        and integrity == [("ok",)]
+    )
+
+
 def _managed_legacy_paths(root: Path, state_database: Path) -> Tuple[str, ...]:
     run_ids = _legacy_run_ids(state_database) if state_database.exists() else ()
     paths = []
@@ -483,7 +479,7 @@ def _load_reset_marker(marker: Path) -> Mapping[str, object]:
 
 def _validated_database_path(root: Path, value: str) -> Path:
     path = Path(os.path.abspath(str(Path(value).expanduser())))
-    if path.parent != root or path.name not in {"daemon.db", "state.db"}:
+    if path.parent != root or path.name not in {"daemon.db", "state.db", "run-ledger.db"}:
         raise StateResetError("reset record contains an unsafe database path")
     return path
 
