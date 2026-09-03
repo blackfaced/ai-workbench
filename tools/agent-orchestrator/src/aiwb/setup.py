@@ -9,6 +9,7 @@ from .harness_setup import (
     HarnessSetup,
     HarnessSetupRequest,
 )
+from .profile_setup import HarnessProfileResolution, HarnessProfileSelections
 from .skills import (
     SkillCatalog,
     SkillCatalogSnapshot,
@@ -35,6 +36,7 @@ class SetupApplyResult:
     agent_targets: Tuple[str, ...]
     installed_packs: Tuple[str, ...] = ()
     next_actions: Tuple[str, ...] = ()
+    profile: Optional[HarnessProfileResolution] = None
 
 
 class WorkbenchSetup:
@@ -80,11 +82,13 @@ class WorkbenchSetup:
         install_skills: Tuple[str, ...] = (),
         pack_skills: Optional[Mapping[str, Sequence[str]]] = None,
         pack_profiles: Optional[Mapping[str, Sequence[str]]] = None,
+        profile_selections: Optional[HarnessProfileSelections] = None,
     ) -> SetupApplyResult:
         plan = self._setup.plan(
             HarnessSetupRequest(
                 repository=repository,
                 agent_targets=agent_targets,
+                profile_selections=profile_selections,
             )
         )
         candidate = self._setup.apply(
@@ -103,4 +107,5 @@ class WorkbenchSetup:
             agent_targets=candidate.agent_targets,
             installed_packs=candidate.installed_packs,
             next_actions=candidate.next_actions,
+            profile=candidate.profile,
         )

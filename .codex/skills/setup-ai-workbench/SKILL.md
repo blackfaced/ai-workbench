@@ -123,6 +123,32 @@ that probe confirms the selected Harness can load the Extension; if the probe
 is unavailable or rejects it, Setup fails before writing. Do not treat
 descriptor metadata or an executable bit alone as proof of availability.
 
+## Resolve the Agent Harness Profile
+
+Setup resolves one exact Agent Harness Profile against the live Harness model
+catalog without starting an Attempt. Name the exact Model; effort defaults to
+the catalog's default reasoning level and may be pinned explicitly:
+
+```bash
+aiwb setup --repo /path/to/repository --agent-target codex \
+  --harness-model gpt-5.5
+```
+
+The read-only output shows the resolved Profile, the exact reasoning effort,
+sandbox permission (`--harness-permission`), token resource limit
+(`--harness-tokens`), named Extensions (`--harness-extension skill:name@version`),
+Trace Coverage (`--harness-trace-coverage`), the catalog source with its
+observation time and digest, any exposed internal-role Models, and the
+`profile_digest` locking all of it. Unsupported Models, efforts, or Extensions
+fail closed; hidden internal identifiers are never selectable as the primary
+Model. Any `--harness-*` flag requires `--harness-model`.
+
+After the owner confirms the preview, an explicit `--apply` persists the
+resolved Profile to the repository-local `.ai-workbench/agent-harness.yaml`.
+Apply is idempotent for an unchanged resolved Profile; any Model, effort,
+permission, Extension, or catalog drift requires a new explicit setup. Setup
+never edits user-global Agent configuration.
+
 ## Optional packs
 
 Offer packs only after inspection and only by explicit user choice. `matt` is

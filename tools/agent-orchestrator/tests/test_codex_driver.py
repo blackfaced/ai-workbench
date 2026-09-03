@@ -122,6 +122,8 @@ def test_validate_rejects_unsupported_surfaces() -> None:
     with tempfile.TemporaryDirectory() as directory:
         driver = CodexDriver(str(_fake_codex(Path(directory))))
         driver.validate(_profile())
+        for effort in ("minimal", "low", "medium", "high", "xhigh", "max", "ultra"):
+            driver.validate(_profile(effort=effort))
         unsupported = [
             {"driver": "claude-code"},
             {"permissions": ("network",)},
