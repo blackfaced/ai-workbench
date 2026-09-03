@@ -24,6 +24,7 @@ from .harness_setup import (
 )
 from .intake import GoalIntake
 from .kubernetes import KubernetesJanitor
+from .profile_setup import HarnessProfileSelections
 from .project import (
     ProjectConfigError,
     ProjectInitError,
@@ -101,6 +102,15 @@ def _build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--install-pack", action="append", default=[])
     setup.add_argument("--pack-skill", action="append", default=[])
     setup.add_argument("--pack-profile", action="append", default=[])
+    setup.add_argument("--harness-model")
+    setup.add_argument("--harness-effort")
+    setup.add_argument(
+        "--harness-permission",
+        choices=("read-only", "workspace-write", "danger-full-access"),
+    )
+    setup.add_argument("--harness-tokens", type=int)
+    setup.add_argument("--harness-extension", action="append", default=[])
+    setup.add_argument("--harness-trace-coverage", action="append", default=[])
     setup.add_argument("--planning-mode", choices=("python-l0",))
     setup.add_argument("--approve-plan", action="store_true")
     setup.add_argument("--approved-by")
@@ -328,11 +338,41 @@ def _run_setup(options: argparse.Namespace) -> int:
 
     setup = HarnessSetup()
     targets = tuple(options.agent_target)
+    harness_flags = (
+        options.harness_effort,
+        options.harness_permission,
+        options.harness_tokens,
+        options.harness_extension,
+        options.harness_trace_coverage,
+    )
+    if any(harness_flags) and not options.harness_model:
+        raise ValueError("Harness Profile resolution requires --harness-model")
+    profile_selections = None
+    if options.harness_model:
+        profile_selections = HarnessProfileSelections(
+            model=options.harness_model,
+            effort=options.harness_effort or "",
+            permissions=(
+                (options.harness_permission,)
+                if options.harness_permission
+                else ("workspace-write",)
+            ),
+            extensions=tuple(options.harness_extension),
+            trace_coverage=(
+                tuple(options.harness_trace_coverage) or ("activity",)
+            ),
+            resource_limits=(
+                {"tokens": options.harness_tokens}
+                if options.harness_tokens
+                else {"tokens": 100000}
+            ),
+        )
     plan = setup.plan(
         HarnessSetupRequest(
             repository=options.repo,
             agent_targets=targets,
             planning_mode=options.planning_mode or "",
+            profile_selections=profile_selections,
         )
     )
     if options.planning_mode:
@@ -472,10 +512,14 @@ def _run_setup(options: argparse.Namespace) -> int:
                 ],
                 "installed_packs": result.installed_packs,
                 "next_actions": result.next_actions,
+                "harness_profile": (
+                    result.profile.to_dict() if result.profile is not None else None
+                ),
                 **state_fields,
             }
         )
     else:
+        profile_resolution = setup.resolve_profile(plan.request)
         result = plan.assessment
         _print_json(
             {
@@ -494,6 +538,11 @@ def _run_setup(options: argparse.Namespace) -> int:
                     resolution.to_dict()
                     for resolution in skill_resolutions
                 ],
+                "harness_profile": (
+                    profile_resolution.to_dict()
+                    if profile_resolution is not None
+                    else None
+                ),
                 **state_fields,
             }
         )

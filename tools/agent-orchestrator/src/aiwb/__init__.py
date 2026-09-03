@@ -82,6 +82,12 @@ from .recipe_catalog import (
     RecipeRefreshPreview,
     RecipeResolution,
 )
+from .profile_setup import (
+    HarnessExtensionDigest,
+    HarnessModelCatalog,
+    HarnessProfileResolution,
+    HarnessProfileSelections,
+)
 from .setup import SetupApplyResult, SetupInspection, WorkbenchSetup
 from .skills import (
     SkillCatalog,
@@ -166,12 +172,16 @@ __all__ = [
     "HarnessApplyResult",
     "HarnessAssessment",
     "HarnessCandidate",
+    "HarnessExtensionDigest",
     "HarnessExtensionResolution",
     "HarnessPlan",
     "HarnessFileProjection",
+    "HarnessModelCatalog",
     "HarnessProbeCommand",
     "HarnessProbeEvidence",
     "HarnessProfile",
+    "HarnessProfileResolution",
+    "HarnessProfileSelections",
     "HarnessRequest",
     "HarnessSetup",
     "HarnessSetupRequest",
