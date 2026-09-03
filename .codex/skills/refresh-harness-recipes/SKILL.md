@@ -1,5 +1,6 @@
 ---
 name: refresh-harness-recipes
+version: 1
 description: Audit or preview a source-backed public Harness Recipe Catalog refresh without applying upgrades.
 ---
 

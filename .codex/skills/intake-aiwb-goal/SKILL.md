@@ -1,57 +1,32 @@
 ---
 name: intake-aiwb-goal
-description: Inspect ticket or draft handoff readiness and the cheapest viable path, choosing the interactive Matt flow or an AI Workbench unattended Run. Advisory only.
+version: 1
+description: Inspect one Agent Harness Contract draft and report approval or submission blockers. Advisory only.
 ---
 
 # Intake AI Workbench Goal
 
-Use this Skill only at the handoff from accepted tickets, a generic planning
-handoff, or a draft Contract. Do not replace `$ask-matt`, grilling,
-specification, ticket decomposition, TDD, architecture review, or small
-interactive implementation.
+Use this Skill only to inspect an existing Agent Harness Contract draft. Do not
+replace planning, specification, TDD, architecture review, or small interactive
+implementation.
 
 ## Inspect
 
-Require a repository plus exactly one accepted tickets file, planning handoff,
-or Contract draft. Prefer the shared MCP tool:
+Require a repository and one Contract draft. Prefer the shared MCP tool:
 
-- call `aiwb_goal_intake` with `repository` and exactly one of `tickets_path`,
-  `handoff_path`, or `contract_path`;
-- optionally include a short task statement when durability or overnight intent
-  is not visible in the artifact.
+- call `aiwb_goal_intake` with `repository` and `contract_path`.
 
 The equivalent local CLI commands are:
 
 ```bash
-aiwb goal intake --repo /path/to/project --tickets /path/to/tickets.md
-aiwb goal intake --repo /path/to/project --handoff /path/to/handoff.json
 aiwb goal intake --repo /path/to/project --contract /path/to/contract.yaml
 ```
 
-Pass the handoff to the shared interface. Do not reimplement schema validation,
-normalization, readiness blockers, or cheapest-path selection in this Skill.
-
-## Create the next safe artifact
-
-After planning intake, use the bridge only with an explicit reviewed policy and
-caller-selected output outside the target repository:
-
-```bash
-aiwb goal bridge --repo /path/to/project \
-  --handoff /path/to/handoff.json \
-  --policy /path/to/reviewed-policy.yaml \
-  --output /path/outside/project/next-artifact.yaml
-```
-
-The equivalent MCP tool is `aiwb_handoff_bridge`. A fully mapped handoff creates
-an unapproved Contract and side-effect-free preflight result. Missing approved
-command mappings or `allowed_paths` creates only a non-executable policy draft.
-Do not invent commands, paths, approvals, provider changes, or placeholders.
+Pass the Contract to the shared interface. Do not reimplement schema validation,
+readiness blockers, or approval digest generation in this Skill.
 
 ## Interpret
 
-- `interactive` / `interactive_matt`: use the installed `$ask-matt` router, or
-  set up the reviewed Matt engineering profile if it is unavailable.
 - `blocked`: report every blocker and the exact `next_action`; do not fill in
   acceptance, permissions, provider, resources, Harness, or environment
   decisions yourself.
