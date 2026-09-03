@@ -21,3 +21,16 @@ isolated recovery copy. Normal crash WAL files remain valid recovery input;
 corrupt, incomplete, and unsupported-version ledgers are refused without
 modification. `--reset-incompatible-state` remains strictly a legacy-state
 operation and cannot delete a current RunLedger.
+
+### CodexDriver executes real Attempts
+
+`aiwb daemon serve` now starts with the production `CodexDriver` instead of
+refusing to run. One admitted Run executes one Codex Attempt through
+`codex exec --json` inside the admitted AIWB worktree, streaming bounded
+Activity Events before Codex exits. The Driver validates the frozen Agent
+Harness Profile and fails closed on unsupported sandbox permissions, reasoning
+effort, capabilities, tools, paths, resource limits, native configuration,
+trace coverage, or non-skill Harness Extensions. An admitted `tokens` resource
+limit terminates owned execution with a typed `token budget exhausted` outcome.
+Quota, authentication, timeout, transport, and invalid-output failures are
+classified as typed terminal Attempt outcomes.
