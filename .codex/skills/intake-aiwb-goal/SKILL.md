@@ -29,11 +29,11 @@ readiness blockers, or approval digest generation in this Skill.
 
 - `blocked`: report every blocker and the exact `next_action`; do not fill in
   acceptance, permissions, provider, resources, Harness, or environment
-  decisions yourself.
-- `ready_for_approval`: show the execution envelope and ask for one explicit
-  human Contract approval.
-- `ready_to_submit`: show the execution envelope and ask for explicit
-  submission. Do not submit merely because intake is ready.
+  decisions yourself. When `approval_required` is true, ask for one explicit
+  human Contract approval before anything else.
+- `ready`: show the execution envelope and, when `submission_required` is
+  true, ask for explicit submission. Do not submit merely because intake is
+  ready.
 
 Keep the provider and model fixed. Never suggest production access, automatic
 fallback, permission expansion, test weakening, or a replacement Run.
