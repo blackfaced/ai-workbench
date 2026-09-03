@@ -77,7 +77,6 @@ class WorkbenchSetup:
         repository: Path,
         confirmed: bool,
         agent_targets: Tuple[str, ...] = (),
-        role_skills: Optional[Mapping[str, Sequence[str]]] = None,
         install_skills: Tuple[str, ...] = (),
         pack_skills: Optional[Mapping[str, Sequence[str]]] = None,
         pack_profiles: Optional[Mapping[str, Sequence[str]]] = None,
@@ -92,7 +91,6 @@ class WorkbenchSetup:
             HarnessApplyRequest(
                 plan=plan,
                 confirmed=confirmed,
-                role_skills=role_skills,
                 install_skills=install_skills,
                 pack_skills=pack_skills,
                 pack_profiles=pack_profiles,
