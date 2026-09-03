@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Optional, Sequence, Tuple
 
+from .codex_driver import CodexDriver
 from .daemon import AgentDaemon, DaemonClient, DaemonError
 from .github_pipeline import (
     GhApiGitHubSource,
@@ -679,9 +680,14 @@ def _run_daemon(options: argparse.Namespace) -> int:
             )
         if assessment.format == StateFormat.INCOMPATIBLE_CURRENT:
             raise DaemonError("incompatible_state", INCOMPATIBLE_CURRENT_STATE_MESSAGE)
-        raise ValueError(
-            "no production Agent Harness Driver is installed; issue #56 owns Codex"
+        agent_daemon = AgentDaemon(
+            options.state_dir,
+            CodexDriver(),
+            socket_path=_socket_path(options),
+            max_workers=options.max_workers,
         )
+        agent_daemon.serve_forever()
+        return 0
     if options.daemon_command == "status":
         socket_path = _socket_path(options)
         status = "ok" if DaemonClient(socket_path).ping() else "unavailable"
