@@ -15,6 +15,7 @@ from .browser import (
     BrowserDiagnosticResult,
     McpBrowserDiagnosticAdapter,
 )
+from .codex_driver import CodexDriver
 from .daemon import AgentDaemon, DaemonClient, DaemonError, RunStatus
 from .evidence import (
     EvidenceError,
@@ -136,6 +137,7 @@ __all__ = [
     "BrowserDiagnosticRequest",
     "BrowserDiagnosticResult",
     "CodeStructureEvidence",
+    "CodexDriver",
     "ExecutionManifest",
     "ExecutionSnapshot",
     "LeaseConflictError",
