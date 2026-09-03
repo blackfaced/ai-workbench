@@ -9,9 +9,13 @@ lease-fenced transitions and Evidence references.
 only agent execution seam. A Driver must validate the frozen
 `AgentHarnessProfile` before external execution and fail closed for unsupported
 driver, model configuration, permissions, capabilities, extensions, paths,
-tools, resource limits or trace coverage. This repository ships a strict fake
-Driver for behavioral tests. A production Codex Driver is intentionally not
-included; it belongs to issue #56.
+tools, resource limits or trace coverage. This repository ships `CodexDriver`,
+which executes one Codex Attempt through the native `codex exec --json` JSONL
+surface inside the admitted worktree, streaming bounded Activity Events before
+Codex exits and classifying terminal outcomes. `CodexDriver` supports only
+skill Harness Extensions, fails closed otherwise, and enforces the admitted
+token resource limit by terminating owned execution. A strict fake Driver
+remains beside the behavioral tests.
 
 An `AttemptOutcome.completed` moves a Run only to verification. Verification
 uses the admitted project policy and a frozen command or existing local/Kubernetes
