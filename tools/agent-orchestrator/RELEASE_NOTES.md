@@ -34,3 +34,14 @@ trace coverage, or non-skill Harness Extensions. An admitted `tokens` resource
 limit terminates owned execution with a typed `token budget exhausted` outcome.
 Quota, authentication, timeout, transport, and invalid-output failures are
 classified as typed terminal Attempt outcomes.
+
+### RunLedger rejects illegal Run and Attempt transitions
+
+The RunLedger now enforces a minimal explicit Run transition table at its
+mutation authority: `queued`, `attempting`, `verifying`, the terminal
+`candidate`/`failed`/`interrupted` states, and `retry` back to `queued` are the
+only edges. Terminal Runs are immutable — a late `fail` or checkpoint clear
+against a finished Run is rejected with no durable partial effect. An Attempt
+can only start while its Run is `queued` or `attempting`, and starting the
+first Attempt moves an unclaimed Run to `attempting`. Activity Events remain
+rejected before Attempt start and after the terminal Attempt outcome.

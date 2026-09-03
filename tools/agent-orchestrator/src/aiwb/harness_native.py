@@ -591,6 +591,21 @@ class RunLedger(Protocol):
     def projection(self, run_id: str) -> RunReport: ...
 
 
+_TERMINAL_RUN_STATUSES = frozenset({"candidate", "failed", "interrupted"})
+
+# The minimal allowed Run transition table. Terminal Runs are immutable; retry
+# is the only way back to queued. Attempt transitions stay running -> terminal
+# and are enforced at each Attempt mutation site.
+_RUN_TRANSITIONS = {
+    "queued": frozenset({"attempting", "failed"}),
+    "attempting": frozenset({"verifying", "failed", "interrupted"}),
+    "verifying": frozenset({"candidate", "failed"}),
+    "interrupted": frozenset({"queued"}),
+    "failed": frozenset({"queued"}),
+    "candidate": frozenset(),
+}
+
+
 class SQLiteRunLedger:
     """The sole durable authority for Runs, Attempts, Activity and Evidence."""
 
@@ -766,7 +781,14 @@ class SQLiteRunLedger:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._guard_run_in(connection, lease, run_id)
+            run = connection.execute("SELECT status FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+            if run is None:
+                raise KeyError(f"unknown Run: {run_id}")
+            if run["status"] not in {"queued", "attempting"}:
+                raise RuntimeError(f"Attempt cannot start while Run is {run['status']}")
             connection.execute("UPDATE runs SET worktree = ?, branch = ?, error = '', updated_at = ? WHERE run_id = ?", (str(worktree), branch, _now(), run_id))
+            if run["status"] == "queued":
+                self._update_in(connection, run_id, lease, status="attempting")
             connection.execute("INSERT INTO attempts (attempt_id, run_id, status, started_at) VALUES (?, ?, 'running', ?)", (attempt_id, run_id, _now()))
         return attempt_id
 
@@ -839,6 +861,11 @@ class SQLiteRunLedger:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             self._guard_run_in(connection, lease, run_id)
+            run = connection.execute("SELECT status FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+            if run is None:
+                raise KeyError(f"unknown Run: {run_id}")
+            if run["status"] in _TERMINAL_RUN_STATUSES:
+                raise RuntimeError(f"Run checkpoint is immutable while Run is {run['status']}")
             connection.execute(
                 "UPDATE run_checkpoints SET stage = '', attempt_id = '', candidate_commit = '', operation_id = '', publish_result_json = '{}', updated_at = ? WHERE run_id = ?",
                 (_now(), run_id),
@@ -989,10 +1016,19 @@ class SQLiteRunLedger:
         values["updated_at"] = _now()
         assignments = ", ".join(f"{key} = ?" for key in values)
         previous = connection.execute("SELECT status FROM runs WHERE run_id = ?", (run_id,)).fetchone()
+        if previous is not None and "status" in values:
+            if previous["status"] != values["status"]:
+                allowed = _RUN_TRANSITIONS.get(previous["status"], frozenset())
+                if values["status"] not in allowed:
+                    raise RuntimeError(
+                        f"invalid Run transition: {previous['status']} -> {values['status']}"
+                    )
+            elif previous["status"] in _TERMINAL_RUN_STATUSES:
+                raise RuntimeError(f"Run is already terminal: {previous['status']}")
         connection.execute(f"UPDATE runs SET {assignments} WHERE run_id = ?", (*values.values(), run_id))
         if previous is not None and "status" in values and previous["status"] != values["status"]:
             connection.execute("INSERT INTO run_transitions (run_id, generation, from_status, to_status, error, recorded_at) VALUES (?, ?, ?, ?, ?, ?)", (run_id, lease.generation if lease else 0, previous["status"], values["status"], str(values.get("error", "")), _now()))
-        if values.get("status") in {"candidate", "failed", "interrupted"}:
+        if values.get("status") in _TERMINAL_RUN_STATUSES:
             connection.execute("DELETE FROM run_queue WHERE run_id = ?", (run_id,))
 
     def _guard(self, lease: Optional[RunLease]) -> None:
