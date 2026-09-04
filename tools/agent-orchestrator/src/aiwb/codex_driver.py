@@ -25,7 +25,9 @@ from .agent_harness import (
 _SUPPORTED_SANDBOX_MODES = frozenset(
     ("read-only", "workspace-write", "danger-full-access")
 )
-_SUPPORTED_EFFORTS = frozenset(("minimal", "low", "medium", "high", "xhigh"))
+_SUPPORTED_EFFORTS = frozenset(
+    ("minimal", "low", "medium", "high", "xhigh", "max", "ultra")
+)
 _SUPPORTED_CAPABILITIES = frozenset(("git",))
 _SUPPORTED_TOOLS = frozenset(("shell", "edit"))
 _SUPPORTED_ALLOWED_PATHS = (".",)

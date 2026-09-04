@@ -34,3 +34,19 @@ trace coverage, or non-skill Harness Extensions. An admitted `tokens` resource
 limit terminates owned execution with a typed `token budget exhausted` outcome.
 Quota, authentication, timeout, transport, and invalid-output failures are
 classified as typed terminal Attempt outcomes.
+
+### Guided setup resolves the exact Agent Harness Profile
+
+`aiwb setup` can now resolve one exact Agent Harness Profile against the live
+Codex model catalog (`codex debug models`) without starting an Attempt. Name
+the exact Model with `--harness-model`; reasoning effort defaults to the
+catalog default and can be pinned with `--harness-effort`. The read-only
+preview displays the resolved Profile, sandbox permission, token resource
+limit, named Extensions with locked digests, Trace Coverage, catalog source and
+digest, exposed internal-role Models, and one `profile_digest`. Unsupported
+Models, efforts, or Extensions fail closed; hidden internal identifiers are
+never selectable as the primary Model. An explicit `--apply` persists the
+resolved Profile to the repository-local `.ai-workbench/agent-harness.yaml`;
+apply is idempotent for an unchanged resolved Profile, and any Model, effort,
+permission, Extension, or catalog drift requires a new explicit setup.
+`CodexDriver` now accepts the catalog's `max` and `ultra` reasoning efforts.
