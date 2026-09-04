@@ -88,6 +88,7 @@ from .profile_setup import (
     HarnessProfileResolution,
     HarnessProfileSelections,
 )
+from .proposal import RunProposal, prepare_proposal
 from .setup import SetupApplyResult, SetupInspection, WorkbenchSetup
 from .skills import (
     SkillCatalog,
@@ -212,6 +213,7 @@ __all__ = [
     "RecipeFinding",
     "RecipeRefreshPreview",
     "RecipeResolution",
+    "RunProposal",
     "RunReport",
     "RunLedger",
     "RunLease",
