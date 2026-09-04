@@ -50,3 +50,18 @@ resolved Profile to the repository-local `.ai-workbench/agent-harness.yaml`;
 apply is idempotent for an unchanged resolved Profile, and any Model, effort,
 permission, Extension, or catalog drift requires a new explicit setup.
 `CodexDriver` now accepts the catalog's `max` and `ultra` reasoning efforts.
+
+### Hash-stable overnight Run proposals
+
+`aiwb goal propose` prepares one read-only validated Run proposal from the
+setup-resolved Agent Harness Profile (`.ai-workbench/agent-harness.yaml`), one
+approved project policy command (`--command-name`), and the owner's
+natural-language goal, acceptance, and instructions. The proposal is written as
+a schema-v5 Contract under `.ai-workbench/proposals/`, validated through the
+same Admission preview, and displayed with its `execution_digest` and the exact
+approve and submit commands. Submitting with the digest as the idempotency key
+makes duplicate submission of one approved proposal create no duplicate Run,
+and any changed Profile, Model, Extension, command, permission, limit, or base
+commit invalidates the approval as before. No separate proposal store is
+created: the Contract file, the external approval artifact, and the RunLedger
+remain canonical.

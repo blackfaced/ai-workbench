@@ -24,6 +24,7 @@ from .harness_setup import (
 )
 from .intake import GoalIntake
 from .kubernetes import KubernetesJanitor
+from .proposal import prepare_proposal
 from .profile_setup import HarnessProfileSelections
 from .project import (
     ProjectConfigError,
@@ -224,6 +225,21 @@ def _build_parser() -> argparse.ArgumentParser:
     approve.add_argument("--workflow", type=Path)
     approve.add_argument("--approved-by", required=True)
     approve.add_argument("--approval-artifact", required=True, type=Path)
+
+    propose = goal_commands.add_parser("propose")
+    propose.add_argument("--repo", required=True, type=Path)
+    propose.add_argument("--goal-id", required=True)
+    propose.add_argument("--title", required=True)
+    propose.add_argument("--requirement", required=True)
+    propose.add_argument("--acceptance", action="append", default=[])
+    propose.add_argument("--instructions", required=True)
+    propose.add_argument("--command-name", required=True)
+    propose.add_argument("--approval-artifact", required=True, type=Path)
+    propose.add_argument("--output", type=Path)
+    propose.add_argument("--base-ref", default="HEAD")
+    propose.add_argument(
+        "--verification-timeout-seconds", type=int, default=900
+    )
 
     daemon = commands.add_parser("daemon")
     daemon_commands = daemon.add_subparsers(dest="daemon_command", required=True)
@@ -678,6 +694,33 @@ def _run_goal(options: argparse.Namespace) -> int:
             contract_path=options.contract,
         )
         _print_json(result.to_dict())
+        return 0
+    if options.goal_command == "propose":
+        proposal = prepare_proposal(
+            options.repo,
+            goal_id=options.goal_id,
+            title=options.title,
+            requirement=options.requirement,
+            acceptance=tuple(options.acceptance),
+            instructions=options.instructions,
+            command_name=options.command_name,
+            approval_artifact=options.approval_artifact,
+            output_path=options.output,
+            base_ref=options.base_ref,
+            verification_timeout_seconds=options.verification_timeout_seconds,
+        )
+        _print_json(
+            {
+                "proposal": proposal.to_dict(),
+                "next_actions": [
+                    f"aiwb goal approve --contract {proposal.contract_path} "
+                    f"--approved-by <owner> --approval-artifact "
+                    f"{proposal.approval_artifact}",
+                    f"aiwb goal submit --contract {proposal.contract_path} "
+                    f"--idempotency-key {proposal.execution_digest}",
+                ],
+            }
+        )
         return 0
     if options.goal_command == "run":
         client = DaemonClient(_socket_path(options))
