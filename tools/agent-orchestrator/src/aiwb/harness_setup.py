@@ -39,6 +39,13 @@ from .github_pipeline import (
     append_pipeline_observation,
 )
 from .project import DoctorReport, ProjectDoctor, ProjectInitializer
+from .profile_setup import (
+    HarnessProfileResolution,
+    HarnessProfileSelections,
+    harness_profile_document,
+    resolve_harness_profile,
+)
+from .codex_driver import CodexDriver
 from .recipe_catalog import RecipeCatalog
 from .skills import (
     AGENT_SKILL_ROOTS,
@@ -60,6 +67,7 @@ class HarnessSetupRequest:
     operation: str = "setup"
     output_path: Optional[Path] = None
     planning_mode: str = ""
+    profile_selections: Optional["HarnessProfileSelections"] = None
 
 
 @dataclass(frozen=True)
@@ -213,6 +221,7 @@ class HarnessCandidate:
     next_actions: Tuple[str, ...] = ()
     status: str = ""
     suggestions: int = 0
+    profile: Optional["HarnessProfileResolution"] = None
 
 
 @dataclass(frozen=True)
@@ -270,6 +279,7 @@ class HarnessSetup:
         extension_probe: Optional[
             Callable[[str, Mapping[str, object], Path, Path], None]
         ] = None,
+        codex_driver: Optional[CodexDriver] = None,
     ) -> None:
         self._catalog = catalog or SkillCatalog()
         self._pack_catalog = pack_catalog or SkillPackCatalog()
@@ -278,7 +288,21 @@ class HarnessSetup:
         self._recipe_catalog = recipe_catalog or RecipeCatalog()
         self._project_recipe_catalog = project_recipe_catalog
         self._extension_probe = extension_probe or _run_declared_harness_probe
+        self._codex_driver = codex_driver or CodexDriver()
         self._initializer = ProjectInitializer()
+
+    def resolve_profile(
+        self, request: HarnessSetupRequest
+    ) -> Optional[HarnessProfileResolution]:
+        """Resolve the selected Agent Harness Profile without writing anything."""
+        if request.profile_selections is None:
+            return None
+        return resolve_harness_profile(
+            Path(request.repository),
+            request.profile_selections,
+            request.agent_targets,
+            driver=self._codex_driver,
+        )
 
     def inspect(self, request: HarnessSetupRequest) -> HarnessAssessment:
         if request.operation not in {"setup", "initialize"}:
@@ -661,6 +685,10 @@ class HarnessSetup:
                 yaml.safe_dump(document, sort_keys=False),
                 encoding="utf-8",
             )
+        profile_resolution = self.resolve_profile(plan.request)
+        if profile_resolution is not None:
+            if _write_harness_profile(repository, profile_resolution):
+                changed = True
         return HarnessCandidate(
             state="candidate",
             workflow_path=str(workflow),
@@ -686,6 +714,7 @@ class HarnessSetup:
                     if pack_plan.setup_action
                 )
             ),
+            profile=profile_resolution,
         )
 
     def verify(self, request: HarnessVerifyRequest) -> HarnessVerification:
@@ -963,6 +992,20 @@ def _terminate_process_group(process_group: int) -> None:
         os.killpg(process_group, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
         pass
+
+
+def _write_harness_profile(
+    repository: Path, resolution: HarnessProfileResolution
+) -> bool:
+    path = repository / ".ai-workbench" / "agent-harness.yaml"
+    document = yaml.safe_dump(
+        harness_profile_document(resolution), sort_keys=False
+    )
+    if path.is_file() and path.read_text(encoding="utf-8") == document:
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _write_bytes_atomically(path, document.encode("utf-8"))
+    return True
 
 
 def _workflow_document(path: Path) -> dict[str, object]:
