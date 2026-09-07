@@ -1,0 +1,226 @@
+{
+  "profile": "work-mac",
+  "os": "Darwin",
+  "shell": "/bin/zsh",
+  "why": "工作 Mac：所有客户端的验证机。已存在的安装归属只记录与检测冲突，本轮不做渠道迁移。",
+  "clients": {
+    "claude": {
+      "hook_files": [
+        "~/.claude/settings.json"
+      ],
+      "skills_dir": "~/.claude/skills",
+      "discovery_dirs": [
+        "~/.claude/skills"
+      ]
+    },
+    "codex": {
+      "hook_files": [
+        "~/.codex/config.toml",
+        "~/.codex/hooks.json"
+      ],
+      "skills_dir": "~/.codex/skills",
+      "discovery_cmd": "python3 skills_discovery.py codex"
+    },
+    "shared": {
+      "skills_dir": "~/.agents/skills"
+    },
+    "trae": {
+      "hook_files": [
+        "~/.trae/traecli.toml"
+      ],
+      "skills_dir": "~/.trae/skills",
+      "discovery_cmd": "python3 skills_discovery.py traecli"
+    }
+  },
+  "skill_notes": [
+    "2026-09-07 用 app-server skills/list 实测：codex 0.151.0 与 traecli 0.202.3 都把 ~/.agents/skills 与自家目录合成一个集合（codex 见 48+8 项，trae 见 48+10 项）。所以「每个客户端各放一份」必然在两边都变成重名 —— steelman-grill 曾是 85 个名字里唯一的重名项。现在只在 ~/.agents/skills 放一份，~/.claude/skills 保留符号链接给 Claude Code。",
+    "合并后的 frontmatter 带 author 与 disable-model-invocation：Trae 认这个键；Codex 是否认未知，但 2026-09-07 用隔离 HOME 实测 Codex 能正常发现带这两个键的 Skill，不会因未知键丢弃。显式触发语义同时写在 description 里兜底。"
+  ],
+  "hook_notes": [
+    "codebase-memory 的 SessionStart 提示有两份不同正文（Codex config.toml 内联 echo / Claude 的 ~/.claude/hooks/cbm-session-reminder 脚本），owner 都是 codebase-memory-mcp。本仓不复制也不改写它的正文，只做语义等价的重复合并，避免造出第二真源。",
+    "VibeBuddy 的 cc-hook / codex-hook / coco-hook 由 VibeBuddy 自己安装，跨客户端各一份不算重复。"
+  ],
+  "path_line_reports": [
+    {
+      "file": "~/.zshrc",
+      "pattern": "\\.local/bin",
+      "why": "$HOME/.local/bin 被重复导出属用户自定义内容：只报告，不改写、不去重"
+    }
+  ],
+  "components": [
+    {
+      "id": "homebrew-bundle",
+      "type": "installer",
+      "owner": "homebrew",
+      "check_cmd": "HOMEBREW_NO_AUTO_UPDATE=1 brew bundle check --file=packages/macos.Brewfile --no-upgrade --verbose",
+      "apply_cmd": "HOMEBREW_NO_AUTO_UPDATE=1 brew bundle install --file=packages/macos.Brewfile --no-upgrade",
+      "note": "只登记已核实归 Homebrew 所有的 formula。ripgrep（Trae CLI 安装器）、jq（系统 /usr/bin/jq）、pnpm（brew node 里的 corepack shim）都不在清单内，写进去等于新造多渠道冲突。v1 不管 cask。--no-upgrade：清单只保证「装了」，不隐式升级 —— 不带该 flag 时 brew 会把已装的 node/uv/gh/python@3.11/fzf 全部判为待升级，apply 就会顺手做一次没人要求的大版本升级。升级请显式跑 brew upgrade <formula>。"
+    },
+    {
+      "id": "codex",
+      "type": "tool",
+      "bin": "codex",
+      "owner": "npm:@openai/codex",
+      "required": true,
+      "version_cmd": "codex --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^codex-cli ",
+      "install_cmd": "npm install -g @openai/codex",
+      "update_cmd": "codex update",
+      "note": "生效路径 /opt/homebrew/bin/codex -> ../lib/node_modules/@openai/codex/bin/codex.js，是 npm 全局包不是 brew formula。/Applications/ChatGPT.app/Contents/Resources/codex 是桌面应用内置的另一份：app-bundled / unmanaged / 不在 PATH，本入口不接管。渠道取证 2026-09-07：`npm ls -g` 里有 @openai/codex，`codex doctor` 报 install method = npm；`codex update` 子命令在 0.151.0（Mac）与 0.130.0（两台开发机）上都存在。"
+    },
+    {
+      "id": "node",
+      "type": "tool",
+      "bin": "node",
+      "owner": "homebrew",
+      "required": true,
+      "version_cmd": "node --version",
+      "version_re": "v([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^v[0-9]+\\.",
+      "install_via": "homebrew-bundle"
+    },
+    {
+      "id": "pnpm",
+      "type": "tool",
+      "bin": "pnpm",
+      "owner": "homebrew-node-corepack",
+      "required": false,
+      "version_cmd": "pnpm --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^[0-9]+\\.[0-9]+\\.[0-9]+",
+      "note": "/opt/homebrew/bin/pnpm -> ../Cellar/node/24.3.0/lib/node_modules/corepack/dist/pnpm.js；`brew list --versions pnpm` 为空，所以 owner 是 brew node 带的 corepack，不是独立 formula，不进 Brewfile。"
+    },
+    {
+      "id": "uv",
+      "type": "tool",
+      "bin": "uv",
+      "owner": "homebrew",
+      "required": true,
+      "version_cmd": "uv --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^uv [0-9]",
+      "install_via": "homebrew-bundle",
+      "update_cmd": "HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade uv"
+    },
+    {
+      "id": "gh",
+      "type": "tool",
+      "bin": "gh",
+      "owner": "homebrew",
+      "required": true,
+      "version_cmd": "gh --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^gh version",
+      "install_via": "homebrew-bundle",
+      "update_cmd": "HOMEBREW_NO_AUTO_UPDATE=1 brew upgrade gh",
+      "note": "Mac 上 gh 只有 GitHub CLI 一份，没有开发机上的内部同名工具冲突。"
+    },
+    {
+      "id": "jq",
+      "type": "tool",
+      "bin": "jq",
+      "owner": "os-bundled",
+      "required": false,
+      "version_cmd": "jq --version",
+      "version_re": "jq-([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^jq-",
+      "note": "生效的是 /usr/bin/jq（Apple 版 jq-1.7.1-apple），`brew list --versions jq` 为空 → owner 不是 Homebrew，也因此不进 Brewfile。两台开发机都没有 jq，脚本不许依赖它。"
+    },
+    {
+      "id": "rg",
+      "type": "tool",
+      "bin": "rg",
+      "owner": "trae-cli-installer",
+      "required": true,
+      "version_cmd": "rg --version",
+      "version_re": "ripgrep ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^ripgrep ",
+      "install_cmd": "HOMEBREW_NO_AUTO_UPDATE=1 brew install ripgrep",
+      "note": "~/.local/bin/rg 是普通文件，mtime 与 trae-cli 符号链接同为 06-16 16:15；Homebrew 未安装 ripgrep。只记录归属，不搬家。install_cmd 只在一台机器上完全没有 rg 时才会触发（那时不存在多渠道冲突），因此 Brewfile 里仍然不登记 ripgrep —— 有 Trae CLI 投放的那份时，brew 不该再插一脚。"
+    },
+    {
+      "id": "fd",
+      "type": "tool",
+      "bin": "fd",
+      "owner": "kimi-code-bundled",
+      "required": false,
+      "version_cmd": "fd --version",
+      "version_re": "fd ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^fd [0-9]",
+      "note": "~/.kimi-code/bin/fd 由 Kimi Code 0.39.0 自带，随它自己的渠道更新。"
+    },
+    {
+      "id": "traex",
+      "type": "tool",
+      "bin": "traex",
+      "owner": "trae-cli-installer",
+      "required": false,
+      "version_cmd": "traex --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "traecli",
+      "note": "traex / traecli / coco / ta / trae-agent / trae-cli 同属 Trae CLI 安装器投放的一组入口。"
+    },
+    {
+      "id": "claude",
+      "type": "tool",
+      "bin": "claude",
+      "owner": "npm:@anthropic-ai/claude-code",
+      "required": false,
+      "version_cmd": "claude --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "Claude Code",
+      "install_cmd": "npm install -g @anthropic-ai/claude-code",
+      "note": "2026-09-07 复核：`npm ls -g` 里是 @anthropic-ai/claude-code@2.1.143，/opt/homebrew/bin/claude 只是 npm 全局 bin 目录里的 shim（npm prefix 就是 /opt/homebrew）—— owner 之前记成 homebrew 是错的，已改。"
+    },
+    {
+      "id": "python3",
+      "type": "tool",
+      "bin": "python3",
+      "owner": "os-bundled",
+      "required": true,
+      "version_cmd": "python3 --version",
+      "version_re": "Python ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^Python 3\\.",
+      "note": "登录 shell 解析到 /usr/bin/python3 = 系统 3.9.6。开发用 Python 由 uv 与 Homebrew python@3.11 提供；本入口不改写系统 Python 的优先级，env.py 因此必须保持 3.9 兼容。"
+    },
+    {
+      "id": "aiwb",
+      "type": "tool",
+      "bin": "aiwb",
+      "owner": "pipx",
+      "required": false,
+      "version_cmd": "aiwb --help",
+      "identity_re": "usage: aiwb",
+      "origin_cmd": "cat \"$HOME\"/.local/pipx/venvs/ai-workbench-agent-orchestrator/lib/python*/site-packages/ai_workbench_agent_orchestrator-*.dist-info/direct_url.json 2>/dev/null || true",
+      "origin_must_not_match": "ai-workbench-worktrees",
+      "install_cmd": "pipx install --force -e \"$HOME/code/ai-workbench/tools/agent-orchestrator\"",
+      "note": "editable 安装必须指向主工作树（git worktree list 确认 $HOME/code/ai-workbench 是主工作树），不能指向随时会被 prune 的历史 worktree。aiwb 保持可选：环境入口不依赖它，实测把 aiwb 移出 PATH 后 plan/apply/check 仍可完成。"
+    },
+    {
+      "id": "steelman-grill",
+      "type": "skill",
+      "name": "steelman-grill",
+      "body": "skills/steelman-grill/SKILL.md",
+      "source": "repo:skills/steelman-grill",
+      "revision": "in-repo",
+      "depends_on": [
+        "grilling"
+      ],
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/steelman-grill/clients/shared.frontmatter.md",
+          "link_from": "~/.claude/skills",
+          "files": {
+            "agents/openai.yaml": "skills/steelman-grill/clients/openai.yaml"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/steelman-grill",
+        "~/.trae/skills/steelman-grill"
+      ]
+    }
+  ]
+}
