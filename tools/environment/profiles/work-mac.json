@@ -185,19 +185,6 @@
       "note": "登录 shell 解析到 /usr/bin/python3 = 系统 3.9.6。开发用 Python 由 uv 与 Homebrew python@3.11 提供；本入口不改写系统 Python 的优先级，env.py 因此必须保持 3.9 兼容。"
     },
     {
-      "id": "aiwb",
-      "type": "tool",
-      "bin": "aiwb",
-      "owner": "pipx",
-      "required": false,
-      "version_cmd": "aiwb --help",
-      "identity_re": "usage: aiwb",
-      "origin_cmd": "cat \"$HOME\"/.local/pipx/venvs/ai-workbench-agent-orchestrator/lib/python*/site-packages/ai_workbench_agent_orchestrator-*.dist-info/direct_url.json 2>/dev/null || true",
-      "origin_must_not_match": "ai-workbench-worktrees",
-      "install_cmd": "pipx install --force -e \"$HOME/code/ai-workbench/tools/agent-orchestrator\"",
-      "note": "editable 安装必须指向主工作树（git worktree list 确认 $HOME/code/ai-workbench 是主工作树），不能指向随时会被 prune 的历史 worktree。aiwb 保持可选：环境入口不依赖它，实测把 aiwb 移出 PATH 后 plan/apply/check 仍可完成。"
-    },
-    {
       "id": "steelman-grill",
       "type": "skill",
       "name": "steelman-grill",

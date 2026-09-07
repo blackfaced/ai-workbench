@@ -142,7 +142,7 @@
       "version_cmd": "/usr/bin/gh --version",
       "version_re": "gh version ([0-9]+\\.[0-9]+\\.[0-9]+)",
       "identity_re": "^gh version",
-      "note": "真 GitHub CLI（dev8c 实测 2.87.3，dev32c 没有）。/usr/local/bin/gh 是内部主机查询工具且在 PATH 里先命中：不改优先级、不卸载、不 alias；集成侧用 AIWB_GH_BIN 指向这个准确路径。"
+      "note": "真 GitHub CLI（dev8c 实测 2.87.3，dev32c 没有）。/usr/local/bin/gh 是内部主机查询工具且在 PATH 里先命中：不改优先级、不卸载、不 alias；调用 GitHub CLI 时显式使用 /usr/bin/gh。"
     },
     {
       "id": "gh-internal",

@@ -1,50 +1,32 @@
 # AI Workbench
 
-Personal workbench for AI-assisted development, research, reusable knowledge, and repeatable agent workflows.
+Maintain a personal development environment from one repository: inspect drift, update tools, and install or restore selected configuration and Skills.
 
-This repository is a workbench, not a public skill registry. It records useful skills, tool integrations, workflows, personal todo items, and the repository decisions that keep the system coherent over time. Executable tools remain self-contained under `tools/`.
+The current verified scope is the **work Mac and two existing Linux development machines, dev8c and dev32c**. Full fresh-machine bootstrap is the intended direction, but Linux initial installation channels for `codex`, `uv`, and `rg` are still incomplete. The home Mac (ChatGPT desktop and Kimi Code) is deferred until it is accessible.
 
-## Primary Use
+## Use
 
-**Install, update, and check a personal development environment from one entry point.**
-
-Bring a machine up to a known baseline, then use the same entry point to inspect drift and apply updates. Preview is the default; nothing is written unless `--apply` is passed.
+Requires Git, Python 3.9 or newer, and a POSIX shell. Run from this checkout:
 
 ```sh
-bash tools/environment/bootstrap.sh --profile work-mac              # preview (read-only)
-bash tools/environment/bootstrap.sh --profile work-mac --apply      # apply
-bash tools/environment/bootstrap.sh --profile work-mac --check      # check
+sh tools/environment/bootstrap.sh --profile work-mac          # read-only preview
+sh tools/environment/bootstrap.sh --profile work-mac --apply  # apply eligible changes
+sh tools/environment/bootstrap.sh --profile work-mac --check  # check drift and conflicts
 ```
 
-Profiles: `work-mac` (macOS work laptop), `work-linux` (both Linux dev boxes). `home-mac` is not implemented and not verified — see [0009](decisions/0009-reproducible-development-environments.md).
+Use `--profile work-linux` on either Linux machine. Review the plan before applying. Missing verified installation channels and user-modified targets are reported for intervention.
 
-Details, managed-config rules, backup/restore, and per-machine differences: [tools/environment/](tools/environment/README.md).
+See the [environment guide](tools/environment/README.md) for component ownership, backups, restore, selective updates, and machine-specific limitations.
 
-The environment entry point requires only `git`, `python3`, and a POSIX shell. It does not depend on `aiwb` or the agent orchestrator.
+## Repository map
 
-## Structure
+- [tools/environment/](tools/environment/README.md): maintained profiles and executable environment tooling.
+- [skills/](skills/README.md): selected first-party Skills and upstream source records; entries are opt-in.
+- [tools/](tools/README.md): environment tooling and optional integration references.
+- [workflows/](workflows/README.md): usage guides and optional workflow references.
+- [decisions/](decisions/README.md): current scope and historical architecture decisions.
+- [CONTEXT.md](CONTEXT.md): environment terminology.
 
-- [tools/environment/](tools/environment/README.md) - environment profiles, install/update/check entry point.
-- [skills/](skills/README.md) - agent skills and reusable instruction packs.
-- [tools/](tools/README.md) - MCP servers, plugins, CLIs, browser tools, and integrations.
-- [workflows/](workflows/README.md) - repeatable multi-step processes and domain workflows.
-- [todo/](todo/README.md) - personal action queue for evaluating, installing, and improving entries.
-- [decisions/](decisions/README.md) - ADR-style records for repository structure and governance.
+Active work belongs in the [issue tracker](docs/agents/issue-tracker.md). The [old evaluation notes](todo/README.md) are historical, not an active task queue.
 
-## Entry Metadata
-
-Each entry should stay lightweight:
-
-```md
-# Name
-
-- Type:
-- Domain:
-- Source:
-- Status:
-- Use when:
-
-## Notes
-```
-
-Use `Domain:` for fields such as `coding`, `investing`, `research`, `learning`, or `ops`. Do not create new top-level directories for domains unless a decision record says why.
+Organize entries by artifact type. Use `Domain:` metadata when useful; keep setup notes, ownership, and verification status concise. The presence of a catalog entry does not mean it is installed, verified, or part of the machine baseline.
