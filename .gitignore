@@ -1,2 +1,5 @@
 .DS_Store
 
+
+# Regenerate the local code graph from the current checkout.
+.codebase-memory/
