@@ -10,6 +10,7 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 
 ## Index
 
+- [implement-batch](implement-batch/SKILL.md) — explicit batched implementation; [installation and usage](../workflows/implement-batch.md).
 
 - [steelman-grill](steelman-grill/SKILL.md) — managed first-party Skill; requires upstream `grilling`.
 - [Source records](sources.lock.json) — includes explicitly unverified upstream entries; not a complete dependency lock.

@@ -43,6 +43,21 @@
         "shared(~/.agents/skills)"
       ],
       "note": "grilling / grill-me / grill-with-docs / handoff / claude-handoff / implement / tdd 等。revision 未核实；grilling 是 steelman-grill 的依赖，但由上游自己安装，本仓不纳管、不复制正文。"
+    },
+    {
+      "name": "implement-batch",
+      "source": "repo:skills/implement-batch",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/implement-batch",
+        "trae": "~/.agents/skills/implement-batch"
+      },
+      "note": "第一方显式入口，独立于上游 implement；使用客户端原生子 agent 与 Git worktree。格式与安装验证不等于行为验收。"
     }
   ]
 }
