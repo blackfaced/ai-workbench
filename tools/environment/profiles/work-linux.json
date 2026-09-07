@@ -199,6 +199,27 @@
       "stale_copies": [
         "~/.trae/skills/steelman-grill"
       ]
+    },
+    {
+      "id": "implement-batch",
+      "type": "skill",
+      "name": "implement-batch",
+      "body": "skills/implement-batch/SKILL.md",
+      "source": "repo:skills/implement-batch",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/implement-batch/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/implement-batch/clients/openai.yaml"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/implement-batch",
+        "~/.trae/skills/implement-batch"
+      ]
     }
   ]
 }

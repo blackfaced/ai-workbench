@@ -1,0 +1,6 @@
+interface:
+  display_name: "Implement Batch"
+  short_description: "确认依赖图与模型，按 Issue 并行实施，串行集成并验收 spec"
+  default_prompt: "使用 $implement-batch 实施这个 spec 父 Issue，先核对已有实现，再展示依赖图、批次和模型安排供我确认。"
+policy:
+  allow_implicit_invocation: false
