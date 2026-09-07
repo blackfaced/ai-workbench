@@ -1,15 +1,32 @@
-# Decisions
+# 0009 - Reproduce Development Environments (illustrative)
 
-ADR-style records for decisions about this repository's structure, scope, and governance.
+> Generic, fictional pattern for restoring a development environment on a new machine. Host names, tool versions, and paths below are illustrative placeholders, not observations of any real system.
 
-Use this directory for durable repository rules. Personal tasks belong in `todo/`.
+## Status
 
-## Index
+Accepted (illustrative)
 
-- [0001 - Repository Scope and Structure](0001-repository-scope-and-structure.md)
-- [0002 - Add a Generic Unattended Agent Orchestrator](0002-unattended-agent-orchestrator.md)
-- [0003 - Reuse Upstream Engineering Skills and Contract Drafts](0003-upstream-engineering-skills-and-contract-drafts.md)
-- [0004 - Use Subscription-First Resource Boundaries Without Provider Fallback](0004-subscription-first-resource-boundaries.md)
-- [0005 - Keep Run Evidence Complete but Bounded](0005-content-addressed-evidence.md)
-- [0006 - Make ExecutionSnapshot and RunLedger the Durable Control Authority](0006-execution-snapshot-run-ledger.md)
-- [0008 - Delegate the Agent Loop to Agent Harnesses](0008-delegate-agent-loop-to-agent-harnesses.md)
+- Domain: ops, coding
+
+## Goal
+
+Provide a thin, portable entry point that locates a Python 3 interpreter and applies a minimal, declarative environment profile on a fresh machine. The goal is reproducible setup procedure, not cloning a specific host.
+
+## Principles
+
+- Distinguish "not installed" from "not visible in the current shell"; resolve a tool's effective path before assuming it is missing.
+- Prefer one thin bootstrap script delegating to a stdlib-only implementation; do not require a specific package manager to be preinstalled.
+- Keep host-specific values in per-host profile files; the shared logic stays generic.
+- Use fictional host names and placeholder addresses; never record real serial numbers, internal host-query tools, or session state.
+
+## Layout
+
+    tools/environment/
+      bootstrap.sh
+      env.py
+      profiles/generic-linux.json
+
+## Notes
+
+- This repository bundles no credentials, internal host queries, or session state.
+- Environment-specific values belong in a private profile, not in version control.
