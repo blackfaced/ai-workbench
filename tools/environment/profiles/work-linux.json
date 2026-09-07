@@ -1,0 +1,204 @@
+{
+  "profile": "work-linux",
+  "os": "Linux",
+  "shell": "/bin/bash",
+  "why": "两台开发机共用。第一优先是修命令入口（~/.local/bin 对非交互 SSH 可见），不是装软件。",
+  "hosts": {
+    "dev8c": {
+      "match_hostname": "n37-006-089"
+    },
+    "dev32c": {
+      "match_hostname": "n37-068-191"
+    }
+  },
+  "user_bin_dirs": [
+    "~/.local/bin"
+  ],
+  "clients": {
+    "claude": {
+      "hook_files": [
+        "~/.claude/settings.json"
+      ],
+      "skills_dir": "~/.claude/skills",
+      "discovery_dirs": [
+        "~/.claude/skills"
+      ]
+    },
+    "codex": {
+      "hook_files": [
+        "~/.codex/config.toml",
+        "~/.codex/hooks.json"
+      ],
+      "skills_dir": "~/.codex/skills",
+      "discovery_cmd": "python3 skills_discovery.py codex"
+    },
+    "shared": {
+      "skills_dir": "~/.agents/skills"
+    },
+    "trae": {
+      "hook_files": [
+        "~/.trae/traecli.toml"
+      ],
+      "skills_dir": "~/.trae/skills",
+      "discovery_cmd": "python3 skills_discovery.py traecli"
+    }
+  },
+  "skill_notes": [
+    "重叠但功能有区别，本轮不删任何项、不按名称批量合并：grilling=访谈原语 / grill-me=无状态入口 / grill-with-docs=会落盘入口；handoff=写交接文件 / claude-handoff=会起后台 Claude。这些由上游安装器维护，本仓不纳管、不复制正文。",
+    "除受管的 steelman-grill 外，~/.trae/skills 下的项一律保持现状：只做发现检查（断链 / frontmatter / name 一致性），不删不改。"
+  ],
+  "hook_notes": [
+    "~/.codex/config.toml 里 `# dev-tracker:l1-hook BEGIN/END` 包住的 UserPromptSubmit 由 dev-tracker 的 sync-rules.sh 分发，owner 不是本仓：只报告，不改正文。比较时 ~/.trae/l1/<hash>/ 的 hash 段已被归一化。"
+  ],
+  "path_line_reports": [
+    {
+      "file": "~/.bashrc",
+      "pattern": "\\.local/bin",
+      "why": "对照守卫（case $- in）位置看这些行是否真的会执行；守卫之后的行只对交互 shell 生效"
+    }
+  ],
+  "components": [
+    {
+      "id": "path-user-local-bin",
+      "type": "config_block",
+      "path": "~/.bashrc",
+      "comment_prefix": "#",
+      "insert_before_re": "^case \\$- in",
+      "why": "~/.bashrc 的非交互 early-return 守卫（case $- in ... *) return）出现在原有 ~/.local/bin 导出之前，导致 ssh host 'cmd' 里这些导出永不执行；而 ~/.bash_profile 存在又让 ~/.profile 的 PATH 永远不被读取。所以修复点只能是 ~/.bashrc 且必须在守卫之前。",
+      "body": [
+        "# 受管块：让 ~/.local/bin 对登录 shell 与非交互 SSH 命令都可见。",
+        "# 自带幂等守卫，重复应用不会堆出重复 PATH 段。",
+        "case \":$PATH:\" in",
+        "  *\":$HOME/.local/bin:\"*) ;;",
+        "  *) PATH=\"$HOME/.local/bin:$PATH\" ;;",
+        "esac",
+        "export PATH"
+      ]
+    },
+    {
+      "id": "codex",
+      "type": "tool",
+      "bin": "codex",
+      "owner": "local-user-install",
+      "required": true,
+      "version_cmd": "codex --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^codex-cli ",
+      "update_cmd": "codex update",
+      "note": "~/.local/bin/codex -> ~/.codex/packages/standalone/current/codex（两台都是这个 standalone 布局，实测于 2026-09-07），两台都是 0.130.0。`codex update` 子命令存在，可作为已验证的更新渠道；standalone 的首次安装渠道未取证，所以不填 install_cmd —— 真缺了就红着让人处理，不猜。"
+    },
+    {
+      "id": "uv",
+      "type": "tool",
+      "bin": "uv",
+      "owner": "local-user-install",
+      "required": true,
+      "version_cmd": "uv --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^uv [0-9]",
+      "min_version": "0.8.0",
+      "update_cmd": "if readlink -f \"$(command -v uv)\" | grep -q '/pipx/venvs/'; then pipx upgrade uv; else uv self update; fi",
+      "note": "dev8c 0.10.7 / dev32c 0.6.13（实测）。两台的安装渠道不同，所以 update_cmd 先认渠道再动手：dev8c 的 ~/.local/bin/uv 是 standalone 二进制 → `uv self update`；dev32c 的是 pipx venv 里的软链（~/.local/pipx/venvs/uv/bin/uv）→ `pipx upgrade uv`（用 /usr/bin/pipx 1.1.0，dev8c 那个 pipx 本身是坏的）。给错渠道 uv 会直接拒绝自更新。"
+    },
+    {
+      "id": "rg",
+      "type": "tool",
+      "bin": "rg",
+      "owner": "trae-cli-installer",
+      "required": true,
+      "version_cmd": "rg --version",
+      "version_re": "ripgrep ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^ripgrep ",
+      "note": "两台的 ~/.local/bin/rg 都是 Trae CLI 安装器投放的普通文件。没有已验证的独立安装渠道：apt 源里的 ripgrep 是 13.0.0 且要 sudo，与现有渠道打架，所以不填 install_cmd —— 真缺了就红着让人处理。"
+    },
+    {
+      "id": "git",
+      "type": "tool",
+      "bin": "git",
+      "owner": "os-package",
+      "required": true,
+      "version_cmd": "git --version",
+      "version_re": "git version ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^git version"
+    },
+    {
+      "id": "python3",
+      "type": "tool",
+      "bin": "python3",
+      "owner": "os-package",
+      "required": true,
+      "version_cmd": "python3 --version",
+      "version_re": "Python ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^Python 3\\.",
+      "note": "系统 Python 保留（实测 3.11.2）；项目用的 Python 由 uv 提供。"
+    },
+    {
+      "id": "gh-github-cli",
+      "type": "tool",
+      "bin": "/usr/bin/gh",
+      "explicit_path": true,
+      "owner": "os-package",
+      "required": false,
+      "version_cmd": "/usr/bin/gh --version",
+      "version_re": "gh version ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^gh version",
+      "note": "真 GitHub CLI（dev8c 实测 2.87.3，dev32c 没有）。/usr/local/bin/gh 是内部主机查询工具且在 PATH 里先命中：不改优先级、不卸载、不 alias；集成侧用 AIWB_GH_BIN 指向这个准确路径。"
+    },
+    {
+      "id": "gh-internal",
+      "type": "tool",
+      "bin": "/usr/local/bin/gh",
+      "explicit_path": true,
+      "owner": "internal-host-tool",
+      "required": false,
+      "version_cmd": "/usr/local/bin/gh --version",
+      "identity_re": "gh \\[target",
+      "note": "内部主机查询工具，不认 --version（会报 unknown flag 并打 usage）。它与 gh-github-cli 两个组件并存本身就是 `gh` 的身份断言。"
+    },
+    {
+      "id": "pnpm",
+      "type": "tool",
+      "bin": "pnpm",
+      "owner": "nvm-node",
+      "required": false,
+      "version_cmd": "pnpm --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^[0-9]+\\.[0-9]+\\.[0-9]+",
+      "note": "dev8c 有 9.0.0（nvm 目录内），dev32c 没有。不因为另一台有就装 —— 等有项目需要再说。"
+    },
+    {
+      "id": "tmux",
+      "type": "tool",
+      "bin": "tmux",
+      "owner": "os-package",
+      "required": false,
+      "version_cmd": "tmux -V",
+      "version_re": "tmux ([0-9]+\\.[0-9]+)",
+      "identity_re": "^tmux [0-9]",
+      "note": "dev32c 有 tmux 且有 8 个在途 bmx-* 会话（一律保留，不按存活时间清理）；dev8c 没有 tmux，也不装。"
+    },
+    {
+      "id": "steelman-grill",
+      "type": "skill",
+      "name": "steelman-grill",
+      "body": "skills/steelman-grill/SKILL.md",
+      "source": "repo:skills/steelman-grill",
+      "revision": "in-repo",
+      "depends_on": [
+        "grilling"
+      ],
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/steelman-grill/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/steelman-grill/clients/openai.yaml"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.trae/skills/steelman-grill"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Steelman Grill"
+  short_description: "按 frontier 批量压测关键决策与翻转条件"
+  default_prompt: "使用 $steelman-grill 批量压测当前 frontier：先查事实，再为每个决定给双向钢人论证、当前推荐与翻转条件。"
+
+policy:
+  allow_implicit_invocation: false
