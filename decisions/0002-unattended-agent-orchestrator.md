@@ -1,5 +1,7 @@
 # 0002 - Add a Generic Unattended Agent Orchestrator
 
+> Retired on 2026-09-07 by [0010](0010-environment-first-repository-scope.md). Historical design record; not current implementation guidance.
+
 ## Status
 
 Accepted
