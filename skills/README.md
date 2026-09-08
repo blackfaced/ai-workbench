@@ -10,6 +10,8 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 
 ## Index
 
+- [setup-aiwb](setup-aiwb/SKILL.md) — establish or refresh a repository integration-test guide; used by implement-batch when needed.
+
 - [implement-batch](implement-batch/SKILL.md) — explicit batched implementation; [installation and usage](../workflows/implement-batch.md).
 
 - [steelman-grill](steelman-grill/SKILL.md) — managed first-party Skill; requires upstream `grilling`.

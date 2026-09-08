@@ -201,6 +201,28 @@
       ]
     },
     {
+      "id": "setup-aiwb",
+      "type": "skill",
+      "name": "setup-aiwb",
+      "body": "skills/setup-aiwb/SKILL.md",
+      "source": "repo:skills/setup-aiwb",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/setup-aiwb/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/setup-aiwb/clients/openai.yaml",
+            "references/integration-guide.md": "skills/setup-aiwb/references/integration-guide.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/setup-aiwb",
+        "~/.trae/skills/setup-aiwb"
+      ]
+    },
+    {
       "id": "implement-batch",
       "type": "skill",
       "name": "implement-batch",
@@ -212,7 +234,8 @@
           "dir": "~/.agents/skills",
           "frontmatter": "skills/implement-batch/clients/shared.frontmatter.md",
           "files": {
-            "agents/openai.yaml": "skills/implement-batch/clients/openai.yaml"
+            "agents/openai.yaml": "skills/implement-batch/clients/openai.yaml",
+            "references/spec-acceptance.md": "skills/implement-batch/references/spec-acceptance.md"
           }
         }
       },
