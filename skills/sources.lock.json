@@ -58,6 +58,21 @@
         "trae": "~/.agents/skills/implement-batch"
       },
       "note": "第一方显式入口，独立于上游 implement；使用客户端原生子 agent 与 Git worktree。格式与安装验证不等于行为验收。"
+    },
+    {
+      "name": "setup-aiwb",
+      "source": "repo:skills/setup-aiwb",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/setup-aiwb",
+        "trae": "~/.agents/skills/setup-aiwb"
+      },
+      "note": "第一方仓库集成测试手册 Skill，可供 implement-batch 使用；不恢复旧 aiwb CLI。安装验证不代表目标项目环境已验证。"
     }
   ]
 }

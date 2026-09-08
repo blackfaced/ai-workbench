@@ -1,0 +1,4 @@
+interface:
+  display_name: "Setup AIWB"
+  short_description: "核实仓库启动部署与测试入口，建立可复用的集成测试操作手册"
+  default_prompt: "使用 $setup-aiwb 检查当前仓库的集成测试方法，复用已有入口并补齐测试手册，只向我询问缺失项。"
