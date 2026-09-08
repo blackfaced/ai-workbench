@@ -1,0 +1,6 @@
+interface:
+  display_name: "Reflect Bug"
+  short_description: "分析漏测原因并记录有证据、有适用边界的项目经验教训"
+  default_prompt: "使用 $reflect-bug 处理当前项目的相关任务，先核对事实、范围与已有授权。"
+policy:
+  allow_implicit_invocation: false

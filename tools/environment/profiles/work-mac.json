@@ -252,6 +252,92 @@
         "~/.codex/skills/implement-batch",
         "~/.trae/skills/implement-batch"
       ]
+    },
+    {
+      "id": "reflect-bug",
+      "type": "skill",
+      "name": "reflect-bug",
+      "body": "skills/reflect-bug/SKILL.md",
+      "source": "repo:skills/reflect-bug",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/reflect-bug/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/reflect-bug/clients/openai.yaml",
+            "references/lesson.md": "skills/reflect-bug/references/lesson.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/reflect-bug",
+        "~/.trae/skills/reflect-bug"
+      ]
+    },
+    {
+      "id": "review-lessons",
+      "type": "skill",
+      "name": "review-lessons",
+      "body": "skills/review-lessons/SKILL.md",
+      "source": "repo:skills/review-lessons",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/review-lessons/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/review-lessons/clients/openai.yaml"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/review-lessons",
+        "~/.trae/skills/review-lessons"
+      ]
+    },
+    {
+      "id": "handoff-to-dev",
+      "type": "skill",
+      "name": "handoff-to-dev",
+      "body": "skills/handoff-to-dev/SKILL.md",
+      "source": "repo:skills/handoff-to-dev",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/handoff-to-dev/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/handoff-to-dev/clients/openai.yaml",
+            "references/handoff.md": "skills/handoff-to-dev/references/handoff.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/handoff-to-dev",
+        "~/.trae/skills/handoff-to-dev"
+      ]
+    },
+    {
+      "id": "collect-from-dev",
+      "type": "skill",
+      "name": "collect-from-dev",
+      "body": "skills/collect-from-dev/SKILL.md",
+      "source": "repo:skills/collect-from-dev",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/collect-from-dev/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/collect-from-dev/clients/openai.yaml"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/collect-from-dev",
+        "~/.trae/skills/collect-from-dev"
+      ]
     }
   ]
 }

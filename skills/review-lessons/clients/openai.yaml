@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review Lessons"
+  short_description: "核对项目经验的有效性，合并重复项并保留历史证据与来源"
+  default_prompt: "使用 $review-lessons 处理当前项目的相关任务，先核对事实、范围与已有授权。"
+policy:
+  allow_implicit_invocation: false

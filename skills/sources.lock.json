@@ -73,6 +73,66 @@
         "trae": "~/.agents/skills/setup-aiwb"
       },
       "note": "第一方仓库集成测试手册 Skill，可供 implement-batch 使用；不恢复旧 aiwb CLI。安装验证不代表目标项目环境已验证。"
+    },
+    {
+      "name": "reflect-bug",
+      "source": "repo:skills/reflect-bug",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/reflect-bug",
+        "trae": "~/.agents/skills/reflect-bug"
+      },
+      "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
+    },
+    {
+      "name": "review-lessons",
+      "source": "repo:skills/review-lessons",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/review-lessons",
+        "trae": "~/.agents/skills/review-lessons"
+      },
+      "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
+    },
+    {
+      "name": "handoff-to-dev",
+      "source": "repo:skills/handoff-to-dev",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/handoff-to-dev",
+        "trae": "~/.agents/skills/handoff-to-dev"
+      },
+      "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
+    },
+    {
+      "name": "collect-from-dev",
+      "source": "repo:skills/collect-from-dev",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/collect-from-dev",
+        "trae": "~/.agents/skills/collect-from-dev"
+      },
+      "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
     }
   ]
 }
