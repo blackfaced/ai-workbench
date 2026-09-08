@@ -18,3 +18,5 @@ Current scope: [0010 — Environment-first repository scope](0010-environment-fi
 - [0009 - Reproduce and Update Personal Development Environments](0009-reproducible-development-environments.md) — Accepted (v1).
 
 - [0010 - Environment-first repository scope](0010-environment-first-repository-scope.md) — Accepted; old orchestrator retired.
+
+- [0011 - Generic rule source and distribution](0011-generic-rules-source-and-distribution.md) — AIWB owns generic rules; dev-tracker pins and distributes them.

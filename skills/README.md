@@ -24,3 +24,7 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 - [Source records](sources.lock.json) — includes explicitly unverified upstream entries; not a complete dependency lock.
 - [Anthropic Skills](anthropic-skills.md)
 - [mattpocock/skills](matt-pocock-skills.md)
+
+## Distributable instruction packs
+
+- [Engineering principles](engineering-principles/README.md) — canonical generic rules consumed at a fixed commit by dev-tracker; not an automatically invoked Skill.

@@ -18,6 +18,13 @@ This repository maintains personal development environments. The primary entry p
 - Before proposing changes, gather bounded evidence of relevant implementation, tests, call paths, and base behavior. Do not assume a reusable pattern is absent.
 - Let the selected client own planning, subagents, tool use, review, and rework; environment tooling configures capabilities without reproducing the client agent loop.
 
+## Reusable knowledge boundary
+
+- Keep Skills, templates, and tools reusable across repositories. Discover target-specific facts from that repository's rules, code, documentation, and configured tools; do not bake them into AIWB instructions.
+- Keep business architecture, deployment commands, test accounts, incident details, lesson records, and handoff artifacts with the owning project or its approved artifact location. AIWB may define their format and lifecycle, not maintain a second copy of their contents.
+- Promote a project lesson into a generic Skill rule only when its transferable mechanism is supported by evidence. Remove project identifiers, retain applicability limits, and avoid turning one incident into an unconditional global requirement.
+- Personal machine profiles remain part of AIWB's environment-maintenance purpose; project-specific service deployments and credentials do not belong in those profiles.
+
 ## Environment changes
 
 - Default to read-only planning. Keep plan, apply, and check on the same component logic.
