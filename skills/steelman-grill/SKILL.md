@@ -40,12 +40,6 @@ frontier 收窄到只剩少数叶子时切换模式：压成**一个**最关键�
 
 问题选得对，它会难到让人卡住——那正是信号，答案就在它后面。收口时的判断必须落地成可执行的下一步；"视情况而定""都有各自的适用场景"这类回答等于没收口，重新收。
 
-## 与 Contract 流程的关系
-
-在 AI Workbench 语境里，这套流程活在 Admission **之前**：它服务于 Goal 到 Contract 的收敛，帮助识别 L3（boundary-changing）决策和 Change Budget 的真实边界——🔑 决定性变量问的正是"哪个变量一变，这份 Contract 就得重批"。
-
-它不进 Runner。已 admitted 的 Run 靠 ExecutionSnapshot 和 Evidence 定胜负，不靠对话。
-
 ## 出处
 
 steelman 是逻辑学 straw man（稻草人谬误：把对方观点扭曲成弱版本再攻击）的反向操作。四步结构参考数字生命卡兹克 2026-08-18《一个实用的深度思考 Prompt：用"双向钢人论证"让 AI 帮你挖出最本质的答案》，其源头是 Reddit 帖 "Stop asking it for answers. Ask it to steelman your problem first."。本 skill 把那四步嫁接到 grilling 的树形推进上：grilling 保证该问的都问了，steelman 保证每一问都问到底了。

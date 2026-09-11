@@ -1,10 +1,10 @@
 # Tools
 
-MCP servers, plugins, CLIs, browser tools, and integrations.
+The environment entry point is maintained here. Other entries are optional integration references, not a default installation list.
 
 ## Index
 
-- [Agent Orchestrator](agent-orchestrator/README.md)
+- [Environment maintenance](environment/README.md) — primary entry point for the work Mac and Linux profiles.
 - [Chrome DevTools MCP](chrome-devtools-mcp.md)
 - [codebase-memory-mcp](codebase-memory-mcp.md)
 - [Context7](context7.md)
