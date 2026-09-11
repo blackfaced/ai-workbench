@@ -1,5 +1,7 @@
 # 0003 - Reuse Upstream Engineering Skills and Bridge Only at the Contract Boundary
 
+> Retired on 2026-09-07 by [0010](0010-environment-first-repository-scope.md). Historical design record; not current implementation guidance.
+
 ## Status
 
 Accepted

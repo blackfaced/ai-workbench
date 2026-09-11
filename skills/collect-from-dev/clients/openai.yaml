@@ -1,0 +1,6 @@
+interface:
+  display_name: "Collect from Dev"
+  short_description: "核对远端候选与测试证据，在独立本地工作树取回开发结果"
+  default_prompt: "使用 $collect-from-dev 处理当前项目的相关任务，先核对事实、范围与已有授权。"
+policy:
+  allow_implicit_invocation: false
