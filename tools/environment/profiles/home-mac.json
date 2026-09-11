@@ -1,0 +1,286 @@
+{
+  "profile": "home-mac",
+  "os": "Darwin",
+  "shell": "/bin/zsh",
+  "why": "家用 Mac mini，2026-09-12 在本机核验。保留 Homebrew cask、nvm、Kimi Code 各自的安装归属；只管理选定的第一方 Skills，不提供未经验证的新机安装渠道。",
+  "clients": {
+    "codex": {
+      "hook_files": [
+        "~/.codex/config.toml",
+        "~/.codex/hooks.json"
+      ],
+      "skills_dir": "~/.codex/skills",
+      "discovery_cmd": "python3 skills_discovery.py codex"
+    },
+    "codex-desktop": {
+      "discovery_cmd": "python3 skills_discovery.py /Applications/ChatGPT.app/Contents/Resources/codex"
+    },
+    "shared": {
+      "skills_dir": "~/.agents/skills"
+    }
+  },
+  "user_bin_dirs": [
+    "~/.kimi-code/bin",
+    "~/.local/bin",
+    "/opt/homebrew/bin"
+  ],
+  "skill_notes": [
+    "Codex CLI 与桌面内置运行时分别验证原生 skills/list。共享目录中的第一方 Skill 安装验证不代表已通过模型行为验收。",
+    "Kimi Code 0.41.0 配置由 kimi doctor 验证；Skill 原生发现与实际执行单独记录在家用 Mac 验证报告。"
+  ],
+  "components": [
+    {
+      "id": "codex",
+      "type": "tool",
+      "bin": "codex",
+      "owner": "homebrew-cask:codex",
+      "required": true,
+      "version_cmd": "codex --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^codex-cli ",
+      "note": "已核实 /opt/homebrew/bin/codex 指向 Homebrew Caskroom/codex/0.142.5。"
+    },
+    {
+      "id": "codex-desktop",
+      "type": "tool",
+      "bin": "/Applications/ChatGPT.app/Contents/Resources/codex",
+      "owner": "app-bundled:com.openai.codex",
+      "required": true,
+      "version_cmd": "/Applications/ChatGPT.app/Contents/Resources/codex --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^codex-cli ",
+      "note": "桌面应用资源内置 0.153.4，与 PATH 上的 CLI 分开检查，随应用自身更新。"
+    },
+    {
+      "id": "kimi",
+      "type": "tool",
+      "bin": "kimi",
+      "owner": "kimi-code-installer",
+      "required": true,
+      "version_cmd": "kimi --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^[0-9]+\\.[0-9]+\\.[0-9]+",
+      "note": "~/.kimi-code/bin/kimi 0.41.0；仅检查已安装版本，不推断安装或升级命令已验证。"
+    },
+    {
+      "id": "node",
+      "type": "tool",
+      "bin": "node",
+      "owner": "nvm",
+      "required": true,
+      "version_cmd": "node --version",
+      "version_re": "v([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^v[0-9]+\\.",
+      "note": "已核实来自 ~/.nvm/versions/node/v22.23.1；不引入 Homebrew Node。"
+    },
+    {
+      "id": "python3",
+      "type": "tool",
+      "bin": "python3",
+      "owner": "homebrew:python@3.14",
+      "required": true,
+      "version_cmd": "python3 --version",
+      "version_re": "Python ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^Python 3\\.",
+      "note": "PATH 默认 3.14.7；/usr/bin/python3 3.9.6 也用于兼容性回归。"
+    },
+    {
+      "id": "gh",
+      "type": "tool",
+      "bin": "gh",
+      "owner": "homebrew:gh",
+      "required": true,
+      "version_cmd": "gh --version",
+      "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^gh version",
+      "note": "已核实 Homebrew gh 2.96.0。"
+    },
+    {
+      "id": "rg",
+      "type": "tool",
+      "bin": "rg",
+      "owner": "kimi-code-installer",
+      "required": true,
+      "version_cmd": "rg --version",
+      "version_re": "ripgrep ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^ripgrep ",
+      "note": "来自 ~/.kimi-code/bin/rg 15.0.0，保留 Kimi 的安装归属。"
+    },
+    {
+      "id": "fd",
+      "type": "tool",
+      "bin": "fd",
+      "owner": "kimi-code-installer",
+      "required": false,
+      "version_cmd": "fd --version",
+      "version_re": "fd ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^fd [0-9]",
+      "note": "来自 ~/.kimi-code/bin/fd 10.4.2。"
+    },
+    {
+      "id": "uv",
+      "type": "tool",
+      "bin": "uv",
+      "owner": "unverified",
+      "required": false,
+      "version_cmd": "uv --version",
+      "version_re": "uv ([0-9]+\\.[0-9]+\\.[0-9]+)",
+      "identity_re": "^uv ",
+      "note": "两种 shell 均未发现，家用维护基线不依赖它。首次安装另行验证；没有登记安装渠道。"
+    },
+    {
+      "id": "steelman-grill",
+      "type": "skill",
+      "name": "steelman-grill",
+      "body": "skills/steelman-grill/SKILL.md",
+      "source": "repo:skills/steelman-grill",
+      "revision": "in-repo",
+      "depends_on": [
+        "grilling"
+      ],
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/steelman-grill/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/steelman-grill/clients/openai.yaml"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/steelman-grill",
+        "~/.trae/skills/steelman-grill"
+      ]
+    },
+    {
+      "id": "setup-aiwb",
+      "type": "skill",
+      "name": "setup-aiwb",
+      "body": "skills/setup-aiwb/SKILL.md",
+      "source": "repo:skills/setup-aiwb",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/setup-aiwb/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/setup-aiwb/clients/openai.yaml",
+            "references/integration-guide.md": "skills/setup-aiwb/references/integration-guide.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/setup-aiwb",
+        "~/.trae/skills/setup-aiwb"
+      ]
+    },
+    {
+      "id": "implement-batch",
+      "type": "skill",
+      "name": "implement-batch",
+      "body": "skills/implement-batch/SKILL.md",
+      "source": "repo:skills/implement-batch",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/implement-batch/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/implement-batch/clients/openai.yaml",
+            "references/spec-acceptance.md": "skills/implement-batch/references/spec-acceptance.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/implement-batch",
+        "~/.trae/skills/implement-batch"
+      ]
+    },
+    {
+      "id": "reflect-bug",
+      "type": "skill",
+      "name": "reflect-bug",
+      "body": "skills/reflect-bug/SKILL.md",
+      "source": "repo:skills/reflect-bug",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/reflect-bug/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/reflect-bug/clients/openai.yaml",
+            "references/lesson.md": "skills/reflect-bug/references/lesson.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/reflect-bug",
+        "~/.trae/skills/reflect-bug"
+      ]
+    },
+    {
+      "id": "review-lessons",
+      "type": "skill",
+      "name": "review-lessons",
+      "body": "skills/review-lessons/SKILL.md",
+      "source": "repo:skills/review-lessons",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/review-lessons/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/review-lessons/clients/openai.yaml"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/review-lessons",
+        "~/.trae/skills/review-lessons"
+      ]
+    },
+    {
+      "id": "handoff-to-dev",
+      "type": "skill",
+      "name": "handoff-to-dev",
+      "body": "skills/handoff-to-dev/SKILL.md",
+      "source": "repo:skills/handoff-to-dev",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/handoff-to-dev/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/handoff-to-dev/clients/openai.yaml",
+            "references/handoff.md": "skills/handoff-to-dev/references/handoff.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/handoff-to-dev",
+        "~/.trae/skills/handoff-to-dev"
+      ]
+    },
+    {
+      "id": "collect-from-dev",
+      "type": "skill",
+      "name": "collect-from-dev",
+      "body": "skills/collect-from-dev/SKILL.md",
+      "source": "repo:skills/collect-from-dev",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/collect-from-dev/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/collect-from-dev/clients/openai.yaml"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/collect-from-dev",
+        "~/.trae/skills/collect-from-dev"
+      ]
+    }
+  ]
+}
