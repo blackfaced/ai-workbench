@@ -1,5 +1,7 @@
 # 0009 - Reproduce and Update Personal Development Environments
 
+> Scope update: [0010](0010-environment-first-repository-scope.md) retires the optional orchestrator retained in this original plan. Machine observations below are dated historical evidence; current capabilities and limitations are in the [environment guide](../tools/environment/README.md).
+
 ## Status
 
 Accepted (v1) — 2026-09-07 用户批准落地，并调整实施顺序：**当前工作 Mac → dev8c → dev32c**；家庭 Mac 暂缓，后续复用本轮已验证的方案，不计入本轮完成范围。

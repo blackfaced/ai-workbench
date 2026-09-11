@@ -3,14 +3,10 @@
 - Type: skill collection
 - Domain: coding
 - Source: https://github.com/mattpocock/skills
-- Status: optional project pack
+- Status: optional upstream reference
 - Use when: adding practical engineering skills for agent workflows, especially grilling, triage, domain modeling, and issue-driven development.
 
 ## Notes
 
 Good reference for small, composable skills that keep the user in control of the process.
-AI Workbench can install an explicitly selected project-local profile through
-`aiwb setup --install-pack matt --pack-profile matt=engineering`; it pins the
-reviewed `v1.1.0` commit and installs the dependency closure of the upstream
-engineering router, not the full collection. It never runs the interactive
-upstream setup automatically.
+Install selected Skills through the upstream installer or client-supported mechanism after reviewing their scope. The environment tool records upstream ownership and does not copy or install this collection.

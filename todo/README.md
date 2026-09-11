@@ -1,5 +1,7 @@
 # Todo
 
+> Historical evaluation notes. Track new work in the [issue tracker](../docs/agents/issue-tracker.md); these checkboxes are not current status.
+
 Personal action queue for this workbench.
 
 These are owner tasks, not repository governance decisions. Durable structure rules belong in `decisions/`.

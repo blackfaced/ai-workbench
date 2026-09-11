@@ -1,5 +1,7 @@
 # 0001 - Repository Scope and Structure
 
+> Primary purpose updated by [0010](0010-environment-first-repository-scope.md). Artifact-based organization remains in force.
+
 ## Status
 
 Accepted

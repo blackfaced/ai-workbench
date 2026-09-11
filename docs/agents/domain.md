@@ -1,6 +1,6 @@
 # Domain docs
 
-This repository has a single domain context.
+The root context describes personal environment maintenance. Historical orchestrator ADRs are marked retired; they are not current implementation guidance.
 
 ## Before exploring
 

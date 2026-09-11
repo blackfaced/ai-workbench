@@ -7,21 +7,29 @@
       "source": "repo:skills/steelman-grill",
       "revision": "in-repo",
       "verified": true,
-      "clients": ["codex", "trae", "claude"],
+      "clients": [
+        "codex",
+        "trae",
+        "claude"
+      ],
       "install_paths": {
-        "codex": "~/.codex/skills/steelman-grill",
-        "trae": "~/.trae/skills/steelman-grill",
-        "claude": "~/.agents/skills/steelman-grill（~/.claude/skills 以符号链接复用）"
+        "codex": "~/.agents/skills/steelman-grill",
+        "trae": "~/.agents/skills/steelman-grill",
+        "claude": "~/.claude/skills/steelman-grill -> ~/.agents/skills/steelman-grill"
       },
-      "depends_on": ["grilling"],
-      "note": "正文真源取工作 Mac 上 ~/.trae/skills/steelman-grill/SKILL.md 的 58 行完整版（md5 5abc128845864663aa4a08080218c6f1）。Codex 与 Claude 不支持 disable-model-invocation，其“仅显式触发”语义写在 description 里。"
+      "depends_on": [
+        "grilling"
+      ],
+      "note": "本仓正文与 clients/ 元数据为真源；shared 单副本，客户端通过发现目录或符号链接复用。Codex 的 agents/openai.yaml 设置 allow_implicit_invocation: false；其余触发约束以客户端能力及 description 为准。"
     },
     {
       "name": "lark-*",
       "source": "lark-cli installer",
       "revision": "unpinned",
       "verified": false,
-      "clients": ["shared(~/.agents/skills)"],
+      "clients": [
+        "shared(~/.agents/skills)"
+      ],
       "note": "工作 Mac 与 dev8c 的 ~/.agents/skills 下那批（dev8c 实测 27 项全为 lark-*）。安装器未暴露可固定的 revision，未核实，本轮不纳管。"
     },
     {
@@ -29,8 +37,102 @@
       "source": "上游仓库（~/.agents/vendor/mattpocock-skills 下的 checkout）",
       "revision": "unpinned",
       "verified": false,
-      "clients": ["trae", "claude", "shared(~/.agents/skills)"],
+      "clients": [
+        "trae",
+        "claude",
+        "shared(~/.agents/skills)"
+      ],
       "note": "grilling / grill-me / grill-with-docs / handoff / claude-handoff / implement / tdd 等。revision 未核实；grilling 是 steelman-grill 的依赖，但由上游自己安装，本仓不纳管、不复制正文。"
+    },
+    {
+      "name": "implement-batch",
+      "source": "repo:skills/implement-batch",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/implement-batch",
+        "trae": "~/.agents/skills/implement-batch"
+      },
+      "note": "第一方显式入口，独立于上游 implement；使用客户端原生子 agent 与 Git worktree。格式与安装验证不等于行为验收。"
+    },
+    {
+      "name": "setup-aiwb",
+      "source": "repo:skills/setup-aiwb",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/setup-aiwb",
+        "trae": "~/.agents/skills/setup-aiwb"
+      },
+      "note": "第一方仓库集成测试手册 Skill，可供 implement-batch 使用；不恢复旧 aiwb CLI。安装验证不代表目标项目环境已验证。"
+    },
+    {
+      "name": "reflect-bug",
+      "source": "repo:skills/reflect-bug",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/reflect-bug",
+        "trae": "~/.agents/skills/reflect-bug"
+      },
+      "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
+    },
+    {
+      "name": "review-lessons",
+      "source": "repo:skills/review-lessons",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/review-lessons",
+        "trae": "~/.agents/skills/review-lessons"
+      },
+      "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
+    },
+    {
+      "name": "handoff-to-dev",
+      "source": "repo:skills/handoff-to-dev",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/handoff-to-dev",
+        "trae": "~/.agents/skills/handoff-to-dev"
+      },
+      "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
+    },
+    {
+      "name": "collect-from-dev",
+      "source": "repo:skills/collect-from-dev",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/collect-from-dev",
+        "trae": "~/.agents/skills/collect-from-dev"
+      },
+      "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
     }
   ]
 }

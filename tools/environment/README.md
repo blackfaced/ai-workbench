@@ -133,7 +133,7 @@ python3 tools/environment/tests/regression.py
 ③ 按客户端可发现全集判重名（含原生接口失败必须判错）；④ 工具缺失要装、版本低要更新；
 ⑤ 历史副本清理不许丢东西、`--force` 接管后仍能原样撤回；⑥ 符号链接目标的接管与还原、更新回滚后
 安装记录仍认得出自己、原生发现的解析错误要传播、超时要真的超时且不留孤儿进程。
-任何一条不过即非 0 退出（当前 75 项）。
+任何一条不过即非 0 退出（当前 75 项）。CI 在 Ubuntu（Python 3.11 / 3.9）与 macOS（Python 3.11）运行同一套测试，不安装额外 Python 依赖。
 
 ## 当前能力范围（别把它当成新机搭建入口）
 
@@ -150,7 +150,7 @@ python3 tools/environment/tests/regression.py
 | shell | `/bin/zsh` | `/bin/bash` |
 | 功能性修复 | 无（`~/.local/bin` 已在 PATH） | `path-user-local-bin` 写进 `~/.bashrc` 的非交互守卫**之前** |
 | 包清单 | `packages/macos.Brewfile`（node/uv/gh/pipx/python@3.11/fzf/wget） | 无：保留现有系统包与用户态安装 |
-| `gh` | 只有 GitHub CLI 一份 | 两个组件分别断言 `/usr/bin/gh` 是 GitHub CLI、`/usr/local/bin/gh` 是内部主机查询工具；不改优先级、不卸载、不 alias，集成侧用 `AIWB_GH_BIN` |
+| `gh` | 只有 GitHub CLI 一份 | 两个组件分别断言 `/usr/bin/gh` 是 GitHub CLI、`/usr/local/bin/gh` 是内部主机查询工具；不改优先级、不卸载、不 alias，调用 GitHub CLI 时显式使用 `/usr/bin/gh` |
 | `steelman-grill` | 一份装在 `~/.agents/skills`，`~/.claude/skills` 走符号链接；`~/.codex/skills`、`~/.trae/skills` 的历史副本已清 | 同样只装 `~/.agents/skills`；依赖 `grilling` 缺失时跳过并报原因（dev32c 正是如此） |
 | `uv` 更新渠道 | `brew upgrade uv` | 按实际渠道分流：`~/.local/pipx/venvs/` 下的用 `pipx upgrade uv`，否则 `uv self update` |
 
