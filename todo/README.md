@@ -8,6 +8,7 @@ These are owner tasks, not repository governance decisions. Durable structure ru
 
 ## Now
 
+- [Legacy `aiwb` editable-install finding](aiwb-local-install-compatibility.md) — superseded by orchestrator retirement; retained as history.
 - [ ] Evaluate `codebase-memory-mcp` on one large local codebase and compare against normal grep/read exploration.
 - [ ] Decide whether `codebase-memory-mcp` should become the default code-discovery path in agent instructions.
 - [ ] Add an agent security checklist before running unfamiliar install scripts or MCP servers.

@@ -65,12 +65,13 @@ def sha256_file(path):
 
 
 def utc_stamp():
-    return datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def utc_iso(epoch=None):
-    when = datetime.datetime.utcfromtimestamp(epoch) if epoch else datetime.datetime.utcnow()
-    return when.replace(microsecond=0).isoformat() + "Z"
+    when = (datetime.datetime.fromtimestamp(epoch, datetime.timezone.utc)
+            if epoch is not None else datetime.datetime.now(datetime.timezone.utc))
+    return when.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def die(message):
@@ -1143,16 +1144,20 @@ def pick_profile(name):
     if name:
         return name
     system = platform.system()
-    if system == "Darwin":
-        return "work-mac"
     host = socket.gethostname().split(".")[0]
+    compatible = []
     for entry in sorted(os.listdir(PROFILE_DIR)):
         if not entry.endswith(".json"):
             continue
         profile = json.loads(read_text(os.path.join(PROFILE_DIR, entry)))
+        if profile.get("os") != system:
+            continue
+        compatible.append(entry[:-len(".json")])
         for _alias, spec in (profile.get("hosts") or {}).items():
             if spec.get("match_hostname") == host:
                 return entry[:-len(".json")]
+    if system == "Darwin" and len(compatible) == 1:
+        return compatible[0]
     die("判不出 profile：system=%s hostname=%s，请显式 --profile" % (system, host))
 
 
