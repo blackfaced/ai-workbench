@@ -2,11 +2,11 @@
 
 AI Workbench maintains the tools, managed configuration, and selected Skills used on personal development machines.
 
-The current verified scope is maintenance of the work Mac and two Linux development machines (`dev8c`, `dev32c`). Complete fresh-machine bootstrap remains a goal: Linux initial installation channels are incomplete. The inaccessible home Mac is deferred.
+The current verified scope is maintenance of the work Mac, home Mac mini, and two Linux development machines (`dev8c`, `dev32c`). Home Mac validation covers installed-tool identity, managed Skill installation and native discovery; model-driven task acceptance remains separate. Complete fresh-machine bootstrap remains a goal: initial installation channels are incomplete.
 
 ## Language
 
-- **Profile**: the desired components and client discovery settings for a machine class (`work-mac` or `work-linux`). A profile is configuration, not a machine inventory or proof of installation.
+- **Profile**: the desired components and client discovery settings for a machine class (`work-mac`, `home-mac` or `work-linux`). A profile is configuration, not a machine inventory or proof of installation. When multiple Mac profiles could match, select one explicitly.
 - **Component**: one managed configuration block, tool, Skill, or existing installer declared by a profile.
 - **Owner**: the installer or repository responsible for a component. Preserve that authority rather than introducing another writer.
 - **Plan**: observations and proposed actions, without configuration writes.

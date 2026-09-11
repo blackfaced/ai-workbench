@@ -20,3 +20,5 @@ Current scope: [0010 — Environment-first repository scope](0010-environment-fi
 - [0010 - Environment-first repository scope](0010-environment-first-repository-scope.md) — Accepted; old orchestrator retired.
 
 - [0011 - Generic rule source and distribution](0011-generic-rules-source-and-distribution.md) — AIWB owns generic rules; dev-tracker pins and distributes them.
+
+- [0012 - Home Mac maintenance and explicit Profile selection](0012-home-mac-maintenance-validation.md) — home Mac available and independently verified.

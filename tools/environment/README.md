@@ -20,8 +20,9 @@ python3 tools/environment/env.py check   [--profile P] [--only ID ...]
 python3 tools/environment/env.py restore --backup <UTC 时间戳> [--dry-run] [--force]
 ```
 
-- `--profile` 缺省时按 OS + hostname 判定（`Darwin` → `work-mac`；`Linux` + hostname 命中
-  `work-linux.json` 的 `hosts` → `work-linux`）。判不出来直接报错退出，不猜。
+- `--profile` 缺省时先匹配同 OS 的 Profile 主机名；只有一个 Mac Profile 时可自动选它。
+  现在同时有 `work-mac` 和 `home-mac`，未登记的 Mac 必须显式选择。Linux 继续按
+  `work-linux.json` 的 `hosts` 匹配。判不出来直接报错退出，不猜。
 - `--only ID` 把观测与写入都限制在该组件上，用于单项更新。
 - `--force` 是**唯一的接管入口**：明知目标「不是本入口装的 / 安装后被改过 / 历史副本内容对不上」，
   仍然覆盖或删除。它不跳过备份，每个被动的文件照样进 manifest，`restore` 能原样撤回；
@@ -133,11 +134,13 @@ python3 tools/environment/tests/regression.py
 ③ 按客户端可发现全集判重名（含原生接口失败必须判错）；④ 工具缺失要装、版本低要更新；
 ⑤ 历史副本清理不许丢东西、`--force` 接管后仍能原样撤回；⑥ 符号链接目标的接管与还原、更新回滚后
 安装记录仍认得出自己、原生发现的解析错误要传播、超时要真的超时且不留孤儿进程。
-任何一条不过即非 0 退出（当前 75 项）。CI 在 Ubuntu（Python 3.11 / 3.9）与 macOS（Python 3.11）运行同一套测试，不安装额外 Python 依赖。
+另覆盖多 Mac Profile 的选择、未知主机失败和 Python 3.14 的 UTC 时间兼容性。
+任何一条不过即非 0 退出（当前 84 项）。CI 在 Ubuntu（Python 3.11 / 3.9）与 macOS（Python 3.11）运行同一套测试，不安装额外 Python 依赖。
 
 ## 当前能力范围（别把它当成新机搭建入口）
 
-已验证的是**三台现有机器的维护**：漂移检查、受管配置与 Skill 的安装/更新/回滚、已有工具的版本更新。
+工作 Mac 与两台现有 Linux 机器已验证漂移检查、受管配置与 Skill 的安装/更新/回滚、已有工具的版本更新。
+家用 Mac mini 在 2026-09-12 验证了工具身份、Skill 安装与原生发现、幂等与回滚预览；没有验证软件升级、新机首装或模型驱动任务。详见[家用 Mac 验证记录](home-mac-validation.md)。
 
 **尚未覆盖新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首次安装渠道还没取证登记（`install_cmd` 留空），
 一台干净的 Linux 机器跑 `apply` 会在这三项上报「无已验证渠道，交给人」。要它成为完整的新机搭建入口，
@@ -160,3 +163,10 @@ Brewfile 只登记实测确认归 Homebrew 所有的 formula。**`ripgrep` 不�
 `tool` 的 observe 会在**登录 shell**（`-lc`）与**非交互 shell**（`-c`）两种上下文分别解析并分别报告。
 本地的非交互上下文继承调用者环境，**不等于真实 SSH 会话**：Linux 机器的权威证据是
 `ssh <host> 'command -v codex uv rg'` 与 `ssh <host> 'bash -lc "command -v codex uv rg"'` 都命中。
+
+## 家用 Mac
+
+显式使用 `--profile home-mac`；不要套用工作 Mac 的 Brewfile 或软件归属。
+该 Profile 保留 Homebrew cask Codex、桌面内置 Codex、nvm Node 和 Kimi 自带工具，未登记首装/升级渠道。
+`apply` 只管理选定的七个第一方 Skills；`uv` 为可选缺失项。Codex CLI 与桌面原生发现均纳入 `check`。
+Kimi 的 `doctor` 和 ACP Skill 命令发现单独实测，尚未纳入自动 `check`，不能由该命令的成功推断 Kimi 行为验收。

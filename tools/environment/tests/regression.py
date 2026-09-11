@@ -14,13 +14,19 @@
 只用标准库，兼容 Python 3.9。任何一条不通过就以非 0 退出。
 """
 
+import contextlib
+import importlib.util
+import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import warnings
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ENV_DIR = os.path.dirname(HERE)
@@ -568,6 +574,58 @@ def case_discovery_errors_and_timeout(root):
     check("子进程被收干净，没留下孤儿", leftover.stdout.strip() == b"")
 
 
+def case_profile_selection(root):
+    print("\n[用例 7] 家用与工作 Mac：无法判定时不默认写工作机配置")
+    os.makedirs(root)
+    for name, system, hosts in [
+        ("work-mac", "Darwin", {}),
+        ("home-mac", "Darwin", {}),
+        ("work-linux", "Linux", {"dev": {"match_hostname": "dev-test"}}),
+    ]:
+        write(os.path.join(root, name + ".json"), json.dumps({
+            "os": system, "shell": "/bin/sh", "hosts": hosts, "components": []
+        }))
+    module_path = os.path.join(root, "env.py")
+    shutil.copy2(os.path.join(ENV_DIR, "env.py"), module_path)
+    spec = importlib.util.spec_from_file_location("profile_test_env", module_path)
+    env = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(env)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        check("备份目录 UTC 格式在新 Python 上无弃用警告",
+              bool(re.fullmatch(r"\d{8}T\d{6}Z", env.utc_stamp())))
+        check("状态时间 UTC 格式保持兼容",
+              bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", env.utc_iso())))
+        check("Unix epoch 0 不被误当成当前时间", env.utc_iso(0) == "1970-01-01T00:00:00Z")
+
+    def run(system, host, *args):
+        output = io.StringIO()
+        with mock.patch.object(env, "PROFILE_DIR", root), \
+             mock.patch.object(env, "STATE_PATH", os.path.join(root, "state.json")), \
+             mock.patch.object(env.platform, "system", return_value=system), \
+             mock.patch.object(env.socket, "gethostname", return_value=host), \
+             contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            try:
+                code = env.main(["plan"] + list(args))
+            except SystemExit as exc:
+                code = exc.code
+        return code, output.getvalue()
+
+    code, out = run("Darwin", "home-test")
+    check("多个 Mac Profile 要求显式选择", code != 0 and "显式 --profile" in out)
+    code, out = run("Darwin", "home-test", "--profile", "home-mac")
+    check("显式 home-mac 使用家用配置", code == 0 and "profile=home-mac" in out)
+    code, out = run("Linux", "dev-test.local")
+    check("已登记 Linux 主机仍自动匹配", code == 0 and "profile=work-linux" in out)
+    code, out = run("Linux", "unknown-host")
+    check("未知 Linux 主机不猜配置", code != 0 and "显式 --profile" in out)
+    code, out = run("Darwin", "dev-test")
+    check("跨操作系统的主机名不选错 Profile", code != 0 and "显式 --profile" in out)
+    os.unlink(os.path.join(root, "home-mac.json"))
+    code, out = run("Darwin", "one-mac")
+    check("只有一个 Mac Profile 时兼容自动选择", code == 0 and "profile=work-mac" in out)
+
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -579,6 +637,7 @@ def main():
     case_symlink_adoption(os.path.join(root, "c6"))
     case_update_rollback_keeps_record(os.path.join(root, "c6"))
     case_discovery_errors_and_timeout(os.path.join(root, "c6", "cli"))
+    case_profile_selection(os.path.join(root, "c7"))
     print("\n通过 %d 项，失败 %d 项" % (len(PASSES), len(FAILS)))
     if FAILS:
         for name in FAILS:
