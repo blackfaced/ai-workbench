@@ -17,6 +17,11 @@
     },
     "shared": {
       "skills_dir": "~/.agents/skills"
+    },
+    "kimi": {
+      "discovery_cmd": "python3 kimi_skills_discovery.py kimi",
+      "discovery_format": "commands",
+      "require_profile_skills": true
     }
   },
   "user_bin_dirs": [
@@ -26,7 +31,7 @@
   ],
   "skill_notes": [
     "Codex CLI 与桌面内置运行时分别验证原生 skills/list。共享目录中的第一方 Skill 安装验证不代表已通过模型行为验收。",
-    "Kimi Code 0.41.0 配置由 kimi doctor 验证；Skill 原生发现与实际执行单独记录在家用 Mac 验证报告。"
+    "Kimi ACP 仅 initialize/session/new，核对 Profile 全部第一方 Skill 命令；不发模型 prompt。skill:README 是允许保留的第三方额外命令，不计作第一方 Skill，不删除上游文件。"
   ],
   "components": [
     {

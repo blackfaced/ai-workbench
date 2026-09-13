@@ -1053,6 +1053,23 @@ def check_skill_duplicates(ctx, report):
             continue
         if found is None:
             continue
+        if spec.get("require_profile_skills"):
+            expected = {c["name"] for c in ctx.profile["components"] if c["type"] == "skill"}
+            missing = sorted(expected - set(found))
+            if missing:
+                errors += 1
+                report.line("  %s：缺少 Profile Skill ✗ %s" % (client, ", ".join(missing)))
+        if spec.get("discovery_format") == "commands":
+            report.line("  %s：原生命令发现 %d 项（ACP 不提供源文件路径，不能证明文件归属或实际执行）"
+                        % (client, len(found)))
+            if "README" in found:
+                report.line("    额外原生命令 skill:README：保留上游索引，不计入第一方 Skill 验收，不修改文件")
+            # Names are the only native identity; do not fabricate source paths.
+            for name, commands in sorted(found.items()):
+                if len(commands) != 1:
+                    errors += 1
+                    report.line("    重复命令 ✗ %s" % name)
+            continue
         dups = 0
         for name in sorted(found):
             paths = found[name]
