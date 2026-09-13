@@ -39,3 +39,9 @@ Organize entries by artifact type. Use `Domain:` metadata when useful; keep setu
 - Record structural or governance changes in `decisions/` before introducing a new top-level directory.
 - Keep notes concise and practical: explain when to use an entry, how it is set up, and its current evaluation status.
 - Keep executable integrations self-contained under `tools/`; document reusable usage patterns under `workflows/`.
+
+## License
+
+AI Workbench's maintained environment tooling, first-party Skills and documentation are licensed under [Apache License 2.0](LICENSE), except material carrying its own license or third-party notices.
+
+The [engineering-principles instruction pack](skills/engineering-principles/LICENSE) remains MIT-licensed. Third-party material and linked or externally installed tools/Skills retain their original licenses and attribution; the repository license does not relicense them.
