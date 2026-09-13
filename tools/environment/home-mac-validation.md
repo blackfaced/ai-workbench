@@ -55,7 +55,7 @@ Kimi 命令发现按 [ACP session setup](https://agentclientprotocol.com/protoco
 
 ## 后续与恢复
 
-Kimi 的原生命令发现本次单独实测，尚未并入自动 check；其 `skill:README` 与目录卫生检查的口径差异已记为 [#94](https://github.com/blackfaced/ai-workbench/issues/94)。不修改上游 README 来掩盖该差异。
+本报告验证当时，Kimi 的原生命令发现为单独实测，未并入自动 check；其 `skill:README` 与目录卫生检查的口径差异已记为 [#94](https://github.com/blackfaced/ai-workbench/issues/94)。不修改上游 README 来掩盖该差异。
 
 新机首装、软件升级、真实模型任务、远端交接仍未验证。工作 Mac 与 Linux 的既有报告不由本轮本机检查替代。
 
@@ -65,3 +65,7 @@ Kimi 的原生命令发现本次单独实测，尚未并入自动 check；其 `s
 sh tools/environment/bootstrap.sh --profile home-mac --check
 python3 tools/environment/env.py restore --backup 20260911T174609Z --dry-run
 ```
+
+## Follow-up #94 (2026-09-13)
+
+The historical manual result above is unchanged. Native Kimi discovery is now wired into check, with an explicit extra-command policy for skill:README; see [new validation](kimi-discovery-validation.md). Its local 0.39.0 evidence does not retroactively establish automated acceptance on this home Mac 0.41.0.

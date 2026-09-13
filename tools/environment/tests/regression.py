@@ -74,7 +74,7 @@ class Sandbox(object):
         self.repo = os.path.join(root, "repo")
         self.env_dir = os.path.join(self.repo, "tools", "environment")
         os.makedirs(os.path.join(self.env_dir, "profiles"))
-        for name in ("env.py", "skills_discovery.py"):
+        for name in ("env.py", "skills_discovery.py", "kimi_skills_discovery.py"):
             shutil.copy2(os.path.join(ENV_DIR, name), os.path.join(self.env_dir, name))
         skill_dir = os.path.join(self.repo, "skills", "demo-skill")
         os.makedirs(os.path.join(skill_dir, "clients"))
@@ -638,6 +638,10 @@ def main():
     case_update_rollback_keeps_record(os.path.join(root, "c6"))
     case_discovery_errors_and_timeout(os.path.join(root, "c6", "cli"))
     case_profile_selection(os.path.join(root, "c7"))
+    kimi = subprocess.run([sys.executable, os.path.join(HERE, "kimi_discovery.py")],
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    write(os.path.join(root, "kimi-discovery.log"), kimi.stdout)
+    check("Kimi ACP 隔离协议与 Profile 缺项回归", kimi.returncode == 0, kimi.stdout if kimi.returncode else "")
     print("\n通过 %d 项，失败 %d 项" % (len(PASSES), len(FAILS)))
     if FAILS:
         for name in FAILS:

@@ -10,6 +10,8 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 
 ## Index
 
+- [单 Issue 轻量试用](../workflows/single-issue-trial.md) — 装好后做一个小 Issue，复用项目流程并区分试用与验收。
+
 - [reflect-bug](reflect-bug/SKILL.md) — 分析漏测原因并记录有证据、有适用边界的项目经验教训.
 - [review-lessons](review-lessons/SKILL.md) — 核对项目经验的有效性，合并重复项并保留历史证据与来源.
 - [handoff-to-dev](handoff-to-dev/SKILL.md) — 核对工作快照与目标环境，把当前任务安全交接到指定开发机.
