@@ -170,3 +170,13 @@ Brewfile 只登记实测确认归 Homebrew 所有的 formula。**`ripgrep` 不�
 该 Profile 保留 Homebrew cask Codex、桌面内置 Codex、nvm Node 和 Kimi 自带工具，未登记首装/升级渠道。
 `apply` 只管理选定的七个第一方 Skills；`uv` 为可选缺失项。Codex CLI 与桌面原生发现均纳入 `check`。
 Kimi 的 `doctor` 和 ACP Skill 命令发现单独实测，尚未纳入自动 `check`，不能由该命令的成功推断 Kimi 行为验收。
+
+### Kimi native discovery (#94)
+
+The home-mac check invokes `python3 kimi_skills_discovery.py kimi`. It uses [Kimi ACP](https://moonshotai.github.io/kimi-code/en/reference/kimi-acp) initialize/session/new and [available_commands_update](https://agentclientprotocol.com/protocol/v1/slash-commands), preserving the real HOME in an empty temporary cwd. No authenticate, model prompt or tool request is sent. Kimi can write its own session/log metadata; this is a local diagnostic, not a filesystem-only read or Skill execution.
+
+Required names come from all Skill components in the profile (currently seven), including when --only filters installation checks; discovery remains profile-wide. Missing names, configuration/protocol errors, incomplete output and timeout fail without scan fallback or automatic retry. Diagnostics identify the failure stage without raw client errors. The protocol deadline defaults to 45 seconds; AIWB_DISCOVERY_TIMEOUT accepts (0,120] seconds, plus up to about 2 seconds for cleanup. Output is bounded to 4 MiB and the owned process group is reaped.
+
+ACP advertises commands, not source file paths or on-disk uniqueness. Policy: retain and explicitly report third-party skill:README as an allowed extra command, outside first-party Skill acceptance. Directory hygiene still treats the root README as a non-Skill file. These are different observations; do not delete or rewrite upstream content to make the counts equal.
+
+The regression command includes isolated ACP and profile checks. Run `python3 tools/environment/tests/kimi_discovery.py` separately for focused diagnosis; failures retain the first fixture requests/results rather than retrying to green. See [validation evidence](kimi-discovery-validation.md).
