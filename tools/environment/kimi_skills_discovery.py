@@ -103,18 +103,19 @@ def discover(proc, cwd, deadline):
 
 
 def main(argv):
-    if len(argv) > 1:
-        sys.stderr.write("usage: kimi_skills_discovery.py [kimi-binary]\n")
+    explicit_command = argv[:1] == ["--"]
+    command = argv[1:] if explicit_command else (argv or ["kimi"])
+    if not command or (not explicit_command and len(argv) > 1):
+        sys.stderr.write("usage: kimi_skills_discovery.py [kimi-binary] | -- command [args...]\n")
         return 2
     try:
         timeout = float(os.environ.get("AIWB_DISCOVERY_TIMEOUT", "45"))
         if not math.isfinite(timeout) or not 0 < timeout <= 120:
             raise ValueError("timeout must be in (0, 120]")
-        binary = argv[0] if argv else "kimi"
         # An empty cwd avoids loading arbitrary project integrations; HOME is preserved
         # so native user-level discovery and configuration are actually checked.
         with tempfile.TemporaryDirectory(prefix="aiwb-kimi-discovery-") as cwd:
-            proc = subprocess.Popen([binary, "acp"], cwd=cwd, stdin=subprocess.PIPE,
+            proc = subprocess.Popen(command + ["acp"], cwd=cwd, stdin=subprocess.PIPE,
                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                     start_new_session=True)
             try:

@@ -2,6 +2,7 @@
 """Isolated ACP fixture tests; no real HOME, configuration or model calls."""
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import shutil
@@ -17,6 +18,7 @@ SERVER = r'''#!/usr/bin/env python3
 import json, os, signal, subprocess, sys, time
 from pathlib import Path
 root = Path(__file__).parent
+assert sys.argv[1:] == ["acp"]
 mode = root.joinpath("mode").read_text()
 root.joinpath("pid").write_text(str(os.getpid()))
 if mode == "config":
@@ -69,28 +71,47 @@ for raw in sys.stdin:
 '''
 
 class KimiDiscoveryTest(unittest.TestCase):
+    def test_explicit_command_runs_nonexecutable_script_with_spaces(self):
+        client = self.fixture("after")
+        p = subprocess.run([sys.executable, str(ENV_DIR / "kimi_skills_discovery.py"),
+                            "--", sys.executable, str(client)], env=self.env,
+                           capture_output=True, text=True, timeout=8)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("demo-skill\tacp:skill:demo-skill", p.stdout)
+
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(dir=ARTIFACTS))
-        self.client = self.root / "kimi"
-        self.client.write_text(SERVER)
-        self.client.chmod(0o755)
-        self.env = dict(os.environ, HOME=str(self.root), AIWB_DISCOVERY_TIMEOUT="0.8")
+        self.env = dict(os.environ, HOME=str(self.root), AIWB_DISCOVERY_TIMEOUT="5")
+
+    def fixture(self, mode):
+        # Every attempt owns fresh PID/request evidence; prior subtests cannot mask startup failure.
+        attempt = Path(tempfile.mkdtemp(prefix=mode + "-", dir=self.root))
+        client = attempt / "fixture with spaces.py"
+        client.write_text(SERVER)
+        (attempt / "mode").write_text(mode)
+        return client
 
     def probe(self, mode):
-        (self.root / "mode").write_text(mode)
+        client = self.fixture(mode)
+        attempt = client.parent
+        timeout_case = mode in ("no-list", "wrong-session", "partial", "silent", "child")
+        env = dict(self.env, AIWB_DISCOVERY_TIMEOUT="0.8" if timeout_case else "5")
         started = time.monotonic()
         p = subprocess.run([sys.executable, str(ENV_DIR / "kimi_skills_discovery.py"),
-                            str(self.client)], env=self.env, capture_output=True, text=True, timeout=5)
-        (self.root / (mode + ".result.json")).write_text(json.dumps({"returncode": p.returncode, "stdout": p.stdout, "stderr": p.stderr}))
-        self.assertLess(time.monotonic()-started, 4)
+                            "--", sys.executable, str(client)], env=env, capture_output=True, text=True, timeout=8)
+        (attempt / "result.json").write_text(json.dumps({"returncode": p.returncode, "stdout": p.stdout, "stderr": p.stderr}))
+        self.assertLess(time.monotonic()-started, 4 if timeout_case else 8)
         # Exit status is not enough: ensure the actual client PID was reaped.
-        pid = self.root / "pid"
+        pid = attempt / "pid"
         self.assertTrue(pid.exists(), p.stderr)
         with self.assertRaises(ProcessLookupError): os.kill(int(pid.read_text()), 0)
-        requests = self.root / "requests"
-        if mode != "config": self.assertTrue(requests.exists(), p.stderr)
-        if requests.exists():
-            self.assertLessEqual(set(requests.read_text().splitlines()), {"initialize", "session/new"})
+        requests = attempt / "requests"
+        expected = [] if mode == "config" else ["initialize"] if mode == "init-error" else ["initialize", "session/new"]
+        self.assertEqual(requests.read_text().splitlines() if requests.exists() else [], expected, p.stderr)
+        if mode == "child":
+            child_pid = int((attempt / "child-pid").read_text())
+            state = subprocess.run(["ps", "-o", "stat=", "-p", str(child_pid)], capture_output=True, text=True)
+            self.assertTrue(state.returncode == 1 or state.stdout.strip().startswith("Z"), state.stdout)
         return p
 
     def test_notifications_before_and_after_response(self):
@@ -106,7 +127,9 @@ class KimiDiscoveryTest(unittest.TestCase):
                      "no-list", "wrong-session", "partial", "silent"):
             with self.subTest(mode=mode):
                 p = self.probe(mode)
-                self.assertNotEqual(p.returncode, 0)
+                timeout_case = mode in ("no-list", "wrong-session", "partial", "silent")
+                self.assertEqual(p.returncode, 4 if timeout_case else 5, p.stderr)
+                if timeout_case: self.assertIn("timed out", p.stderr)
                 self.assertEqual(p.stdout, "")
                 self.assertNotIn("secret-error", p.stderr)
                 self.assertTrue(p.stderr.strip())
@@ -118,23 +141,30 @@ class KimiDiscoveryTest(unittest.TestCase):
 
     def test_timeout_reaps_descendant(self):
         p = self.probe("child")
-        self.assertNotEqual(p.returncode, 0)
-        pid = int((self.root / "child-pid").read_text())
-        # Orphan zombies may briefly await init; they must not be executing.
-        state = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True)
-        self.assertTrue(state.returncode == 1 or state.stdout.strip().startswith("Z"), state.stdout)
+        self.assertEqual(p.returncode, 4, p.stderr)
+        self.assertIn("timed out", p.stderr)
+
+    def test_command_usage_and_legacy_binary_errors(self):
+        for args, code in [(["--"], 2), (["one", "two"], 2), (["/bin/false"], 5)]:
+            with self.subTest(args=args):
+                p = subprocess.run([sys.executable, str(ENV_DIR / "kimi_skills_discovery.py")] + args,
+                                   env=self.env, capture_output=True, text=True, timeout=8)
+                self.assertEqual(p.returncode, code, p.stderr)
+                self.assertEqual(p.stdout, "")
 
     def test_profile_check_requires_selected_skills_and_preserves_readme(self):
         from regression import Sandbox, DEMO_SKILL, base_profile
         box = Sandbox(str(self.root / "repo-test"))
-        spec = {"discovery_cmd": "%s kimi_skills_discovery.py %s" % (sys.executable, self.client),
+        spec = {"discovery_cmd": "",
                 "discovery_format":"commands", "require_profile_skills":True}
         box.profile(base_profile([DEMO_SKILL], {"kimi":spec,"shared":{"skills_dir":"~/.agents/skills"}}))
         self.assertEqual(box.run("apply", "--profile", "harness")[0], 0)
         readme = Path(box.path(".agents", "skills", "README.md"))
         readme.write_text("upstream index must survive\n")
         for mode, expected in [("after",0),("empty",1),("new-error",1)]:
-            (self.root / "mode").write_text(mode)
+            client = self.fixture(mode)
+            spec["discovery_cmd"] = shlex.join([sys.executable, "kimi_skills_discovery.py", "--", sys.executable, str(client)])
+            box.profile(base_profile([DEMO_SKILL], {"kimi":spec,"shared":{"skills_dir":"~/.agents/skills"}}))
             code, out = box.run("check", "--profile", "harness")
             (self.root / (mode+".env-check.txt")).write_text(out)
             self.assertEqual(code, expected, out)
