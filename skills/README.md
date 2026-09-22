@@ -23,6 +23,7 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 - [implement-batch](implement-batch/SKILL.md) — explicit batched implementation; [installation and usage](../workflows/implement-batch.md).
 
 - [steelman-grill](steelman-grill/SKILL.md) — managed first-party Skill; requires upstream `grilling`.
+- [viral-clip-doctrine](viral-clip-doctrine/SKILL.md) — 抖音投流爆款剪辑的方案层管线（钩子—气口—指派—收敛—包装—合规），不预设执行工具。
 - [Source records](sources.lock.json) — includes explicitly unverified upstream entries; not a complete dependency lock.
 - [Anthropic Skills](anthropic-skills.md)
 - [mattpocock/skills](matt-pocock-skills.md)
