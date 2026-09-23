@@ -626,6 +626,26 @@ def case_profile_selection(root):
     check("只有一个 Mac Profile 时兼容自动选择", code == 0 and "profile=work-mac" in out)
 
 
+def case_implement_batch_distribution(root):
+    print("\n[用例 8] implement-batch 的 botmux 附录随实际 Profile 分发")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    source = os.path.join(repo, "skills", "implement-batch")
+    for profile_name in ("work-mac", "work-linux", "home-mac"):
+        box = Sandbox(os.path.join(root, profile_name))
+        shutil.copytree(source, os.path.join(box.repo, "skills", "implement-batch"))
+        profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
+        component = next(c for c in profile["components"] if c["id"] == "implement-batch")
+        # Use the real component with isolated clients; never invoke installed harnesses.
+        box.profile(base_profile([component]))
+        rc, out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
+        check(profile_name + " 安装成功", rc == 0, out if rc else "")
+        target = box.path(".agents", "skills", "implement-batch", "references", "botmux.md")
+        check(profile_name + " botmux 附录完整分发",
+              os.path.isfile(target) and read(target) == read(os.path.join(source, "references", "botmux.md")))
+        rc, out = box.run("check", "--profile", "harness", "--only", "implement-batch")
+        check(profile_name + " 安装校验通过", rc == 0, out if rc else "")
+
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -638,6 +658,7 @@ def main():
     case_update_rollback_keeps_record(os.path.join(root, "c6"))
     case_discovery_errors_and_timeout(os.path.join(root, "c6", "cli"))
     case_profile_selection(os.path.join(root, "c7"))
+    case_implement_batch_distribution(os.path.join(root, "c8"))
     kimi = subprocess.run([sys.executable, os.path.join(HERE, "kimi_discovery.py")],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "kimi-discovery.log"), kimi.stdout)

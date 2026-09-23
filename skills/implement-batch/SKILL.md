@@ -14,7 +14,9 @@ Inspect the task-relevant environment before asking the user for setup informati
 
 Find each target repository’s integration-test guide and existing scripts. If missing or stale, consult the installed `setup-aiwb` Skill (repository source: `skills/setup-aiwb/SKILL.md`) for the setup procedure. Inspect before confirmation; include any guide creation/updates in the plan. If that Skill is unavailable, report the missing setup capability and resolve the guide before dependent acceptance execution.
 
-Inspect native subagent support, available concurrency, working-directory isolation, and model selection. List exact supported model identifiers/efforts for implementation, integration and selected review stages when inspectable. Otherwise mark them unverified, including any inherited default whose effective model is unknown. Never invent support or substitute a model silently. If a required capability is unavailable, propose an explicit alternative for confirmation.
+Inspect agent/session support, available concurrency, working-directory isolation, and model selection in the selected harness. List exact supported model identifiers/efforts for implementation, integration and selected review stages when inspectable. Otherwise mark them unverified, including any inherited default whose effective model is unknown. Never invent support or substitute a model silently. If a required capability is unavailable, propose an explicit alternative for confirmation.
+
+When the user selects botmux bot-to-bot execution, read [the botmux transport guide](references/botmux.md) before proposing the plan or dispatching. Independent harness sessions replace native subagents; the roles, review policy and acceptance gates below stay unchanged. Otherwise use the client's native subagents. Installing botmux alone does not select this mode.
 
 When the user selects staged review (cheap initial review, stronger batch review), read [the staged-review policy](references/staged-review.md) before proposing models, risk routing and concurrency. Otherwise keep the ordinary review policy below. Existing confirmed runs retain their policy until a change is confirmed.
 

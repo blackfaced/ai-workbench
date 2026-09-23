@@ -27,6 +27,12 @@ For a first trial use a small parent with one existing implementation, two indep
 
 This Skill controls instructions and handoffs. Repository tests and CI provide executable gates; client capabilities provide isolation. It creates no daemon, queue, or additional Issue authority. The original upstream `implement` remains unchanged.
 
+## Optional botmux execution
+
+> 使用 implement-batch，通过 botmux 上已有的机器人协作实施这个 spec。先核实参与 bot 的 harness、模型、会话路由和独立 worktree，给我一份执行计划；确认后再派发，保留独立评审、串行集成和批次验收。
+
+The [botmux transport guide](../skills/implement-batch/references/botmux.md) maps existing roles to independent harness sessions and uses native dispatch/report routing. Botmux installation does not select this mode or install/configure bots. The same profiles distribute the guide; live delivery, directory isolation and recovery still require the documented pilot. The default native-subagent workflow is unchanged.
+
 ## Repository setup and final integration acceptance
 
 Use `setup-aiwb` in a target repository to establish or refresh its integration-test guide. This is a Skill, not an `aiwb setup` shell command. It inspects existing scripts/deployment definitions, asks only for missing inputs, and records verified versus unverified setup paths. Typical guide locations follow the repository convention, otherwise `docs/testing/integration.md`.
