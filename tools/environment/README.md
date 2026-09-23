@@ -1,5 +1,7 @@
 # tools/environment — 个人开发环境的安装 / 更新 / 检查入口
 
+安装不熟悉的脚本或 MCP 服务前，可用[简短检查清单](pre-install-review.md)核对来源、权限、安装归属和回滚。
+
 一份实现（`env.py`，只用标准库、Python 3.9 兼容）+ 一个薄壳（`bootstrap.sh`，只负责在新机器上找到
 `python3` 并转发参数）。设计依据见 [`decisions/0009-reproducible-development-environments.md`](../../decisions/0009-reproducible-development-environments.md)。
 
