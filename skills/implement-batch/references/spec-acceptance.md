@@ -21,6 +21,8 @@ Use the target repository's test-document convention; otherwise `docs/testing/sp
 
 ## Execution record
 
+Link the parent-maintained [run record](run-record.md) for attempt timing, model/usage provenance and review findings; keep case outcomes here and reference their attempt IDs rather than duplicating results.
+
 For every attempt record run ID/date, executor/model, tested commit or complete starting patch, image/deployment identity if applicable, environment, case-design revision, and relevant commands. Use sequential attempts when shared test data makes parallel execution unsafe. Preserve earlier failures and their evidence when recording retests. Keep evidence in a persistent project artifact location. For reused results, cite the original attempt and why it still covers this candidate/environment; for repeated checks, state what changed or which evidence was missing. BLOCKED entries record sources already checked and the fact or event required to resume, so a handoff does not restart the same investigation.
 
 | Case | Attempt | Status | Actual result | Evidence reference | Reason / follow-up |
