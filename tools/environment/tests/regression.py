@@ -329,6 +329,17 @@ def case_tools(root):
     rc, out = box2.run("check", "--profile", "harness")
     check("缺失且无渠道时判为需人处理", rc == 1 and "未登记已验证的安装渠道" in out)
 
+    box5 = Sandbox(os.path.join(root, "five"))
+    box5.profile(base_profile([tool_component(install_cmd="exit 17")]))
+    rc, out = box5.run("apply", "--profile", "harness")
+    check("安装器失败不能记为成功", rc == 1 and "install_cmd 失败（rc=17）" in out)
+
+    box6 = Sandbox(os.path.join(root, "six"))
+    box6.profile(base_profile([tool_component(install_cmd=fake_tool_cmd("1.0.0"),
+                                              identity_re="^approved-tool ")]))
+    rc, out = box6.run("apply", "--profile", "harness")
+    check("安装后身份不符不能记为成功", rc == 1 and "身份断言失败" in out)
+
     # 由安装器组件负责的工具：本次计划包含它就不算漏，不包含就要如实报出
     installer = {"id": "fake-installer", "type": "installer", "owner": "harness",
                  "check_cmd": "test -x \"$HOME/bin/demotool\"",

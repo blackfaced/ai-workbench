@@ -137,16 +137,17 @@ python3 tools/environment/tests/regression.py
 ⑤ 历史副本清理不许丢东西、`--force` 接管后仍能原样撤回；⑥ 符号链接目标的接管与还原、更新回滚后
 安装记录仍认得出自己、原生发现的解析错误要传播、超时要真的超时且不留孤儿进程。
 另覆盖多 Mac Profile 的选择、未知主机失败和 Python 3.14 的 UTC 时间兼容性。
-任何一条不过即非 0 退出（当前 84 项）。CI 在 Ubuntu（Python 3.11 / 3.9）与 macOS（Python 3.11）运行同一套测试，不安装额外 Python 依赖。
+任何一条不过即非 0 退出。CI 在 Ubuntu（Python 3.11 / 3.9）与 macOS（Python 3.11）运行同一套测试，不安装额外 Python 依赖。
 
 ## 当前能力范围（别把它当成新机搭建入口）
 
 工作 Mac 与两台现有 Linux 机器已验证漂移检查、受管配置与 Skill 的安装/更新/回滚、已有工具的版本更新。
 家用 Mac mini 在 2026-09-12 验证了工具身份、Skill 安装与原生发现、幂等与回滚预览；没有验证软件升级、新机首装或模型驱动任务。详见[家用 Mac 验证记录](home-mac-validation.md)。
 
-**尚未覆盖新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首次安装渠道还没取证登记（`install_cmd` 留空），
-一台干净的 Linux 机器跑 `apply` 会在这三项上报「无已验证渠道，交给人」。要它成为完整的新机搭建入口，
-得先在一台干净机器上实测出这三条渠道再登记。
+**尚未覆盖完整新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首装命令已在现有开发机的隔离容器中
+按 Profile 原样验证并登记；现有安装的渠道不变。受限网络需要先在执行安装命令的 shell 中配置
+HTTP(S) 代理，Docker daemon 的代理不会自动传给容器。隔离测试、版本和限制见
+[Linux 首装验证记录](linux-first-install-validation.md)；容器通过不等于完整新机 `apply` + `check` 验收。
 
 ## 每台机器的差异
 

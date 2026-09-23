@@ -84,8 +84,9 @@
       "version_cmd": "codex --version",
       "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
       "identity_re": "^codex-cli ",
+      "install_cmd": "set -o pipefail; curl -fsSL --max-time 30 https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh",
       "update_cmd": "codex update",
-      "note": "~/.local/bin/codex -> ~/.codex/packages/standalone/current/codex（两台都是这个 standalone 布局，实测于 2026-09-07），两台都是 0.130.0。`codex update` 子命令存在，可作为已验证的更新渠道；standalone 的首次安装渠道未取证，所以不填 install_cmd —— 真缺了就红着让人处理，不猜。"
+      "note": "两台现有机器的 codex 都是 standalone 布局。缺失时使用经隔离容器验证的官方 standalone 安装脚本；安装器会写入 ~/.codex/packages/standalone 和 shell profile。受限网络须预先配置 HTTPS_PROXY；Docker daemon 的代理不会自动传给 shell。现有安装不迁移渠道，更新仍用 codex update。"
     },
     {
       "id": "uv",
@@ -97,19 +98,21 @@
       "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
       "identity_re": "^uv [0-9]",
       "min_version": "0.8.0",
+      "install_cmd": "set -o pipefail; curl -fsSL https://astral.sh/uv/0.12.18/install.sh | UV_INSTALL_DIR=\"$HOME/.local/bin\" UV_NO_MODIFY_PATH=1 sh",
       "update_cmd": "if readlink -f \"$(command -v uv)\" | grep -q '/pipx/venvs/'; then pipx upgrade uv; else uv self update; fi",
-      "note": "dev8c 0.10.7 / dev32c 0.6.13（实测）。两台的安装渠道不同，所以 update_cmd 先认渠道再动手：dev8c 的 ~/.local/bin/uv 是 standalone 二进制 → `uv self update`；dev32c 的是 pipx venv 里的软链（~/.local/pipx/venvs/uv/bin/uv）→ `pipx upgrade uv`（用 /usr/bin/pipx 1.1.0，dev8c 那个 pipx 本身是坏的）。给错渠道 uv 会直接拒绝自更新。"
+      "note": "现有两台机器的 uv 安装渠道不同：一台是 standalone，另一台是 pipx。缺失时只用经隔离容器验证的固定版 standalone 安装；已安装时不迁移渠道。update_cmd 先认渠道再更新：pipx venv 走 pipx upgrade uv，standalone 走 uv self update。"
     },
     {
       "id": "rg",
       "type": "tool",
       "bin": "rg",
-      "owner": "trae-cli-installer",
+      "owner": "trae-cli-installer-or-upstream-release",
       "required": true,
       "version_cmd": "rg --version",
       "version_re": "ripgrep ([0-9]+\\.[0-9]+\\.[0-9]+)",
       "identity_re": "^ripgrep ",
-      "note": "两台的 ~/.local/bin/rg 都是 Trae CLI 安装器投放的普通文件。没有已验证的独立安装渠道：apt 源里的 ripgrep 是 13.0.0 且要 sudo，与现有渠道打架，所以不填 install_cmd —— 真缺了就红着让人处理。"
+      "install_cmd": "test \"$(uname -m)\" = x86_64 || { echo 'ripgrep installer supports x86_64 only'; exit 1; }; tmp=$(mktemp -d) || exit 1; trap 'rm -r \"$tmp\"' EXIT; cd \"$tmp\" || exit 1; curl -fsSL --max-time 60 -O https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz && curl -fsSL --max-time 30 -O https://github.com/BurntSushi/ripgrep/releases/download/15.2.0/ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz.sha256 && sha256sum -c ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz.sha256 && tar -xzf ripgrep-15.2.0-x86_64-unknown-linux-musl.tar.gz && install -D -m 0755 ripgrep-15.2.0-x86_64-unknown-linux-musl/rg \"$HOME/.local/bin/rg\"",
+      "note": "现有两台机器的 rg 由 Trae CLI 安装器投放，缺失时才使用已在隔离容器验证的 upstream 15.2.0 x86_64 release 与 SHA-256 校验，不改已有文件。受限网络须预先配置 HTTPS_PROXY；不要求 sudo，不用旧版 apt 包。"
     },
     {
       "id": "git",
