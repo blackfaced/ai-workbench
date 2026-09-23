@@ -23,6 +23,8 @@ In Codex use `$implement-batch`. Exact child models depend on the client's expos
 
 Before confirmation the parent performs read-only investigation and presents the graph, proposed batches, existing implementations, model/concurrency choices, checks, and authority. After confirmation each implementation child gets its own worktree; one integrator per batch reviews arrivals and integrates serially. Existing implementations go directly to verification. The parent accepts each batch before launching the next from the accepted integration tip, and finally verifies the whole spec.
 
+When cross-layer or external integration is uncertain, the plan starts with a tracer bullet: one small usable path through the relevant layers, with observable evidence, before expanding work that relies on its assumptions. For example, connect one real entrypoint to storage and verify its result before adding the remaining operations. The existing batch gate releases dependent children after acceptance; unrelated work can proceed. Simple local changes and already-validated paths need no extra slice. This uses the same fresh-agent handoffs and approval scope, without requiring a new manual prompt for every slice. See the [Skill's decomposition rules](../skills/implement-batch/SKILL.md#inspect-and-propose--read-only).
+
 For a first trial use a small parent with one existing implementation, two independent children, and a child blocked by both. Observe that execution waits for confirmation, finished work is verified rather than rewritten, siblings run in distinct worktrees, the dependent child waits for accepted integration, and batch-wide checks run once per unchanged candidate. A requested unavailable model must be surfaced before dispatch. Discovery/format checks do not prove these behaviors in Traex.
 
 This Skill controls instructions and handoffs. Repository tests and CI provide executable gates; client capabilities provide isolation. It creates no daemon, queue, or additional Issue authority. The original upstream `implement` remains unchanged.
@@ -46,3 +48,17 @@ Keep worktrees, complete recovery patches/checkpoints and acceptance evidence in
 Workers provide targeted feedback; the integrator owns batch-wide checks and consolidates required review axes; the parent assesses evidence. Reuse valid results for unchanged relevant code/environment instead of restarting the suite at every role boundary. Missing or stale reports, candidate changes affecting coverage and required repository gates justify reruns; record the reason.
 
 For cross-system work, verify the smallest public contract needed by dependent implementation before the first affected batch, within confirmed authority. Complete pagination before inferring absence. This complements final E2E. When an external prerequisite blocks progress, retain checked sources and a concrete resume condition; do not repeat the same investigation without new evidence.
+
+## Run records and review experiments
+
+Each confirmed run now retains a project-owned run record, linked from its spec acceptance document/checkpoint (default `docs/testing/runs/<run-id>.md`). The parent writes it from existing agent handoffs: actual models, attempt boundaries, review findings/dispositions, repairs, checks and available usage evidence. See the [record outline](../skills/implement-batch/references/run-record.md). It also covers ordinary single-review runs, providing a baseline for a later explicitly selected staged-review experiment; logging itself does not change the review policy.
+
+Ask a later analysis to compare named run records, including total elapsed time, repair overhead, confirmed versus rejected findings and later-stage discoveries. Missing costs remain unknown, parallel attempt durations are not summed as elapsed time, and partial usage is not total spend. Records are instruction-driven and require execution evidence; this change does not provide automatic client telemetry or reconstruct unrecorded historical measurements. Only generic formats live in AIWB; project logs stay in their owning repositories.
+
+## Optional staged code review
+
+Request the mode explicitly, for example:
+
+> 使用 implement-batch 实施这个 spec，启用分层评审：初审用 Luna，批尾终审用 Astra。先核实客户端实际支持的模型，展示依赖图、风险分流、并发和轮数让我确认。记录运行日志。
+
+The [staged-review policy](../skills/implement-batch/references/staged-review.md) proposes one cheap initial review per Issue plus at most one repair recheck, with early stronger review for high-risk or disputed changes. A fresh stronger reviewer covers the final combined batch before acceptance. Reviewers remain read-only; workers repair and the integrator alone writes the integration branch and owns checks. Initial approval is provisional and does not release dependencies. Ordinary mode and existing confirmed runs keep their selected policy. Model names in the example require native verification; installing the Skill proves neither availability nor experimental savings.
