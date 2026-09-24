@@ -21,12 +21,14 @@ Adapt this outline to the existing repository guide. Remove inapplicable section
 - Candidate commit, image digest where applicable, deployed service/version check.
 - Readiness/health command, bounded wait, and access/port-forward method.
 - Missing setup or unverifiable identity and its impact on acceptance.
+- For a retained development service: owner, worktree/commit or patch identity, process/session, URL/port, authorized access method, update/reload procedure and review window. Link the existing run record for changing values rather than duplicating them.
 
 ## Execute and collect evidence
 
 - Existing integration-test commands or browser/API entry points; required real versus simulated dependencies.
 - Observable success/failure criteria, expected exit codes, relevant logs/artifacts.
 - Timeout/stop conditions; authorized real API or billable operations.
+- First usable slice and browser actions/assertions; when human verification is selected, the user-facing URL, steps, expected behavior and feedback evidence. Distinguish environment readiness, simulated dependencies and real behavior verification.
 
 ## Clean up and recover
 

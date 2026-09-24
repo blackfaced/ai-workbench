@@ -17,9 +17,21 @@ Include these choices in the Skill's existing execution-plan confirmation; there
 
 ## Dispatch and return
 
+Keep this identity block in the existing checkpoint and reference it from each brief; fill the recipient identity from actual delivery evidence before edits:
+
+```text
+Run / attempt:
+Coordinator: bot identity + original parent session ID + parent topic root
+Executor: bot identity + actual recipient session ID + assigned role
+Return route: dispatch root + original parent session ID
+Write owner (if authorized): session ID -> absolute worktree + branch/base; otherwise read-only
+```
+
+Bot names and topic IDs alone do not identify the authorized session. Each recipient checks its own identity and role against this block and verifies the worktree before writing. The recorded coordinator alone changes the plan or accepts results; another session of the same bot reports the mismatch through the verified route instead of acting as a replacement coordinator. Unknown identity or ownership blocks the affected assignment until reconciled. This is a handoff check, not a lock or a guarantee of botmux routing.
+
 1. The parent records an attempt before dispatch and writes its brief in the project's persistent evidence location. Use the existing handoff fields: run/attempt and Issue scope, role, worktree/base, acceptance and permissions, targeted checks and return evidence. Only the parent coordinates the batch; recipients execute their assigned role rather than recursively running the whole batch workflow.
 2. Use `botmux dispatch` to create a fresh child topic/session. Prefer the installed stable bot-identity option when its permissions and directory setup satisfy the plan. Save returned bot/session identifiers, parent and child topic roots, and dispatch identifiers in the existing checkpoint, associated with that attempt. Keep message-root IDs distinct from display thread IDs; use the identifier required by the receiving command, not a guessed conversation target.
-3. Send follow-ups/repairs with `botmux dispatch --into <child-root> ...`. An ordinary mention in the parent topic can create a different child session. Normal queued delivery is the default; interruption/steering requires an intentional decision within the approved plan, not a retry shortcut.
+3. Before sending follow-ups/repairs with `botmux dispatch --into <child-root> ...`, match that root to the current executor in the identity block. A retained root may resume a suspended, superseded writer; a known root is not proof of current ownership. An ordinary mention in the parent topic can create a different child session. Normal queued delivery is the default; interruption/steering requires an intentional decision within the approved plan, not a retry shortcut.
 4. Recipients save their evidence and use `botmux report --content-file <persistent-report>` to return through the dispatch association. Use the exact `--dispatch-root` when provided and supported by the installed version. Check the selected route: a platform-Issue-bound session may instead update that Issue to `in_review`, requiring approved tracker-update authority; verify parent delivery separately. A report must reach and wake the original parent session; mentioning the parent inside the child topic can start a context-free session instead. If routing cannot be established, retain the report and surface the blocker rather than broadcasting it to another group/topic.
 5. The parent matches the report to the recorded attempt and candidate, inspects the evidence, and proceeds through the existing review/integration/batch gates. A send acknowledgment, receipt, idle session, or `completed` status is not acceptance. Duplicate reports do not create new attempts or repeat integration; delayed reports from superseded attempts require reconciliation before use.
 
@@ -27,7 +39,7 @@ Reuse botmux's session status, chat history and report wake-ups for observabilit
 
 ## Interrupted or uncertain delivery
 
-A timeout does not prove dispatch failed. Check the recorded topic/session and recipient activity before resending. Resume the same assignment when possible; before replacement, establish that the previous writer has stopped and preserve its work. If ownership is unknown, leave the affected attempt unknown/blocked rather than starting a competing writer.
+A timeout does not prove dispatch failed. Check the identity block, recipient activity and current Git state before resending. Resume the recorded assignment when it still owns the worktree. Before replacement, verify that the previous writer and its write-producing child processes have stopped, preserve its work, and update the existing checkpoint to name the replacement and superseded session/root. Use only the replacement route thereafter; late messages from the superseded route require reconciliation, not automatic resumption. Stopping processes requires existing authority. If cessation or ownership is unknown, leave the affected assignment blocked rather than starting a competing writer.
 
 After a parent restart or context loss, read the existing checkpoint and run record, reconcile botmux session/topic evidence with current Git state, then resume. Recover unfinished attempts before accepting new reports. Botmux process/session persistence does not by itself prove task recovery or restore missing test evidence.
 
