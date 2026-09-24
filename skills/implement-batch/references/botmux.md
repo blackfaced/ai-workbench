@@ -1,6 +1,6 @@
 # Botmux — optional session transport
 
-Use this guide when botmux bot-to-bot execution is selected. The parent harness runs `implement-batch`; botmux carries dispatches, progress and results between harness sessions. Keep one coordinator and the existing Issue tracker, checkpoint and [run record](run-record.md). Botmux's separate workflow/orchestration Skills do not own this run; a chat progress board, if requested, only displays the existing state.
+Use this guide when botmux execution is selected. The parent harness runs `implement-batch`; botmux carries messages between its roles. Keep one master across inner worker/QA loops and outer architect/SRE feedback, with the existing tracker, checkpoint and [run record](run-record.md). Botmux's separate workflow Skills do not own this run; chat cards display existing evidence.
 
 ## Preflight and approval
 
@@ -39,7 +39,7 @@ Reuse botmux's session status, chat history and report wake-ups for observabilit
 
 ## Completion-report contract
 
-For every dispatch-owned role (including keeper, reviewer and worker), the first completion-report attempt must be `botmux report --dispatch-root <root> --content-file <persistent-report>`, with the recorded root substituted, not a guessed topic ID. Missing root, unsupported CLI syntax or missing execution authority blocks reporting until resolved; none permits legacy fallback. A top-level coordinator with no upstream dispatch is outside this contract.
+For every dispatch-owned role (including QA, keeper, reviewer, worker, architect and SRE), the first completion-report attempt must be `botmux report --dispatch-root <root> --content-file <persistent-report>`, with the recorded root substituted, not a guessed topic ID. Missing root, unsupported CLI syntax or missing execution authority blocks reporting until resolved; none permits legacy fallback. A top-level coordinator with no upstream dispatch is outside this contract.
 
 Never @ the parent/master bot in a child topic, including for acknowledgments, questions or legacy fallback: it can create a separate parent-bot session. Use the verified dispatch return route instead, preserving whether the message is progress, a question, a blocker or completion; do not label unfinished work completed to obtain delivery.
 

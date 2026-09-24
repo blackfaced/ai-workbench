@@ -29,6 +29,8 @@ Adapt this outline to the existing repository guide. Remove inapplicable section
 - Observable success/failure criteria, expected exit codes, relevant logs/artifacts.
 - Timeout/stop conditions; authorized real API or billable operations.
 - First usable slice and browser actions/assertions; when human verification is selected, the user-facing URL, steps, expected behavior and feedback evidence. Distinguish environment readiness, simulated dependencies and real behavior verification.
+- One verified baseline smoke path in the intended worktree: startup → actual response → representative browser/API assertion. Record usable test-data/fixture provenance, simulated boundaries, and the repeatable command/procedure; this need not exercise the unfinished feature.
+- Preview label (WIP or accepted), known failures and review window; a failing preview is feedback, not a reason to mark acceptance PASS or stop the service automatically.
 
 ## Clean up and recover
 

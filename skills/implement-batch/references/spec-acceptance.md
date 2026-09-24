@@ -1,6 +1,6 @@
 # Spec acceptance — outline
 
-Use the target repository's test-document convention; otherwise `docs/testing/spec-<issue-id>.md`. This document holds case design and execution evidence, not a second task tracker. Link the parent Issue and repository integration guide. The parent agent owns expected results; the execution agent fills observations and status.
+Use the target repository's test-document convention; otherwise `docs/testing/spec-<issue-id>.md`. Link the parent Issue and integration guide. The master owns expected outcomes; QA reviews coverage before dependent implementation and records execution observations. This is evidence, not another tracker.
 
 ## Scope and coverage
 
@@ -8,6 +8,7 @@ Use the target repository's test-document convention; otherwise `docs/testing/sp
 - Repository guide links and reviewed case-design revision.
 - Map every parent acceptance criterion to case IDs, including cross-Issue workflows. Explain any uncovered requirement.
 - Cover relevant happy paths, boundaries, invalid inputs, authorization, dependency failure/recovery, and compatibility; omit categories that do not apply with a brief reason.
+- Identify the first behavior slice and real versus simulated dependencies. For UI work, assertions must exercise the requested interaction/state, not merely carry the case name. Separate setup smoke, WIP feedback and final acceptance.
 
 ## Case <stable ID>: <behavior>
 

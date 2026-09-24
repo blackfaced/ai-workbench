@@ -10,6 +10,7 @@ The parent is the sole record writer. Include the attempt ID and required return
 - Client/version; Skill source commit plus dirty-patch identity or installed-content digest; use `unknown` with a reason when unavailable.
 - Confirmed plan reference: graph/batches, implement versus verify-existing children, concurrency, and review policy. Record stages, requested models/efforts, round limits and escalation rules as actually approved, including an ordinary single-review policy. Do not introduce staged review solely to populate this record.
 - Acceptance document, integration guides, persistent evidence and checkpoint links; relevant environment identity without credentials.
+- Role assignments: master (parent coordinator), worker, independent QA, integrator and applicable architect/SRE; confirmed repair budget and escalation boundary. The outer loop returns to the same master.
 - Comparison run ID, if any. Note differences in scope, risk, diff size, checks, environment and policy; unrelated runs are not a controlled comparison.
 
 ## Attempts
@@ -23,6 +24,7 @@ One row per actual implementation/repair, review, integration, check group or fi
 - Record each repair/re-review as a new attempt linked to the triggering finding IDs. Record escalations, retries and repeated checks with their reason; reused check evidence links the original attempt and applicability assessment, not a fictitious new execution.
 - Read timestamps/durations and usage from available client/command evidence. Label parent dispatch/receipt times as such when exact child timing is unavailable. Never reconstruct precise timings from prose; retain open ends and report timing gaps.
 - For observed waits, retain interval and cause (queue/capacity, human approval, environment/blocker). Unknown wait decomposition stays unknown. Include failures and stopped runs, not just successful batches.
+- At progress handoffs, link the current slice, owner session, last observed activity/time, candidate/preview, blocker and next action. Preserve unknown/stale observations; a completed session is not an accepted task.
 
 ## Review findings
 

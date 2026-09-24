@@ -2,69 +2,40 @@
 
 - Type: implementation workflow
 - Domain: coding
-- Status: experimental; first local trial targets Traex
+- Status: experimental; harness execution and recovery require live validation
 - Source: [first-party Skill](../skills/implement-batch/SKILL.md)
 
-Install from this checkout on the work Mac:
+## Install and invoke
+
+Preview, apply and verify both Skills from this checkout:
 
 ```sh
-python3 tools/environment/env.py plan --profile work-mac --only implement-batch
-python3 tools/environment/env.py apply --profile work-mac --only implement-batch
-python3 tools/environment/env.py check --profile work-mac --only implement-batch
+python3 tools/environment/env.py plan --profile work-mac --only implement-batch --only setup-aiwb
+python3 tools/environment/env.py apply --profile work-mac --only implement-batch --only setup-aiwb
+python3 tools/environment/env.py check --profile work-mac --only implement-batch --only setup-aiwb
 ```
 
-Use `work-linux` on the Linux machines; registration does not mean deployment there has occurred. The installed shared copy serves Codex and Trae discovery. Upstream `implement` is unchanged. Other clients and native subagent availability require independent verification.
+Use `work-linux` or `home-mac` for the corresponding machines. Installation/discovery does not prove task execution or deploy changes to other hosts. The shared copy serves configured clients; native agent/model support must be checked. An existing session may need to reload the Skill.
 
-In the target repository's Traex conversation, explicitly request:
+> 使用 implement-batch 实施这个 spec。先验证已有实现，展示依赖、首个可运行切片、master/worker/QA 分工、模型、返修预算和权限，统一确认后执行。QA 负责独立 review 和行为验收；需要架构或环境处理时再引入架构师/SRE。允许临时分支本地提交和集成，先不推送、不合 main、不关闭 Issue。
 
-> 使用 implement-batch skill 实施 spec 父 Issue #100。已有实现先验证；先展示依赖图、批次、实施与集成 agent 的模型让我确认。允许临时分支本地提交和集成，先不推送、不合 main、不关闭 Issue。
+In Codex invoke `$implement-batch`. Upstream `implement` is unchanged.
 
-In Codex use `$implement-batch`. Exact child models depend on the client's exposed capability: the plan must distinguish verified model selection from unknown/inherited defaults. No silent substitution. Slash-command completion is client-specific. If an existing session cannot find the updated Skill, start a new session and invoke it again.
+## Development loop
 
-Before confirmation the parent performs read-only investigation and presents the graph, proposed batches, existing implementations, model/concurrency choices, checks, and authority. After confirmation each implementation child gets its own worktree; one integrator per batch reviews arrivals and integrates serially. Existing implementations go directly to verification. The parent accepts each batch before launching the next from the accepted integration tip, and finally verifies the whole spec.
+The [Skill](../skills/implement-batch/SKILL.md#two-feedback-loops) owns the full procedure:
 
-When cross-layer or external integration is uncertain, the plan starts with a tracer bullet: one small usable path through the relevant layers, with observable evidence, before expanding work that relies on its assumptions. For example, connect one real entrypoint to storage and verify its result before adding the remaining operations. The existing batch gate releases dependent children after acceptance; unrelated work can proceed. Simple local changes and already-validated paths need no extra slice. This uses the same fresh-agent handoffs and approval scope, without requiring a new manual prompt for every slice. See the [Skill's decomposition rules](../skills/implement-batch/SKILL.md#inspect-and-propose--read-only).
+- Inner: master → worker → QA → master, with serial integration and bounded repairs.
+- Outer: master → architect → inner loop → SRE → the same master, for planning, operating verification and the next decision. Roles are responsibilities, not mandatory extra bots.
+- Start with a usable feedback path; iterate a small behavior slice; accept only with candidate-bound QA/check evidence. WIP previews can be useful before delivery passes. Simulated UI coverage and real integration remain distinct.
 
-For a first trial use a small parent with one existing implementation, two independent children, and a child blocked by both. Observe that execution waits for confirmation, finished work is verified rather than rewritten, siblings run in distinct worktrees, the dependent child waits for accepted integration, and batch-wide checks run once per unchanged candidate. A requested unavailable model must be surfaced before dispatch. Discovery/format checks do not prove these behaviors in Traex.
+`setup-aiwb` maintains the target repository's runnable setup/smoke procedure. Frontends normally use local development; supported backends can use authorized incremental development-Pod updates. Project commands and evidence stay in the owning project, not in AIWB.
 
-This Skill controls instructions and handoffs. Repository tests and CI provide executable gates; client capabilities provide isolation. It creates no daemon, queue, or additional Issue authority. The original upstream `implement` remains unchanged.
+The master maintains one [run record](../skills/implement-batch/references/run-record.md), linked to [acceptance cases](../skills/implement-batch/references/spec-acceptance.md) and the recovery checkpoint. Preserve valid evidence across role handoffs; distinguish session completion from accepted work. No daemon, second tracker or automatic telemetry is introduced.
 
-## Optional botmux execution
+## Optional execution policies
 
-> 使用 implement-batch，通过 botmux 上已有的机器人协作实施这个 spec。先核实参与 bot 的 harness、模型、会话路由和独立 worktree，给我一份执行计划；确认后再派发，保留独立评审、串行集成和批次验收。
+- **Botmux:** explicitly select existing bots, then verify harness/model, dispatch return route and worktree ownership using [the transport guide](../skills/implement-batch/references/botmux.md). Installing botmux does not select this mode. Its first-use pilot must cover delivery and recovery; every dispatched role follows the completion-report contract.
+- **Staged review:** explicitly select cheap-first/stronger-final review using [the policy](../skills/implement-batch/references/staged-review.md). Confirm actual models, risk routing and budget; ordinary QA remains the default. Initial approval does not release dependent work.
 
-The [botmux transport guide](../skills/implement-batch/references/botmux.md) maps existing roles to independent harness sessions and uses native dispatch/report routing. Botmux installation does not select this mode or install/configure bots. The same profiles distribute the guide; live delivery, directory isolation and recovery still require the documented pilot. The default native-subagent workflow is unchanged.
-
-## Repository setup and final integration acceptance
-
-Use `setup-aiwb` in a target repository to establish or refresh its integration-test guide. This is a Skill, not an `aiwb setup` shell command. It inspects existing scripts/deployment definitions, asks only for missing inputs, and records verified versus unverified setup paths. Typical guide locations follow the repository convention, otherwise `docs/testing/integration.md`.
-
-> 使用 setup-aiwb skill 维护当前仓库的集成测试手册，先检查现有环境和命令，只询问缺失项。
-
-`implement-batch` includes this setup when needed. After the execution plan is confirmed, it writes the spec cases before implementation (default `docs/testing/spec-<id>.md`), with parent-criterion coverage, preconditions, steps, expected results, evidence and cleanup. After all batches, a fresh executor using the confirmed low-cost model executes the cases and fills PASS / FAIL / BLOCKED / NOT_RUN, actual results and evidence. The parent owns case expectations and final acceptance. Failed cases route back to implementation and retain failure/retest history.
-
-A frontend guide must verify its actual dev/test command and API routing; a Kubernetes/Helm backend guide must verify the mono-repo/chart entry, isolated test resources, candidate image, readiness and access route. Those examples are not preconfigured deployment instructions. Each repository owns its guide; cross-repository specs link them and identify every tested version.
-
-Install/update both Skills together on this Mac with `python3 tools/environment/env.py apply --profile work-mac --only setup-aiwb --only implement-batch` (preview with `plan`). Linux profiles register the same resources; deployment there is separate. No real LAS deployment or billable API test is performed by installing these Skills.
-
-## Recovery and verification cost
-
-Keep worktrees, complete recovery patches/checkpoints and acceptance evidence in persistent project locations; temporary directories are for reproducible scratch/cache only. Handoffs identify the accepted tip, owned WIP, evidence and blocker resume conditions. Recheck these artifacts after interruption before reusing results.
-
-Workers provide targeted feedback; the integrator owns batch-wide checks and consolidates required review axes; the parent assesses evidence. Reuse valid results for unchanged relevant code/environment instead of restarting the suite at every role boundary. Missing or stale reports, candidate changes affecting coverage and required repository gates justify reruns; record the reason.
-
-For cross-system work, verify the smallest public contract needed by dependent implementation before the first affected batch, within confirmed authority. Complete pagination before inferring absence. This complements final E2E. When an external prerequisite blocks progress, retain checked sources and a concrete resume condition; do not repeat the same investigation without new evidence.
-
-## Run records and review experiments
-
-Each confirmed run now retains a project-owned run record, linked from its spec acceptance document/checkpoint (default `docs/testing/runs/<run-id>.md`). The parent writes it from existing agent handoffs: actual models, attempt boundaries, review findings/dispositions, repairs, checks and available usage evidence. See the [record outline](../skills/implement-batch/references/run-record.md). It also covers ordinary single-review runs, providing a baseline for a later explicitly selected staged-review experiment; logging itself does not change the review policy.
-
-Ask a later analysis to compare named run records, including total elapsed time, repair overhead, confirmed versus rejected findings and later-stage discoveries. Missing costs remain unknown, parallel attempt durations are not summed as elapsed time, and partial usage is not total spend. Records are instruction-driven and require execution evidence; this change does not provide automatic client telemetry or reconstruct unrecorded historical measurements. Only generic formats live in AIWB; project logs stay in their owning repositories.
-
-## Optional staged code review
-
-Request the mode explicitly, for example:
-
-> 使用 implement-batch 实施这个 spec，启用分层评审：初审用 Luna，批尾终审用 Astra。先核实客户端实际支持的模型，展示依赖图、风险分流、并发和轮数让我确认。记录运行日志。
-
-The [staged-review policy](../skills/implement-batch/references/staged-review.md) proposes one cheap initial review per Issue plus at most one repair recheck, with early stronger review for high-risk or disputed changes. A fresh stronger reviewer covers the final combined batch before acceptance. Reviewers remain read-only; workers repair and the integrator alone writes the integration branch and owns checks. Initial approval is provisional and does not release dependencies. Ordinary mode and existing confirmed runs keep their selected policy. Model names in the example require native verification; installing the Skill proves neither availability nor experimental savings.
+For a live trial, include a verify-existing child, independent slices and a dependent child. Observe unchanged-plan approval reuse, isolated writers, QA rejecting inadequate behavior evidence, accepted-integration dependency gates and recovery without duplicate writers. Installation tests and document walkthroughs do not prove those runtime behaviors.

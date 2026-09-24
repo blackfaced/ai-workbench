@@ -1,10 +1,10 @@
 # Staged review — optional execution policy
 
-Select this policy when the user requests cheap-first/stronger-final review. It changes review placement, not acceptance requirements. Keep ordinary review available and do not change a confirmed run silently. Model cost/capability is client-specific: Luna for initial review and Astra for final review are examples, not mandatory defaults or evidence of native availability.
+Select only for requested cheap-first/stronger-final review. These are stages of QA's independent review, not replacements for behavior acceptance or the outer loop. Ordinary QA remains available; confirmed runs keep their policy. Verify model capability and cost in the selected client instead of hard-coding model names.
 
 ## Plan and roles
 
-Include exact initial/final reviewer models and efforts, observed availability, per-Issue initial-review budget, early-escalation criteria and concurrent-agent capacity in the existing confirmation plan. Default proposal: one initial review and, only after repairs, at most one incremental recheck; one independent full review of the batch's final candidate. The limit is per Issue across agents, not reset by spawning a new reviewer. Additional rounds or model substitutions require a confirmed change; an already approved escalation does not require asking again.
+Include exact reviewer models/efforts, availability, per-Issue budget, escalation criteria and concurrency in the existing plan. A bounded proposal is one initial review, at most one repair recheck and one independent full batch review; the owner may approve another explicit budget. Limits apply across sessions. Budget extensions or model substitutions require confirmation, but already approved repairs/escalations do not.
 
 Workers own implementation and substantive repairs. Review agents inspect candidates and return findings; they do not edit implementation, weaken tests, or merge. The integrator remains the only writer of the integration worktree and owns batch checks. The parent coordinates, records evidence and accepts the batch. A final reviewer is independent of implementation workers and initial reviewers, with fresh context; use the client's native model selection, not a prompt pretending to switch models. Required review axes remain correctness, standards and necessity; consolidate their coverage instead of recursively launching complete review workflows.
 
