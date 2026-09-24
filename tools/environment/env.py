@@ -487,13 +487,15 @@ def plan_tool(comp, ctx, plan):
     def reprobe_version():
         """装完 / 升完再问一次机器，不拿计划当结果。"""
         if not comp.get("version_cmd"):
-            return None
-        _rc, text = ctx.login(comp["version_cmd"])
+            return None, ""
+        rc, text = ctx.login(comp["version_cmd"])
+        if rc != 0:
+            raise RuntimeError("%s 操作后版本命令失败（rc=%d）" % (cid, rc))
         if comp.get("version_re"):
             hit = re.search(comp["version_re"], text)
             if hit:
-                return hit.group(1) if hit.groups() else hit.group(0)
-        return first_line(text)
+                return (hit.group(1) if hit.groups() else hit.group(0)), text
+        return first_line(text), text
 
     def run_channel(cmd, kind):
         def action():
@@ -504,7 +506,10 @@ def plan_tool(comp, ctx, plan):
             seen, _ = ctx.login("command -v %s" % shlex.quote(comp["bin"]))
             if seen != 0 and not comp.get("explicit_path"):
                 raise RuntimeError("%s 跑完了，但登录 shell 仍解析不到 %s" % (kind, comp["bin"]))
-            after = reprobe_version()
+            after, after_output = reprobe_version()
+            if comp.get("identity_re") and not re.search(comp["identity_re"], after_output, re.M):
+                raise RuntimeError("%s 后身份断言失败：identity_re=%r 未命中版本输出 %r"
+                                   % (kind, comp["identity_re"], first_line(after_output)))
             if comp.get("min_version") and after and version_tuple(after) \
                     and version_tuple(after) < version_tuple(comp["min_version"]):
                 raise RuntimeError("%s 后仍是 %s，没达到 min_version %s：这个渠道无效，别重复跑"

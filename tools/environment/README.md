@@ -1,5 +1,7 @@
 # tools/environment — 个人开发环境的安装 / 更新 / 检查入口
 
+安装不熟悉的脚本或 MCP 服务前，可用[简短检查清单](pre-install-review.md)核对来源、权限、安装归属和回滚。
+
 一份实现（`env.py`，只用标准库、Python 3.9 兼容）+ 一个薄壳（`bootstrap.sh`，只负责在新机器上找到
 `python3` 并转发参数）。设计依据见 [`decisions/0009-reproducible-development-environments.md`](../../decisions/0009-reproducible-development-environments.md)。
 
@@ -135,16 +137,17 @@ python3 tools/environment/tests/regression.py
 ⑤ 历史副本清理不许丢东西、`--force` 接管后仍能原样撤回；⑥ 符号链接目标的接管与还原、更新回滚后
 安装记录仍认得出自己、原生发现的解析错误要传播、超时要真的超时且不留孤儿进程。
 另覆盖多 Mac Profile 的选择、未知主机失败和 Python 3.14 的 UTC 时间兼容性。
-任何一条不过即非 0 退出（当前 84 项）。CI 在 Ubuntu（Python 3.11 / 3.9）与 macOS（Python 3.11）运行同一套测试，不安装额外 Python 依赖。
+任何一条不过即非 0 退出。CI 在 Ubuntu（Python 3.11 / 3.9）与 macOS（Python 3.11）运行同一套测试，不安装额外 Python 依赖。
 
 ## 当前能力范围（别把它当成新机搭建入口）
 
 工作 Mac 与两台现有 Linux 机器已验证漂移检查、受管配置与 Skill 的安装/更新/回滚、已有工具的版本更新。
 家用 Mac mini 在 2026-09-12 验证了工具身份、Skill 安装与原生发现、幂等与回滚预览；没有验证软件升级、新机首装或模型驱动任务。详见[家用 Mac 验证记录](home-mac-validation.md)。
 
-**尚未覆盖新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首次安装渠道还没取证登记（`install_cmd` 留空），
-一台干净的 Linux 机器跑 `apply` 会在这三项上报「无已验证渠道，交给人」。要它成为完整的新机搭建入口，
-得先在一台干净机器上实测出这三条渠道再登记。
+**尚未覆盖完整新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首装命令已在现有开发机的隔离容器中
+按 Profile 原样验证并登记；现有安装的渠道不变。受限网络需要先在执行安装命令的 shell 中配置
+HTTP(S) 代理，Docker daemon 的代理不会自动传给容器。隔离测试、版本和限制见
+[Linux 首装验证记录](linux-first-install-validation.md)；容器通过不等于完整新机 `apply` + `check` 验收。
 
 ## 每台机器的差异
 
@@ -169,11 +172,20 @@ Brewfile 只登记实测确认归 Homebrew 所有的 formula。**`ripgrep` 不�
 显式使用 `--profile home-mac`；不要套用工作 Mac 的 Brewfile 或软件归属。
 该 Profile 保留 Homebrew cask Codex、桌面内置 Codex、nvm Node 和 Kimi 自带工具，未登记首装/升级渠道。
 `apply` 只管理选定的七个第一方 Skills；`uv` 为可选缺失项。Codex CLI 与桌面原生发现均纳入 `check`。
-Kimi 的 `doctor` 和 ACP Skill 命令发现单独实测，尚未纳入自动 `check`，不能由该命令的成功推断 Kimi 行为验收。
+Kimi ACP Skill 命令发现已纳入自动 `check`；这不代表模型驱动的 Skill 行为验收。
 
 ### Kimi native discovery (#94)
 
 The home-mac check invokes `python3 kimi_skills_discovery.py kimi`. It uses [Kimi ACP](https://moonshotai.github.io/kimi-code/en/reference/kimi-acp) initialize/session/new and [available_commands_update](https://agentclientprotocol.com/protocol/v1/slash-commands), preserving the real HOME in an empty temporary cwd. No authenticate, model prompt or tool request is sent. Kimi can write its own session/log metadata; this is a local diagnostic, not a filesystem-only read or Skill execution.
+
+The existing optional binary argument is unchanged. For a command with arguments,
+use `python3 kimi_skills_discovery.py -- command arg...`; arguments are passed as
+an argv list, without a shell, with `acp` appended. An empty command is rejected.
+Isolated fixtures use this form with the running Python interpreter and a
+non-executable script, avoiding fresh executable-script cold-start overhead.
+Normal fixture checks allow 5 seconds; deliberate timeout cases retain 0.8 seconds
+and must show fresh initialization/session requests plus process cleanup.
+This does not change the production default deadline or add retries.
 
 Required names come from all Skill components in the profile (currently seven), including when --only filters installation checks; discovery remains profile-wide. Missing names, configuration/protocol errors, incomplete output and timeout fail without scan fallback or automatic retry. Diagnostics identify the failure stage without raw client errors. The protocol deadline defaults to 45 seconds; AIWB_DISCOVERY_TIMEOUT accepts (0,120] seconds, plus up to about 2 seconds for cleanup. Output is bounded to 4 MiB and the owned process group is reaped.
 
