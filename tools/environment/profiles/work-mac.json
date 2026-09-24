@@ -246,7 +246,8 @@
             "agents/openai.yaml": "skills/implement-batch/clients/openai.yaml",
             "references/spec-acceptance.md": "skills/implement-batch/references/spec-acceptance.md",
             "references/run-record.md": "skills/implement-batch/references/run-record.md",
-            "references/staged-review.md": "skills/implement-batch/references/staged-review.md"
+            "references/staged-review.md": "skills/implement-batch/references/staged-review.md",
+            "references/botmux.md": "skills/implement-batch/references/botmux.md"
           }
         }
       },
