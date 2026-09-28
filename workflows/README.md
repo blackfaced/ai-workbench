@@ -8,7 +8,7 @@ Repeatable multi-step processes and domain workflows.
 
 - [Project learning and remote handoff](learning-and-remote-handoff.md) — escaped-bug lessons, consolidation, transfer and result collection.
 
-- [Implement Batch](implement-batch.md) — isolated implementation with batch-level verification.
+- [Implement Batch](implement-batch.md) — isolated implementation with batch-level verification; [synthetic handoff and delivery scenarios](implement-batch-examples.md).
 
 - [Environment maintenance](../tools/environment/README.md) — preview, apply, check, and restore.
 
