@@ -657,6 +657,56 @@ def case_implement_batch_distribution(root):
         check(profile_name + " 安装校验通过", rc == 0, out if rc else "")
 
 
+def case_self_test_report_distribution(root):
+    print("\n[用例 9] self-test-report 独立安装与 implement-batch 报告引用")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    for profile_name in ("work-mac", "work-linux", "home-mac"):
+        profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
+        components = [c for c in profile["components"]
+                      if c["id"] in ("self-test-report", "implement-batch")]
+        check(profile_name + " 登记两个报告相关组件", len(components) == 2)
+        if len(components) != 2:
+            continue
+        box = Sandbox(os.path.join(root, profile_name))
+        for name in ("self-test-report", "implement-batch"):
+            shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
+        box.profile(base_profile(components))
+        rc, out = box.run("apply", "--profile", "harness", "--only", "self-test-report")
+        check(profile_name + " 报告 Skill 可独立安装", rc == 0, out if rc else "")
+        installed = box.path(".agents", "skills", "self-test-report")
+        source = os.path.join(repo, "skills", "self-test-report")
+        expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")
+                    + "\n\n" + read(os.path.join(source, "SKILL.md")).lstrip("\n"))
+        check(profile_name + " 正文只有一个 frontmatter 且完整匹配",
+              os.path.isfile(os.path.join(installed, "SKILL.md"))
+              and read(os.path.join(installed, "SKILL.md")) == expected)
+        for rel, src in (("assets/report-template.md", "assets/report-template.md"),
+                         ("agents/openai.yaml", "clients/openai.yaml")):
+            target = os.path.join(installed, rel)
+            check(profile_name + " 完整分发 " + rel,
+                  os.path.isfile(target) and read(target) == read(os.path.join(source, src)))
+        rc, out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
+        check(profile_name + " 安装批次验收引用", rc == 0, out if rc else "")
+        acceptance = box.path(".agents", "skills", "implement-batch", "references", "spec-acceptance.md")
+        links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(acceptance))
+        report_links = [link for link in links if "self-test-report/" in link]
+        check(profile_name + " 安装后的正文和模板引用可解析",
+              len(report_links) == 2 and all(os.path.isfile(os.path.join(os.path.dirname(acceptance), link))
+                                             for link in report_links))
+        rc, out = box.run("check", "--profile", "harness")
+        check(profile_name + " 报告与批次 Skill 检查通过", rc == 0, out if rc else "")
+        before = box.state()
+        rc, out = box.run("apply", "--profile", "harness")
+        check(profile_name + " 重复安装幂等", rc == 0 and box.state() == before, out if rc else "")
+        template = os.path.join(installed, "assets", "report-template.md")
+        edited = read(template) + "\n用户自定义，不能覆盖。\n"
+        write(template, edited)
+        rc, _out = box.run("apply", "--profile", "harness", "--only", "self-test-report")
+        check(profile_name + " 用户模板修改受保护", rc == 1 and read(template) == edited)
+        rc, _out = box.run("check", "--profile", "harness", "--only", "self-test-report")
+        check(profile_name + " 模板漂移不能被判通过", rc == 1)
+
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -670,6 +720,7 @@ def main():
     case_discovery_errors_and_timeout(os.path.join(root, "c6", "cli"))
     case_profile_selection(os.path.join(root, "c7"))
     case_implement_batch_distribution(os.path.join(root, "c8"))
+    case_self_test_report_distribution(os.path.join(root, "c9"))
     kimi = subprocess.run([sys.executable, os.path.join(HERE, "kimi_discovery.py")],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "kimi-discovery.log"), kimi.stdout)
