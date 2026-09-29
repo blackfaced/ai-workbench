@@ -171,7 +171,7 @@ Brewfile 只登记实测确认归 Homebrew 所有的 formula。**`ripgrep` 不�
 
 显式使用 `--profile home-mac`；不要套用工作 Mac 的 Brewfile 或软件归属。
 该 Profile 保留 Homebrew cask Codex、桌面内置 Codex、nvm Node 和 Kimi 自带工具，未登记首装/升级渠道。
-`apply` 只管理选定的七个第一方 Skills；`uv` 为可选缺失项。Codex CLI 与桌面原生发现均纳入 `check`。
+`apply` 只管理 Profile 选定的第一方 Skills；`uv` 为可选缺失项。Codex CLI 与桌面原生发现均纳入 `check`。
 Kimi ACP Skill 命令发现已纳入自动 `check`；这不代表模型驱动的 Skill 行为验收。
 
 ### Kimi native discovery (#94)
@@ -187,7 +187,7 @@ Normal fixture checks allow 5 seconds; deliberate timeout cases retain 0.8 secon
 and must show fresh initialization/session requests plus process cleanup.
 This does not change the production default deadline or add retries.
 
-Required names come from all Skill components in the profile (currently seven), including when --only filters installation checks; discovery remains profile-wide. Missing names, configuration/protocol errors, incomplete output and timeout fail without scan fallback or automatic retry. Diagnostics identify the failure stage without raw client errors. The protocol deadline defaults to 45 seconds; AIWB_DISCOVERY_TIMEOUT accepts (0,120] seconds, plus up to about 2 seconds for cleanup. Output is bounded to 4 MiB and the owned process group is reaped.
+Required names come from all Skill components in the profile, including when --only filters installation checks; discovery remains profile-wide. Missing names, configuration/protocol errors, incomplete output and timeout fail without scan fallback or automatic retry. Diagnostics identify the failure stage without raw client errors. The protocol deadline defaults to 45 seconds; AIWB_DISCOVERY_TIMEOUT accepts (0,120] seconds, plus up to about 2 seconds for cleanup. Output is bounded to 4 MiB and the owned process group is reaped.
 
 ACP advertises commands, not source file paths or on-disk uniqueness. Policy: retain and explicitly report third-party skill:README as an allowed extra command, outside first-party Skill acceptance. Directory hygiene still treats the root README as a non-Skill file. These are different observations; do not delete or rewrite upstream content to make the counts equal.
 

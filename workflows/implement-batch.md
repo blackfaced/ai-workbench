@@ -8,9 +8,9 @@
 Install from this checkout on the work Mac:
 
 ```sh
-python3 tools/environment/env.py plan --profile work-mac --only implement-batch
-python3 tools/environment/env.py apply --profile work-mac --only implement-batch
-python3 tools/environment/env.py check --profile work-mac --only implement-batch
+python3 tools/environment/env.py plan --profile work-mac --only self-test-report --only implement-batch
+python3 tools/environment/env.py apply --profile work-mac --only self-test-report --only implement-batch
+python3 tools/environment/env.py check --profile work-mac --only self-test-report --only implement-batch
 ```
 
 Use `work-linux` on the Linux machines; registration does not mean deployment there has occurred. The installed shared copy serves Codex and Trae discovery. Upstream `implement` is unchanged. Other clients and native subagent availability require independent verification.
@@ -51,7 +51,7 @@ Every delivery includes the agreed [self-test report entry](../skills/implement-
 
 A frontend guide must verify its actual dev/test command and API routing; a Kubernetes/Helm backend guide must verify the mono-repo/chart entry, isolated test resources, candidate image, readiness and access route. Those examples are not preconfigured deployment instructions. Each repository owns its guide; cross-repository specs link them and identify every tested version.
 
-Install/update both Skills together on this Mac with `python3 tools/environment/env.py apply --profile work-mac --only setup-aiwb --only implement-batch` (preview with `plan`). Linux profiles register the same resources; deployment there is separate. No real LAS deployment or billable API test is performed by installing these Skills.
+Report writing, update and evidence-review details are maintained in [self-test-report](../skills/self-test-report/SKILL.md), which can also be invoked independently without running implementation. Install/update the reporting dependency with `python3 tools/environment/env.py apply --profile work-mac --only setup-aiwb --only self-test-report --only implement-batch` (preview with `plan`). Linux profiles register the same resources; deployment there is separate. No real service deployment or billable API test is performed by installing these Skills.
 
 ## Recovery and verification cost
 

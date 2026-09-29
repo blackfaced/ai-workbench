@@ -21,6 +21,7 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 - [setup-aiwb](setup-aiwb/SKILL.md) — establish or refresh a repository integration-test guide; used by implement-batch when needed.
 
 - [implement-batch](implement-batch/SKILL.md) — explicit batched implementation; [installation and usage](../workflows/implement-batch.md).
+- [self-test-report](self-test-report/SKILL.md) — 自测报告编写、更新与证据审查；独立使用或由 implement-batch 引用，复用同一验收记录。
 
 - [steelman-grill](steelman-grill/SKILL.md) — managed first-party Skill; requires upstream `grilling`.
 - [viral-clip-doctrine](viral-clip-doctrine/SKILL.md) — 抖音投流爆款剪辑的方案层管线（钩子—气口—指派—收敛—包装—合规），不预设执行工具。
