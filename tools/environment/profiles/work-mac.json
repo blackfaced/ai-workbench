@@ -232,6 +232,28 @@
       ]
     },
     {
+      "id": "self-test-report",
+      "type": "skill",
+      "name": "self-test-report",
+      "body": "skills/self-test-report/SKILL.md",
+      "source": "repo:skills/self-test-report",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/self-test-report/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/self-test-report/clients/openai.yaml",
+            "assets/report-template.md": "skills/self-test-report/assets/report-template.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/self-test-report",
+        "~/.trae/skills/self-test-report"
+      ]
+    },
+    {
       "id": "implement-batch",
       "type": "skill",
       "name": "implement-batch",
