@@ -742,6 +742,28 @@ def case_backward_compatibility_rules():
     check("模板禁止以构建或新路径替代旧行为回归",
           "不得以新路径通过、编译成功或源码检查替代旧路径和兄弟模块回归" in template)
 
+    principles = os.path.join(repo, "skills", "engineering-principles")
+    rules = read(os.path.join(principles, "rules.md"))
+    digest = read(os.path.join(principles, "digest.md"))
+    review = read(os.path.join(principles, "review.md"))
+    check("懒惰阶梯明确兼容优先于可维护性与简洁性",
+          "向后兼容优先于可维护性、去重、统一语义和代码简洁" in rules)
+    check("懒惰阶梯不得授权破坏旧行为",
+          "懒惰阶梯只决定满足当前需求所需的新复杂度，不能授权删除、替换或弱化既有可观察行为" in rules)
+    check("lazy 标记要求保留旧合同和回归证据",
+          "不能用 `lazy:` 把“破坏旧行为”包装成“简单实现”" in rules
+          and "旧行为/调用方为什么不受影响或由哪条回归证据覆盖" in rules)
+    check("开工门禁覆盖真实调用方旧合同与前后回归",
+          all(term in rules for term in
+              ("调用链与兼容合同", "真实调用方", "旧可观察行为", "生产入口对旧合同和受影响调用方做前后回归")))
+    check("Hook 每轮摘要包含兼容优先和兼容证据边界",
+          all(term in digest for term in
+              ("**向后兼容优先**", "真实入口/调用方", "旧路径与受影响调用方回归", "构建成功或源码检查不能替代兼容证据")))
+    check("必要性 review 不得建议破坏兼容",
+          "不得建议破坏兼容" in review
+          and "删弱旧路径与旧行为断言" in review
+          and "破坏兼容的减法" in review)
+
 
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
