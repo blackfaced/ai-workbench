@@ -707,6 +707,42 @@ def case_self_test_report_distribution(root):
         check(profile_name + " 模板漂移不能被判通过", rc == 1)
 
 
+def case_backward_compatibility_rules():
+    print("\n[用例 10] 既有功能变更必须经过向后兼容门禁")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    implement = read(os.path.join(repo, "skills", "implement-batch", "SKILL.md"))
+    acceptance = read(os.path.join(repo, "skills", "implement-batch", "references", "spec-acceptance.md"))
+    report = read(os.path.join(repo, "skills", "self-test-report", "SKILL.md"))
+    template = read(os.path.join(repo, "skills", "self-test-report", "assets", "report-template.md"))
+
+    check("implement-batch 明确兼容优先于可维护性",
+          "backward compatibility as a higher-priority constraint than maintainability" in implement)
+    check("实施计划包含影响面、旧合同、调用方与回滚",
+          all(term in implement for term in
+              ("Build an impact map from real callers and entrypoints",
+               "old observable behavior", "migration/rollback plan")))
+    check("实施角色不得删弱旧行为断言",
+          "must not delete or weaken old-behavior assertions" in implement)
+    check("验收文档有独立 backward compatibility coverage",
+          "## Backward-compatibility coverage" in acceptance)
+    check("验收覆盖接口配置权限数据共享调用方和时序",
+          all(term in acceptance for term in
+              ("Public API/request/response", "Configuration defaults",
+               "Persisted data", "Shared components", "polling/retry cadence")))
+    check("无证据的兼容边界不能通过",
+          "without executable evidence remains BLOCKED/NOT_RUN" in acceptance)
+    check("报告 Skill 区分旧路径证据与新路径成功",
+          "向后兼容优先于可维护性" in report
+          and "旧路径未测试、新路径通过" in report)
+    check("报告模板提供兼容影响矩阵",
+          "## 向后兼容与影响面" in template
+          and "旧可观察合同" in template
+          and "受影响调用方 / 模块" in template
+          and "兼容策略与回滚" in template)
+    check("模板禁止以构建或新路径替代旧行为回归",
+          "不得以新路径通过、编译成功或源码检查替代旧路径和兄弟模块回归" in template)
+
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -721,6 +757,7 @@ def main():
     case_profile_selection(os.path.join(root, "c7"))
     case_implement_batch_distribution(os.path.join(root, "c8"))
     case_self_test_report_distribution(os.path.join(root, "c9"))
+    case_backward_compatibility_rules()
     kimi = subprocess.run([sys.executable, os.path.join(HERE, "kimi_discovery.py")],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "kimi-discovery.log"), kimi.stdout)

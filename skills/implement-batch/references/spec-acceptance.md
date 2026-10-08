@@ -9,6 +9,20 @@ Use the target repository's test-document convention; otherwise `docs/testing/sp
 - Map every parent acceptance criterion to case IDs, including cross-Issue workflows. Explain any uncovered requirement.
 - Cover relevant happy paths, boundaries, invalid inputs, authorization, dependency failure/recovery, and compatibility; omit categories that do not apply with a brief reason.
 
+## Backward-compatibility coverage
+
+When existing callers or stored/configured behavior may be affected, map **old observable contract → affected callers/modules → before/after action → assertion → evidence** before implementation. Backward compatibility outranks maintainability, deduplication and code cleanliness unless the approved requirement explicitly authorizes a named migration or breaking change.
+
+Cover applicable boundaries rather than only touched files:
+
+- Public API/request/response shapes, exported types and error semantics.
+- Configuration defaults, feature-flag-off behavior and authentication/authorization decisions.
+- Persisted data read/write, reload, migration and rollback behavior.
+- Shared components, hooks, utilities and each known sibling-module caller class.
+- User-visible state, side effects, ordering, polling/retry cadence, performance or resource ceilings when those are part of existing behavior.
+
+Use production-entrypoint characterization or regression cases to pin current behavior before replacing internals. A helper unit test, new-path happy case, source scan or build success alone cannot prove old callers remain compatible. Prefer an additive adapter/wrapper, optional field, default-off flag or retained old path; state the removal/migration condition separately. Any compatibility boundary without executable evidence remains BLOCKED/NOT_RUN unless the owner explicitly accepts that named gap with migration and rollback responsibility. Do not silently weaken or remove old-behavior assertions to make the candidate pass.
+
 ## Behavior-sequence coverage
 
 For applicable behaviors, map **invariant → action sequence → observable assertion → evidence** into the cases below. Read the actual entrypoints and callers when designing the sequence. Select boundaries by the requirement and change risk; state why other categories are not applicable rather than building a Cartesian product of all states.
@@ -25,7 +39,7 @@ Identify the evidence level per case: source inspection, production-function tes
 ## Case <stable ID>: <behavior>
 
 - Requirement: parent criterion and related child Issues.
-- Invariant / boundary: applicable behavior-sequence mapping and evidence level, including mocked dependencies.
+- Invariant / boundary: applicable behavior-sequence and backward-compatibility mapping, affected caller/module classes, evidence level, and mocked dependencies.
 - Preconditions: environment, account role, data, candidate identity, permissions.
 - Steps: executable command reference or repeatable browser/API actions.
 - Expected: observable behavior/assertions, including cleanup effects where relevant.
