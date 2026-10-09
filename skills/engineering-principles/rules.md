@@ -86,6 +86,7 @@
 ## 7. Review
 
 - code review **不需要**先有 MR。本地未提交变更、commit range、diff/patch 都可以直接评审，任何仓库（含只有读权限的）都适用。
+- **身份合同核验是必经项。** 每次代码评审（含第三方流程和批次评审）必须从变更与实际调用关系判断身份、权限、资源归属是否受影响，无需用户点名；不适用必须说明理由。适用时，correctness reviewer 从凭据来源追到权威消费方、实际主体、资源 Owner 及权限/持久化结果，引用独立于当前 spec 与其 Mock 的消费方实现或已验证运行态证据；可复用仍有效的既有证据，不以字段名、同源断言或固定追踪层数替代必要边界。结论必须记录适用性、依据与未验证边界；发现错误报缺陷，缺证据时不得宣布整体评审通过，零 finding 不能替代完成核验。仅必要性结论不代表整体评审通过，受限范围也不得外推；不新增评审轴、不扩大执行授权。
 - **必要性 review** 是与 correctness review 并列的另一种评审，只问「这段代码有必要存在吗」，不问「这段代码对不对」。流程见 `@RULES_DIR@/review.md`。
 - **接第三方 review 流程时，必要性是必须补的一轴。** 例如 matta 的 `code-review` skill 只有 Standards / Spec 两轴（Standards 轴的 Fowler smell 只覆盖 Speculative Generality 一类），跑它的时候要额外并行一个必要性轴，judge 用 `@RULES_DIR@/review.md` 的五类判据，结果与另两轴并排汇报。具体审查入口由分发方或目标项目提供。
 
