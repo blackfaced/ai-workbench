@@ -765,6 +765,25 @@ def case_backward_compatibility_rules():
           and "破坏兼容的减法" in review)
 
 
+def case_identity_review_gate():
+    print("\n[用例 11] 身份合同核验是每次评审的必经判断")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    rules = read(os.path.join(repo, "skills", "engineering-principles", "rules.md"))
+    digest = read(os.path.join(repo, "skills", "engineering-principles", "digest.md"))
+    implement = read(os.path.join(repo, "skills", "implement-batch", "SKILL.md"))
+    check("每次评审自动判断适用性且不依赖用户点名",
+          all(term in rules for term in ("每次代码评审", "无需用户点名", "不适用必须说明理由")))
+    check("核验权威消费方与独立依据，而非同源 Mock",
+          all(term in rules for term in ("权威消费方", "资源 Owner", "独立于当前 spec 与其 Mock")))
+    check("缺证据不能用零缺陷替代通过，局部审查不冒充整体",
+          all(term in rules for term in ("缺证据时不得宣布整体评审通过", "零 finding", "仅必要性结论不代表整体评审通过")))
+    check("共用摘要同步强制入口且指向正文",
+          all(term in digest for term in ("每次必须", "缺证据不得通过", "§7")))
+    check("所有批次评审交接与接受都检查记录",
+          all(term in implement for term in ("Every review handoff", "including ordinary and staged review",
+                                             "The integrator must reject review completion", "not applicable with a reason")))
+
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -780,6 +799,7 @@ def main():
     case_implement_batch_distribution(os.path.join(root, "c8"))
     case_self_test_report_distribution(os.path.join(root, "c9"))
     case_backward_compatibility_rules()
+    case_identity_review_gate()
     kimi = subprocess.run([sys.executable, os.path.join(HERE, "kimi_discovery.py")],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "kimi-discovery.log"), kimi.stdout)
