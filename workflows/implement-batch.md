@@ -1,41 +1,45 @@
-# Implement Batch
+# Deliver Spec
 
 - Type: implementation workflow
 - Domain: coding
 - Status: experimental; first local trial targets Traex
-- Source: [first-party Skill](../skills/implement-batch/SKILL.md)
+- Source: [first-party Skill](../skills/deliver-spec/SKILL.md)
 
 Install from this checkout on the work Mac:
 
 ```sh
-python3 tools/environment/env.py plan --profile work-mac --only self-test-report --only implement-batch
-python3 tools/environment/env.py apply --profile work-mac --only self-test-report --only implement-batch
-python3 tools/environment/env.py check --profile work-mac --only self-test-report --only implement-batch
+python3 tools/environment/env.py plan --profile work-mac --only deliver-spec
+python3 tools/environment/env.py apply --profile work-mac --only deliver-spec
+python3 tools/environment/env.py check --profile work-mac --only deliver-spec
 ```
 
 Use `work-linux` on the Linux machines; registration does not mean deployment there has occurred. The installed shared copy serves Codex and Trae discovery. Upstream `implement` is unchanged. Other clients and native subagent availability require independent verification.
 
 In the target repository's Traex conversation, explicitly request:
 
-> 使用 implement-batch skill 实施 spec 父 Issue #100。已有实现先验证；先展示依赖图、批次、实施与集成 agent 的模型让我确认。允许临时分支本地提交和集成，先不推送、不合 main、不关闭 Issue。
+> 使用 deliver-spec skill 实施 spec 父 Issue #100。已有实现先验证；先展示依赖图、批次、实施与集成 agent 的模型让我确认。允许临时分支本地提交和集成，先不推送、不合 main、不关闭 Issue。
 
-In Codex use `$implement-batch`. Exact child models depend on the client's exposed capability: the plan must distinguish verified model selection from unknown/inherited defaults. No silent substitution. Slash-command completion is client-specific. If an existing session cannot find the updated Skill, start a new session and invoke it again.
+In Codex use `$deliver-spec`. Exact child models depend on the client's exposed capability: the plan must distinguish verified model selection from unknown/inherited defaults. No silent substitution. Slash-command completion is client-specific. If an existing session cannot find the updated Skill, start a new session and invoke it again.
 
 Before confirmation the parent performs read-only investigation and presents the graph, proposed batches, existing implementations, model/concurrency choices, checks, and authority. After confirmation each implementation child gets its own worktree; one integrator per batch reviews arrivals and integrates serially. Existing implementations go directly to verification. The parent accepts each batch before launching the next from the accepted integration tip, and finally verifies the whole spec.
 
-The owner can start with a goal and Issue reference, or ask to continue an accepted baseline. The parent retrieves the relevant contract, candidates, failures and checkpoint, then prepares the [role handoffs](../skills/implement-batch/SKILL.md#prepare-role-handoffs) itself. Questions lead with a recommendation and its user-visible consequences/cost; existing authorization persists, unanswered decisions remain pending, and unchanged progress needs no repeated notification unless requested or required by the client. Botmux users follow its [question-window guide](../skills/implement-batch/references/botmux.md#owner-decisions-and-notifications).
+The owner can start with a goal and Issue reference, or ask to continue an accepted baseline. The parent retrieves the relevant contract, candidates, failures and checkpoint, then prepares the [role handoffs](../skills/deliver-spec/SKILL.md#prepare-role-handoffs) itself. Questions lead with a recommendation and its user-visible consequences/cost; existing authorization persists, unanswered decisions remain pending, and unchanged progress needs no repeated notification unless requested or required by the client. Botmux users follow its [question-window guide](../skills/deliver-spec/references/botmux.md#owner-decisions-and-notifications).
 
-When cross-layer or external integration is uncertain, the plan starts with a tracer bullet: one small usable path through the relevant layers, with observable evidence, before expanding work that relies on its assumptions. For example, connect one real entrypoint to storage and verify its result before adding the remaining operations. The existing batch gate releases dependent children after acceptance; unrelated work can proceed. Simple local changes and already-validated paths need no extra slice. This uses the same fresh-agent handoffs and approval scope, without requiring a new manual prompt for every slice. See the [Skill's decomposition rules](../skills/implement-batch/SKILL.md#inspect-and-propose--read-only).
+When cross-layer or external integration is uncertain, the plan starts with a tracer bullet: one small usable path through the relevant layers, with observable evidence, before expanding work that relies on its assumptions. For example, connect one real entrypoint to storage and verify its result before adding the remaining operations. The existing batch gate releases dependent children after acceptance; unrelated work can proceed. Simple local changes and already-validated paths need no extra slice. This uses the same fresh-agent handoffs and approval scope, without requiring a new manual prompt for every slice. See the [Skill's decomposition rules](../skills/deliver-spec/SKILL.md#inspect-and-propose--read-only).
 
 For a first trial use a small parent with one existing implementation, two independent children, and a child blocked by both. Observe that execution waits for confirmation, finished work is verified rather than rewritten, siblings run in distinct worktrees, the dependent child waits for accepted integration, and batch-wide checks run once per unchanged candidate. A requested unavailable model must be surfaced before dispatch. Discovery/format checks do not prove these behaviors in Traex.
 
 This Skill controls instructions and handoffs. Repository tests and CI provide executable gates; client capabilities provide isolation. It creates no daemon, queue, or additional Issue authority. The original upstream `implement` remains unchanged.
 
+`deliver-spec`（按规格交付）is the canonical name. `implement-batch` remains a thin compatibility entry: old explicit invocations, resource paths, authorization, checkpoints and acceptance records continue to work. The guide keeps its existing URL for saved links. The rename does not authorize any additional execution or publication.
+
+Both `--only deliver-spec` and the old `--only implement-batch` select the canonical entry plus `test-design` and `self-test-report` through the profile's `install_with` setting; the old command also installs the compatibility entry. All three profiles declare these companions. Ordinary `depends_on` still only checks availability. Preview either command with `plan`; missing declared companions are reported before writes, user edits continue to block overwrite, and guarded `restore` retains the previous managed state. Removing the old entry requires a separate migration decision.
+
 ## Optional botmux execution
 
-> 使用 implement-batch，通过 botmux 上已有的机器人协作实施这个 spec。先核实参与 bot 的 harness、模型、会话路由和独立 worktree，给我一份执行计划；确认后再派发，保留独立评审、串行集成和批次验收。
+> 使用 deliver-spec，通过 botmux 上已有的机器人协作实施这个 spec。先核实参与 bot 的 harness、模型、会话路由和独立 worktree，给我一份执行计划；确认后再派发，保留独立评审、串行集成和批次验收。
 
-The [botmux transport guide](../skills/implement-batch/references/botmux.md) maps existing roles to independent harness sessions and uses native dispatch/report routing. Botmux installation does not select this mode or install/configure bots. The same profiles distribute the guide; live delivery, directory isolation and recovery still require the documented pilot. The default native-subagent workflow is unchanged.
+The [botmux transport guide](../skills/deliver-spec/references/botmux.md) maps existing roles to independent harness sessions and uses native dispatch/report routing. Botmux installation does not select this mode or install/configure bots. The same profiles distribute the guide; live delivery, directory isolation and recovery still require the documented pilot. The default native-subagent workflow is unchanged.
 
 ## Repository setup and final integration acceptance
 
@@ -43,15 +47,19 @@ Use `setup-aiwb` in a target repository to establish or refresh its integration-
 
 > 使用 setup-aiwb skill 维护当前仓库的集成测试手册，先检查现有环境和命令，只询问缺失项。
 
-`implement-batch` includes this setup when needed. After the execution plan is confirmed, it writes the spec cases before implementation (default `docs/testing/spec-<id>.md`), with parent-criterion coverage, preconditions, steps, expected results, evidence and cleanup. After all batches, a fresh executor using the confirmed low-cost model executes the cases and fills PASS / FAIL / BLOCKED / NOT_RUN, actual results and evidence. The parent owns case expectations and final acceptance. Failed cases route back to implementation and retain failure/retest history.
+`deliver-spec` includes this setup when needed. After execution-plan confirmation and before implementation dispatch, the parent applies [test-design](../skills/test-design/SKILL.md) to review existing coverage and fill only the gaps in the same project acceptance record (default `docs/testing/spec-<id>.md` when none exists). Stable IDs, old expectations and failure/retry history remain. The parent reviews assertions, data readiness and evidence boundaries without adding a tester role or approval step. Missing method, oracle, data or permissions block only dependent work; they cannot be skipped or recorded as PASS. After all batches, a fresh executor using the confirmed low-cost model executes the cases and records PASS / FAIL / BLOCKED / NOT_RUN, actual results and evidence. The parent owns case expectations and final acceptance.
 
-For state, retry snapshots and human-edit synchronization, the [acceptance outline](../skills/implement-batch/references/spec-acceptance.md#behavior-sequence-coverage) maps invariants to action sequences and observable assertions. It distinguishes production-function, mocked-browser and real-integration evidence and omits irrelevant categories with reasons. Static screens or helper tests alone do not prove the full behavior.
+Design readiness is separate from execution. Approved expectation or relevant candidate changes invalidate affected evidence while retaining original outcomes and the change reason; unchanged evidence needs a documented reuse basis. The acceptance record owns design and results, and self-test-report uses the same case IDs to summarize/index them. It retains the distinction between developer self-test, independent QA and final acceptance.
 
-Every delivery includes the agreed [self-test report entry](../skills/implement-batch/references/spec-acceptance.md#self-test-report-and-delivery), assembled from existing case results. It distinguishes developer self-test, independent QA and final acceptance; names the candidate and unverified boundaries; and includes UI evidence when applicable. Reader access and publication are reported separately. Missing publication authority leaves a complete local report pending publication, not a claim of online delivery. Worked [synthetic scenarios](implement-batch-examples.md) illustrate handoffs, coverage, decisions and report gaps; they do not replace a real project trial.
+For a single requirement, install only `test-design` with `python3 tools/environment/env.py apply --profile work-mac --only test-design` (preview with `plan`), then invoke `$test-design` against the project's existing acceptance document. Review or extend its design and continue using that project's implementation and test workflow; no batch, delivery agent or execution is started by the design Skill.
+
+For state, retry snapshots and human-edit synchronization, the [acceptance outline](../skills/deliver-spec/references/spec-acceptance.md#behavior-sequence-coverage) maps invariants to action sequences and observable assertions. It distinguishes production-function, mocked-browser and real-integration evidence and omits irrelevant categories with reasons. Static screens or helper tests alone do not prove the full behavior.
+
+Every delivery includes the agreed [self-test report entry](../skills/deliver-spec/references/spec-acceptance.md#self-test-report-and-delivery), assembled from existing case results. It distinguishes developer self-test, independent QA and final acceptance; names the candidate and unverified boundaries; and includes UI evidence when applicable. Reader access and publication are reported separately. Missing publication authority leaves a complete local report pending publication, not a claim of online delivery. Worked [synthetic scenarios](implement-batch-examples.md) illustrate handoffs, coverage, decisions and report gaps; they do not replace a real project trial.
 
 A frontend guide must verify its actual dev/test command and API routing; a Kubernetes/Helm backend guide must verify the mono-repo/chart entry, isolated test resources, candidate image, readiness and access route. Those examples are not preconfigured deployment instructions. Each repository owns its guide; cross-repository specs link them and identify every tested version.
 
-Report writing, update and evidence-review details are maintained in [self-test-report](../skills/self-test-report/SKILL.md), which can also be invoked independently without running implementation. Install/update the reporting dependency with `python3 tools/environment/env.py apply --profile work-mac --only setup-aiwb --only self-test-report --only implement-batch` (preview with `plan`). Linux profiles register the same resources; deployment there is separate. No real service deployment or billable API test is performed by installing these Skills.
+Report writing, update and evidence-review details are maintained in [self-test-report](../skills/self-test-report/SKILL.md), which can also be invoked independently without running implementation. Install/update setup and the complete delivery entry with `python3 tools/environment/env.py apply --profile work-mac --only setup-aiwb --only deliver-spec` (preview with `plan`); the command includes design and reporting companions. Linux profiles register the same resources; deployment there is separate. No real service deployment or billable API test is performed by installing these Skills.
 
 ## Recovery and verification cost
 
@@ -63,7 +71,7 @@ For cross-system work, verify the smallest public contract needed by dependent i
 
 ## Run records and review experiments
 
-Each confirmed run now retains a project-owned run record, linked from its spec acceptance document/checkpoint (default `docs/testing/runs/<run-id>.md`). The parent writes it from existing agent handoffs: actual models, attempt boundaries, review findings/dispositions, repairs, checks and available usage evidence. See the [record outline](../skills/implement-batch/references/run-record.md). It also covers ordinary single-review runs, providing a baseline for a later explicitly selected staged-review experiment; logging itself does not change the review policy.
+Each confirmed run now retains a project-owned run record, linked from its spec acceptance document/checkpoint (default `docs/testing/runs/<run-id>.md`). The parent writes it from existing agent handoffs: actual models, attempt boundaries, review findings/dispositions, repairs, checks and available usage evidence. See the [record outline](../skills/deliver-spec/references/run-record.md). It also covers ordinary single-review runs, providing a baseline for a later explicitly selected staged-review experiment; logging itself does not change the review policy.
 
 Ask a later analysis to compare named run records, including total elapsed time, repair overhead, confirmed versus rejected findings and later-stage discoveries. Missing costs remain unknown, parallel attempt durations are not summed as elapsed time, and partial usage is not total spend. Records are instruction-driven and require execution evidence; this change does not provide automatic client telemetry or reconstruct unrecorded historical measurements. Only generic formats live in AIWB; project logs stay in their owning repositories.
 
@@ -71,9 +79,9 @@ Ask a later analysis to compare named run records, including total elapsed time,
 
 Request the mode explicitly, for example:
 
-> 使用 implement-batch 实施这个 spec，启用分层评审：初审用 Luna，批尾终审用 Astra。先核实客户端实际支持的模型，展示依赖图、风险分流、并发和轮数让我确认。记录运行日志。
+> 使用 deliver-spec 实施这个 spec，启用分层评审：初审用 Luna，批尾终审用 Astra。先核实客户端实际支持的模型，展示依赖图、风险分流、并发和轮数让我确认。记录运行日志。
 
-The [staged-review policy](../skills/implement-batch/references/staged-review.md) proposes one cheap initial review per Issue plus at most one repair recheck, with early stronger review for high-risk or disputed changes. A fresh stronger reviewer covers the final combined batch before acceptance. Reviewers remain read-only; workers repair and the integrator alone writes the integration branch and owns checks. Initial approval is provisional and does not release dependencies. Ordinary mode and existing confirmed runs keep their selected policy. Model names in the example require native verification; installing the Skill proves neither availability nor experimental savings.
+The [staged-review policy](../skills/deliver-spec/references/staged-review.md) proposes one cheap initial review per Issue plus at most one repair recheck, with early stronger review for high-risk or disputed changes. A fresh stronger reviewer covers the final combined batch before acceptance. Reviewers remain read-only; workers repair and the integrator alone writes the integration branch and owns checks. Initial approval is provisional and does not release dependencies. Ordinary mode and existing confirmed runs keep their selected policy. Model names in the example require native verification; installing the Skill proves neither availability nor experimental savings.
 
 ## Optional retrospective
 

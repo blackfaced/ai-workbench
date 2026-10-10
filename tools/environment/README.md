@@ -67,6 +67,8 @@ Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
 `~/.agents/skills` 与自家目录**合成同一个可发现集合**。所以「每个客户端各放一份」必然在两边都变成
 重名。现在第一方 Skill 只写 `~/.agents/skills` 一份，Claude Code 用符号链接接进去。
 
+`install_with` 显式列出需要一起选择的组件 ID；plan/apply/check 的 `--only` 会递归包含它们，未知引用或循环在执行任何写入前报错。它用于 `implement-batch` 兼容入口同时安装 `deliver-spec`，不改变 `depends_on` 仅检查可用性的含义，也不按名称猜依赖。默认全 Profile 同样验证这些引用。
+
 `stale_copies` 负责清掉历史上散落的副本，判定规则是「删掉不丢东西」：
 
 - 是符号链接 → 按链接删，**绝不顺着它 listdir/unlink 到真身**；

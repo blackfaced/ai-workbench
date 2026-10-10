@@ -1,0 +1,11 @@
+{
+  "command": [
+    "/Library/Developer/CommandLineTools/usr/bin/python3",
+    "tools/environment/tests/legacy_delegation_pilot.py",
+    "--output",
+    "$RUN_ARTIFACTS/370/matrix"
+  ],
+  "exit_code": 0,
+  "candidate": "79c94296eb1bdbfcee5d3f594719a07a5555b052",
+  "utc": "2026-10-10T07:21:54.927072+00:00"
+}
