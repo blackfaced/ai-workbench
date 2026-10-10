@@ -74,3 +74,9 @@ Request the mode explicitly, for example:
 > 使用 implement-batch 实施这个 spec，启用分层评审：初审用 Luna，批尾终审用 Astra。先核实客户端实际支持的模型，展示依赖图、风险分流、并发和轮数让我确认。记录运行日志。
 
 The [staged-review policy](../skills/implement-batch/references/staged-review.md) proposes one cheap initial review per Issue plus at most one repair recheck, with early stronger review for high-risk or disputed changes. A fresh stronger reviewer covers the final combined batch before acceptance. Reviewers remain read-only; workers repair and the integrator alone writes the integration branch and owns checks. Initial approval is provisional and does not release dependencies. Ordinary mode and existing confirmed runs keep their selected policy. Model names in the example require native verification; installing the Skill proves neither availability nor experimental savings.
+
+## Optional retrospective
+
+After a run with repeated rework, difficult discovery, or tool/check gaps, explicitly select upstream [retro](https://www.aihero.dev/skills-retro) to review the parent session and relevant child logs. It proposes evidence-backed environment improvements for the user to select; it is optional and does not change spec acceptance. Smooth runs can skip it. Installation remains owned by the upstream installer; see [the collection reference](../skills/matt-pocock-skills.md).
+
+Use `reflect-bug` for an escaped bug's detection gap and `review-lessons` to consolidate existing project lessons. Retro covers broader session friction such as missing navigation pointers, unconnected checks, or inadequate tool access. Project-specific findings stay with that project.
