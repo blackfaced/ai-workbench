@@ -969,6 +969,11 @@ def main():
     case_test_design_distribution(os.path.join(root, "c12"))
     case_backward_compatibility_rules()
     case_identity_review_gate()
+    pilot = subprocess.run([sys.executable, os.path.join(HERE, "legacy_delegation_pilot.py")],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    write(os.path.join(root, "legacy-delegation-pilot.log"), pilot.stdout)
+    check("旧主委托引用：已知错误被检出，正确控制与新 HOME 复测通过",
+          pilot.returncode == 0, pilot.stdout if pilot.returncode else "")
     kimi = subprocess.run([sys.executable, os.path.join(HERE, "kimi_discovery.py")],
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "kimi-discovery.log"), kimi.stdout)
