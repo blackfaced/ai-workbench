@@ -2,6 +2,8 @@
 
 Use the target repository's test-document convention; otherwise `docs/testing/spec-<issue-id>.md`. This document holds case design and execution evidence, not a second task tracker. Link the parent Issue and repository integration guide. The parent agent owns expected results; the execution agent fills observations and status.
 
+Apply [test-design](../../test-design/SKILL.md) to review the existing design before adding cases. Reuse still-valid coverage with its applicability basis; preserve stable IDs, design revisions and failure/retry history. Fill gaps in this same document, using the case fields below rather than creating another full matrix. Record design readiness and unresolved criteria/data/permissions with their checked sources and resume conditions; readiness does not change execution status or authorize tests.
+
 ## Scope and coverage
 
 - Parent Issue/spec revision, child Issue references, and in-scope behavior.
@@ -38,18 +40,20 @@ Identify the evidence level per case: source inspection, production-function tes
 
 ## Case <stable ID>: <behavior>
 
-- Requirement: parent criterion and related child Issues.
-- Invariant / boundary: applicable behavior-sequence and backward-compatibility mapping, affected caller/module classes, evidence level, and mocked dependencies.
-- Preconditions: environment, account role, data, candidate identity, permissions.
+- Requirement: parent criterion and related child Issues, source revision and existing coverage references.
+- Invariant / boundary: target error this case must detect, applicable behavior-sequence and backward-compatibility mapping, affected caller/module classes, evidence level, and mocked dependencies.
+- Preconditions: environment, account role, data source/required properties and verified availability, candidate identity, permissions; identify unavailable prerequisites without inventing inputs.
 - Steps: executable command reference or repeatable browser/API actions.
-- Expected: observable behavior/assertions, including cleanup effects where relevant.
+- Expected: observable behavior/assertions and independent oracle source, including cleanup effects where relevant.
 - Evidence: what response/assertion/log/artifact proves this result; sanitize sensitive data.
 - Cleanup: run-owned resources/data to remove, and actions that need separate authority.
-- Initial status: NOT_RUN.
+- Initial status for a new case: NOT_RUN; preserve existing outcomes when reusing a case.
 
 ## Execution record
 
 Link the parent-maintained [run record](run-record.md) for attempt timing, model/usage provenance and review findings; keep case outcomes here and reference their attempt IDs rather than duplicating results.
+
+When approved expectations or the relevant candidate change, retain the old expectation/version and reason, identify the affected cases and mark their prior evidence's validity using the [self-test-report rules linked below](#self-test-report-and-delivery). Preserve original PASS/FAIL/BLOCKED/NOT_RUN history; changed expectations cannot turn an old FAIL into PASS. Reuse unaffected evidence only with its source and applicability assessment. The report references these same IDs and outcomes; do not maintain a second result table.
 
 For every attempt record run ID/date, executor/model and role (developer self-test, independent QA, or final integration acceptance), tested branch/commit or complete starting patch, image/deployment identity if applicable, environment, case-design revision, execution time and relevant commands. Reuse identity/timing fields from the linked run record. Use sequential attempts when shared test data makes parallel execution unsafe. Preserve earlier failures and their evidence when recording retests. Keep evidence in a persistent project artifact location. For reused results, cite the original attempt and why it still covers this candidate/environment; for repeated checks, state what changed or which evidence was missing. BLOCKED entries record sources already checked and the fact or event required to resume, so a handoff does not restart the same investigation.
 
@@ -73,4 +77,4 @@ During preflight, identify the project's report location, intended readers and a
 
 The parent assembles the report from existing observations and case records, without another agent or a repeat test run merely to fill it. Keep one result source: this acceptance record owns case design and execution outcomes; the report is its summary/index. Report-specific identity, role separation, evidence validity, UI capture, open-defect and reader-access rules live in self-test-report, not a second copy here. Preserve this document's original execution statuses; attach evidence validity separately rather than relabeling history.
 
-Implement-batch retains expected outcomes, execution permissions, role assignments and final acceptance. A report cannot accept the spec or waive missing required evidence. Attach its concrete entry and publication/access status to the final reply and authorized Issue/MR updates, including failed or incomplete deliveries. Missing the agreed report remains an incomplete delivery even when tests pass.
+Deliver-spec, including its implement-batch compatibility entry, retains expected outcomes, execution permissions, role assignments and final acceptance. A report cannot accept the spec or waive missing required evidence. Attach its concrete entry and publication/access status to the final reply and authorized Issue/MR updates, including failed or incomplete deliveries. Missing the agreed report remains an incomplete delivery even when tests pass.

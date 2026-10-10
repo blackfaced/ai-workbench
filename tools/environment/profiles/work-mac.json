@@ -298,6 +298,10 @@
       "stale_copies": [
         "~/.codex/skills/deliver-spec",
         "~/.trae/skills/deliver-spec"
+      ],
+      "install_with": [
+        "test-design",
+        "self-test-report"
       ]
     },
     {
