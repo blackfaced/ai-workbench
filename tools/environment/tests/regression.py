@@ -707,6 +707,63 @@ def case_self_test_report_distribution(root):
         check(profile_name + " 模板漂移不能被判通过", rc == 1)
 
 
+
+def case_test_design_distribution(root):
+    print("\n[用例 12] test-design 可独立安装，正文与引用完整分发")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    for profile_name in ("work-mac", "work-linux", "home-mac"):
+        profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
+        components = [c for c in profile["components"] if c["id"] == "test-design"]
+        check(profile_name + " 登记独立测试设计组件", len(components) == 1)
+        if len(components) != 1:
+            continue
+        box = Sandbox(os.path.join(root, profile_name))
+        source = os.path.join(repo, "skills", "test-design")
+        shutil.copytree(source, os.path.join(box.repo, "skills", "test-design"))
+        box.profile(base_profile(components))
+        installed = box.path(".agents", "skills", "test-design")
+        rc, out = box.run("plan", "--profile", "harness", "--only", "test-design")
+        check(profile_name + " 计划只读且列出测试设计", rc == 0 and "test-design" in out
+              and not os.path.exists(installed), out if rc else "")
+        rc, out = box.run("apply", "--profile", "harness", "--only", "test-design")
+        check(profile_name + " 无其它 Skill 依赖即可安装", rc == 0, out if rc else "")
+        expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")
+                    + "\n\n" + read(os.path.join(source, "SKILL.md")).lstrip("\n"))
+        body = os.path.join(installed, "SKILL.md")
+        check(profile_name + " 正文和 frontmatter 完整匹配", os.path.isfile(body) and read(body) == expected)
+        for rel, src in (("agents/openai.yaml", "clients/openai.yaml"),
+                         ("assets/design-template.md", "assets/design-template.md")):
+            target = os.path.join(installed, rel)
+            check(profile_name + " 完整分发 " + rel,
+                  os.path.isfile(target) and read(target) == read(os.path.join(source, src)))
+        links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(body))
+        check(profile_name + " 正文中的本地引用均可打开",
+              bool(links) and all(os.path.isfile(os.path.join(installed, link)) for link in links))
+        rc, out = box.run("check", "--profile", "harness", "--only", "test-design")
+        check(profile_name + " 测试设计受管检查通过", rc == 0, out if rc else "")
+        backup = box.latest_backup()
+        before = box.state()
+        rc, out = box.run("apply", "--profile", "harness", "--only", "test-design")
+        check(profile_name + " 测试设计重复安装幂等", rc == 0 and box.state() == before, out if rc else "")
+        user_note = os.path.join(installed, "user-note.md")
+        write(user_note, "用户文件，恢复时保留。\n")
+        rc, out = box.run("restore", "--backup", backup)
+        managed_files = ("SKILL.md", "agents/openai.yaml", "assets/design-template.md")
+        check(profile_name + " 首装恢复撤回全部受管文件和记录",
+              rc == 0 and all(not os.path.exists(os.path.join(installed, rel)) for rel in managed_files)
+              and not any(key.startswith("test-design:") for key in box.state()["components"]), out if rc else "")
+        check(profile_name + " 恢复保留安装后新增的用户文件", read(user_note) == "用户文件，恢复时保留。\n")
+        rc, out = box.run("apply", "--profile", "harness", "--only", "test-design")
+        check(profile_name + " 恢复后可重新安装", rc == 0, out if rc else "")
+        template = os.path.join(installed, "assets", "design-template.md")
+        edited = read(template) + "\n用户已有设计，不能覆盖。\n"
+        write(template, edited)
+        rc, _out = box.run("apply", "--profile", "harness", "--only", "test-design")
+        check(profile_name + " 用户设计模板修改受保护", rc == 1 and read(template) == edited)
+        rc, _out = box.run("check", "--profile", "harness", "--only", "test-design")
+        check(profile_name + " 用户模板漂移不能被判通过", rc == 1)
+
+
 def case_backward_compatibility_rules():
     print("\n[用例 10] 既有功能变更必须经过向后兼容门禁")
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
@@ -798,6 +855,7 @@ def main():
     case_profile_selection(os.path.join(root, "c7"))
     case_implement_batch_distribution(os.path.join(root, "c8"))
     case_self_test_report_distribution(os.path.join(root, "c9"))
+    case_test_design_distribution(os.path.join(root, "c12"))
     case_backward_compatibility_rules()
     case_identity_review_gate()
     kimi = subprocess.run([sys.executable, os.path.join(HERE, "kimi_discovery.py")],

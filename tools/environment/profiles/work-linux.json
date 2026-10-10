@@ -226,6 +226,28 @@
       ]
     },
     {
+      "id": "test-design",
+      "type": "skill",
+      "name": "test-design",
+      "body": "skills/test-design/SKILL.md",
+      "source": "repo:skills/test-design",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/test-design/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/test-design/clients/openai.yaml",
+            "assets/design-template.md": "skills/test-design/assets/design-template.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/test-design",
+        "~/.trae/skills/test-design"
+      ]
+    },
+    {
       "id": "self-test-report",
       "type": "skill",
       "name": "self-test-report",
