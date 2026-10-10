@@ -75,7 +75,7 @@ python3 tools/environment/tests/regression.py
 
 已安装四个正文在本轮只读复核与候选渲染值相同：legacy `f70e764c…`、canonical `21d7558c…`、test-design `e03a54a8…`、self-test-report `7ce37b97…`，完整值见客户端 observations。#370 没改这些源，因此 #369 的原生设计行为证据可复用。原生调用的实际模型继承父配置，但工具没有暴露型号，故保持“未经验证”；不推测费用或模型版本。
 
-仍未执行：其它客户端的实际 Skill 应用、Linux/家用机器原生安装、本次完整 deliver-spec 从计划到交付的模型运行、外部业务服务/资源 Owner、Botmux 离线接班及跨机器恢复。前四者超出本次选定客户端/场景的证据覆盖；后三类不属于本 Spec。合成 Owner 用例内部仍是 NOT_RUN/缺独立判据，设计方法正确保留缺口不等于服务验收通过。没有把这些项目计入通过率。
+审查阶段未执行：其它客户端的实际 Skill 应用、Linux/家用机器原生安装、本次完整 deliver-spec 从计划到交付的模型运行、外部业务服务/资源 Owner、Botmux 离线接班及跨机器恢复。前四者超出当时选定客户端/场景的证据覆盖；后三类不属于本 Spec。合成 Owner 用例内部仍是 NOT_RUN/缺独立判据，设计方法正确保留缺口不等于服务验收通过。没有把这些项目计入通过率；后续 Linux 安装及原生发现的补充证据单列于分发记录。
 
 ## 最终审查与父级接受
 
@@ -89,7 +89,7 @@ python3 tools/environment/tests/regression.py
 
 身份/权限核验中，**本地受管所有权及流程授权适用，已核验**。独立权威依据是生产 [env.py](../../tools/environment/env.py) 的实际消费链：`cmd_run → build_plan → plan_skill → plan_managed_file → guarded/overwrite_guard → _file_writer → backup_save/Backup.mark_written`，以及 `cmd_restore → restore_guard → apply_restore`。已有文件以受管摘要证明归属，force 仍保留备份，符号链接替换自身；恢复检查当前形态/摘要并还原旧 state。共装未绕过这些实现，新旧名称未扩大执行权限；三 Profile 的编辑保护、回滚及固定旧 payload 升级证据作为对应行为佐证，历史 payload 的适用限制仍按上文保留。
 
-外部业务身份不适用：本次没有凭据、实际主体或业务资源归属变更。其它真实机器/客户端、完整模型交付运行和外部服务的未验证边界不变，合成 Owner 用例不代表真实服务核验。审查复用了 `79c94296eb1bdbfcee5d3f594719a07a5555b052` 的 339/0 与故障/正确对照，并核验冻结源和存储证据摘要；`ca51dd3` 相对被测提交仅增加验收资料，未重新标记此前执行候选或重跑同一全套。
+外部业务身份不适用：本次没有凭据、实际主体或业务资源归属变更。该审查保留当时其它真实机器/客户端、完整模型交付运行和外部服务的未验证边界，合成 Owner 用例不代表真实服务核验。审查复用了 `79c94296eb1bdbfcee5d3f594719a07a5555b052` 的 339/0 与故障/正确对照，并核验冻结源和存储证据摘要；`ca51dd3` 相对被测提交仅增加验收资料，未重新标记此前执行候选或重跑同一全套。
 
 父 agent 已接受父 Spec #366 及 #367–#370 的限定交付：独立 test-design、deliver-spec 兼容迁移、唯一验收记录接入，以及本次已知主委托引用错误的检测缺口补齐。接受对象是本地集成分支及上述证据范围，不外推普遍缺陷发现能力、完整模型交付或其它机器实测，也不表示已合入 main、推送或发布。Issue 生命周期状态以 hub 为准，本记录不维护第二份状态台账。此次文档定稿不改变任何原始结果、证据有效性或首次失败。
 
@@ -99,4 +99,20 @@ python3 tools/environment/tests/regression.py
 
 测试源、物料与原始证据属于 AIWB 自己的 #368 需求，留本仓符合项目归属边界。`manifest.json` 列出每份原始摘要、存储摘要与脱敏/摘录规则；替换本地 HOME、临时根和主机名，原始断言、结果、候选与内容摘要保留。客户端调用文件是执行者当时的产出/观察和父 agent 核对，不是原始会话 transcript 的完整导出；其中工具输出 ID 用作本次会话回溯。没有新增长期服务或第二份业务用例库。
 
-报告和证据已本地生成，尚未发布；本机作者已逐项读取必要文件并校验摘要，团队读者可访问性未验证。相对链接适用于本仓检出；没有推送授权，也不把本机路径当成团队共享地址。最终三个审查轴和父级限定范围接受已完成。Issue 生命周期状态以 hub 为准，本记录不维护第二份状态台账。审查无发现不等于未验证边界已有通过证据。
+最初接受时报告仅在本地；随后按用户明确授权推送并安装分发，结果见下节。团队读者可访问性仍未独立验证。相对链接适用于本仓检出。最终三个审查轴和父级限定范围接受已完成。Issue 生命周期状态以 hub 为准，本记录不维护第二份状态台账。审查无发现不等于未验证边界已有通过证据。
+
+## 推送与安装分发（2026-10-10）
+
+用户授权后，将 `702afca6d6320a37057cecc166c8a4f3f3ef2562` 推送至 [codex/test-design-deliver-spec](https://github.com/blackfaced/ai-workbench/tree/codex/test-design-deliver-spec)，远端提交回读一致；未合入 main 或创建 PR。本节是随后的分发记录，不改变此前测试候选、失败记录或模型行为验收范围。
+
+分发五项：`test-design`、`deliver-spec`、`implement-batch`、`self-test-report`、`setup-aiwb`。本机使用受管安装器；两台开发机使用该提交的独立源码包，SHA-256 为 `c538fc2cb779d527381c18da3a0d28c46633cf8094036debf543cbb89c0d7db6`，上传后核对一致，未切换或覆盖既有仓库。统一执行 `env.py plan/apply/check --profile <work-mac|work-linux> --only implement-batch --only setup-aiwb`，共装由现有 Profile 解析，无 force。
+
+| 机器 | 安装与受管内容 | Codex / Trae 原生发现 | 全局 check |
+| --- | --- | --- | --- |
+| 工作 Mac | apply rc=0；五项正文与声明一致 | 两客户端均各发现五项一次 | rc=0，无漂移或发现错误 |
+| dev8c | apply rc=0；五项正文与工作 Mac 哈希一致 | 两客户端均各发现五项一次 | rc=0，无漂移或发现错误 |
+| dev32c | apply rc=0；五项正文与工作 Mac 哈希一致 | 两客户端均各发现五项一次 | rc=1；Trae 同时发现 `.agents/skills` 与 `.trae/skills` 中的第三方 `bytedance-codebase`，本轮未修改这两份副本 |
+
+各机器的安装路径为 `~/.agents/skills/<name>`；本轮受管备份位于 `~/.ai-workbench/environment/backups/`：工作 Mac 为 `20261010T074119Z`，两台开发机均为各自机器上的 `20261010T074234Z`。原始 plan/apply/check、原生名称清单及摘要核对记录保存在执行机器的 `/private/tmp/aiwb-distribute-702afca/`，这是本地操作证据，未宣称团队可访问。
+
+这次补充了两台 Linux 机器的安装及原生发现证据，未运行远端模型任务或真机恢复。dev32c 全局检查的第三方重名仍保留为范围外问题，不把本次五项分发通过写成全机检查通过。家用 Mac 未找到已配置的远程连接，本次未操作；此前家用 Profile 隔离回归不能代替本次真机分发。
