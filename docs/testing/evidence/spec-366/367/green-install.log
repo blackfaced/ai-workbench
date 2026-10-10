@@ -1,0 +1,26 @@
+
+[用例 12] test-design 可独立安装，正文与引用完整分发
+  ✓ work-mac 登记独立测试设计组件
+  ✓ work-mac 计划只读且列出测试设计
+  ✓ work-mac 无其它 Skill 依赖即可安装
+  ✓ work-mac 正文和 frontmatter 完整匹配
+  ✓ work-mac 完整分发 agents/openai.yaml
+  ✓ work-mac 完整分发 assets/design-template.md
+  ✓ work-mac 正文中的本地引用均可打开
+  ✓ work-mac 测试设计受管检查通过
+  ✓ work-linux 登记独立测试设计组件
+  ✓ work-linux 计划只读且列出测试设计
+  ✓ work-linux 无其它 Skill 依赖即可安装
+  ✓ work-linux 正文和 frontmatter 完整匹配
+  ✓ work-linux 完整分发 agents/openai.yaml
+  ✓ work-linux 完整分发 assets/design-template.md
+  ✓ work-linux 正文中的本地引用均可打开
+  ✓ work-linux 测试设计受管检查通过
+  ✓ home-mac 登记独立测试设计组件
+  ✓ home-mac 计划只读且列出测试设计
+  ✓ home-mac 无其它 Skill 依赖即可安装
+  ✓ home-mac 正文和 frontmatter 完整匹配
+  ✓ home-mac 完整分发 agents/openai.yaml
+  ✓ home-mac 完整分发 assets/design-template.md
+  ✓ home-mac 正文中的本地引用均可打开
+  ✓ home-mac 测试设计受管检查通过

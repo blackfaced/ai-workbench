@@ -1,0 +1,67 @@
+AI Workbench 环境入口 · check · profile=harness · host=$HOST · shell=/bin/bash
+
+== 观测（plan / apply / check 共用同一次）
+  [test-design]
+    正文真源：skills/test-design/SKILL.md
+    source=repo:skills/test-design revision=in-repo
+    depends_on=[]
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/SKILL.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/agents/openai.yaml 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/assets/design-template.md 一致
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.codex/skills/test-design：已不存在 ✓
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.trae/skills/test-design：已不存在 ✓
+  [self-test-report]
+    正文真源：skills/self-test-report/SKILL.md
+    source=repo:skills/self-test-report revision=in-repo
+    depends_on=[]
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/SKILL.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/agents/openai.yaml 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/assets/report-template.md 一致
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.codex/skills/self-test-report：已不存在 ✓
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.trae/skills/self-test-report：已不存在 ✓
+  [deliver-spec]
+    正文真源：skills/deliver-spec/SKILL.md
+    source=repo:skills/deliver-spec revision=in-repo
+    depends_on=[]
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/SKILL.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/agents/openai.yaml 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/botmux.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/run-record.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/spec-acceptance.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/staged-review.md 一致
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.codex/skills/deliver-spec：已不存在 ✓
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.trae/skills/deliver-spec：已不存在 ✓
+  [implement-batch]
+    正文真源：skills/implement-batch/SKILL.md
+    source=repo:skills/implement-batch revision=in-repo
+    depends_on=[]
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/SKILL.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/agents/openai.yaml 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/botmux.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/run-record.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/spec-acceptance.md 一致
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/staged-review.md 一致
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.codex/skills/implement-batch：已不存在 ✓
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.trae/skills/implement-batch：已不存在 ✓
+
+== 待改动 0 项
+  （无）
+
+== 需要人处理 0 项
+  （无）
+
+== 只报告 0 项
+  （无）
+
+== HOOK 重复检查（只读，不改写第三方安装器正文）
+  重复项合计：0
+
+== SKILL 发现检查（安装目录数 ≠ 客户端可发现数 ≠ 本轮实际调用）
+  shared $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills：安装目录 4 项 / 结构完好 4 项
+  本轮实际调用：未观测 —— env.py 不驱动客户端会话，调用量需在客户端里看
+  Skill 发现错误合计：0
+
+== check 断言
+  待改动=0 需人处理=0 hook 重复=0 Skill 发现错误=0
+  说明：配置回滚由 restore 保证；外部软件的降级能力取决于其安装器，本入口不承诺降级
+  结论：与 Profile 一致 ✓

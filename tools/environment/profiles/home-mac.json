@@ -180,6 +180,28 @@
       ]
     },
     {
+      "id": "test-design",
+      "type": "skill",
+      "name": "test-design",
+      "body": "skills/test-design/SKILL.md",
+      "source": "repo:skills/test-design",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/test-design/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/test-design/clients/openai.yaml",
+            "assets/design-template.md": "skills/test-design/assets/design-template.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/test-design",
+        "~/.trae/skills/test-design"
+      ]
+    },
+    {
       "id": "self-test-report",
       "type": "skill",
       "name": "self-test-report",
@@ -202,6 +224,35 @@
       ]
     },
     {
+      "id": "deliver-spec",
+      "type": "skill",
+      "name": "deliver-spec",
+      "body": "skills/deliver-spec/SKILL.md",
+      "source": "repo:skills/deliver-spec",
+      "revision": "in-repo",
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/deliver-spec/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/deliver-spec/clients/openai.yaml",
+            "references/spec-acceptance.md": "skills/deliver-spec/references/spec-acceptance.md",
+            "references/run-record.md": "skills/deliver-spec/references/run-record.md",
+            "references/staged-review.md": "skills/deliver-spec/references/staged-review.md",
+            "references/botmux.md": "skills/deliver-spec/references/botmux.md"
+          }
+        }
+      },
+      "stale_copies": [
+        "~/.codex/skills/deliver-spec",
+        "~/.trae/skills/deliver-spec"
+      ],
+      "install_with": [
+        "test-design",
+        "self-test-report"
+      ]
+    },
+    {
       "id": "implement-batch",
       "type": "skill",
       "name": "implement-batch",
@@ -214,16 +265,19 @@
           "frontmatter": "skills/implement-batch/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/implement-batch/clients/openai.yaml",
-            "references/spec-acceptance.md": "skills/implement-batch/references/spec-acceptance.md",
-            "references/run-record.md": "skills/implement-batch/references/run-record.md",
-            "references/staged-review.md": "skills/implement-batch/references/staged-review.md",
-            "references/botmux.md": "skills/implement-batch/references/botmux.md"
+            "references/spec-acceptance.md": "skills/deliver-spec/references/spec-acceptance.md",
+            "references/run-record.md": "skills/deliver-spec/references/run-record.md",
+            "references/staged-review.md": "skills/deliver-spec/references/staged-review.md",
+            "references/botmux.md": "skills/deliver-spec/references/botmux.md"
           }
         }
       },
       "stale_copies": [
         "~/.codex/skills/implement-batch",
         "~/.trae/skills/implement-batch"
+      ],
+      "install_with": [
+        "deliver-spec"
       ]
     },
     {

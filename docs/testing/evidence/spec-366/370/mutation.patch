@@ -1,0 +1,5 @@
+--- candidate/skills/implement-batch/SKILL.md
++++ isolated-fault/skills/implement-batch/SKILL.md
+@@ -1 +1 @@
+-Compatibility entry for `implement-batch`. Read and follow [deliver-spec](../deliver-spec/SKILL.md), the single maintained workflow, before proceeding. Treat this explicit invocation as selecting that workflow; do not run both entries or start a second run.
++Compatibility entry for `implement-batch`. Read and follow [deliver-spec](../absent-canonical/SKILL.md), the single maintained workflow, before proceeding. Treat this explicit invocation as selecting that workflow; do not run both entries or start a second run.

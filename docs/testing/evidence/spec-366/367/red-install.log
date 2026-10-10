@@ -1,0 +1,5 @@
+
+[用例 12] test-design 可独立安装，正文与引用完整分发
+  ✗ work-mac 登记独立测试设计组件
+  ✗ work-linux 登记独立测试设计组件
+  ✗ home-mac 登记独立测试设计组件

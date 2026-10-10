@@ -7,7 +7,7 @@
 
 普通单 Issue 直接沿用目标仓库的实现、测试和评审流程。仅当测试入口缺失或过时时使用 `setup-aiwb` 核实并维护项目测试手册；已有可靠手册就直接复用。不需要额外的 batch、integrator 或确认仪式，外部操作仍遵循用户授权。
 
-当一个 spec 有多个依赖子 Issue、需要隔离并行实施和统一集成时，由用户显式选择 [implement-batch](implement-batch.md)。单 Issue 也可显式选择它，但普通小修复不必承担这套编排。
+当一个 spec 有多个依赖子 Issue、需要隔离并行实施和统一集成时，由用户显式选择 [deliver-spec](implement-batch.md)。单 Issue 也可显式选择它，但普通小修复不必承担这套编排。
 
 > 检查当前 Issue 的实际情况；测试方法不清楚时使用 setup-aiwb，只询问缺失项。随后按本仓流程实现和验证，报告测试边界与剩余问题。
 

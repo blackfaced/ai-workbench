@@ -1,0 +1,15 @@
+
+[用例 8] implement-batch 的 botmux 附录随实际 Profile 分发
+  ✓ work-mac 安装成功
+  ✓ work-mac 旧名安装得到规范入口
+  ✓ work-mac botmux 附录完整分发
+  ✓ work-mac 安装校验通过
+  ✓ work-linux 安装成功
+  ✓ work-linux 旧名安装得到规范入口
+  ✓ work-linux botmux 附录完整分发
+  ✓ work-linux 安装校验通过
+  ✓ home-mac 安装成功
+  ✓ home-mac 旧名安装得到规范入口
+  ✓ home-mac botmux 附录完整分发
+  ✓ home-mac 安装校验通过
+FAILS: []
