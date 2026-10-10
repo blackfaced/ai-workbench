@@ -642,12 +642,12 @@ def case_implement_batch_distribution(root):
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
     for profile_name in ("work-mac", "work-linux", "home-mac"):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
-        components = [c for c in profile["components"]
-                      if c["id"] in ("implement-batch", "deliver-spec")]
+        skill_names = ("implement-batch", "deliver-spec", "test-design", "self-test-report")
+        components = [c for c in profile["components"] if c["id"] in skill_names]
         for entry in ("implement-batch", "deliver-spec"):
             label = profile_name + " " + entry
             box = Sandbox(os.path.join(root, profile_name, entry))
-            for name in ("implement-batch", "deliver-spec"):
+            for name in skill_names:
                 shutil.copytree(os.path.join(repo, "skills", name),
                                 os.path.join(box.repo, "skills", name))
             box.profile(base_profile(components))
@@ -659,6 +659,9 @@ def case_implement_batch_distribution(root):
             check(label + " 安装成功", rc == 0, out if rc else "")
             canonical = box.path(".agents", "skills", "deliver-spec", "SKILL.md")
             check(label + " 规范入口可用", os.path.isfile(canonical))
+            for companion in ("test-design", "self-test-report"):
+                check(label + " 定向安装包含 " + companion,
+                      os.path.isfile(box.path(".agents", "skills", companion, "SKILL.md")))
             installed = box.path(".agents", "skills", entry)
             if entry == "implement-batch":
                 links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(os.path.join(installed, "SKILL.md")))
@@ -670,16 +673,45 @@ def case_implement_batch_distribution(root):
                 check(label + " 保留完整资源 " + resource,
                       os.path.isfile(target)
                       and read(target) == read(os.path.join(repo, "skills", "deliver-spec", "references", resource)))
+            for document in (canonical, os.path.join(installed, "references", "spec-acceptance.md")):
+                links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(document))
+                targets = [os.path.normpath(os.path.join(os.path.dirname(document), link))
+                           for link in links if not re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", link)]
+                check(label + " " + os.path.basename(document) + " 可找到独立测试设计方法",
+                      box.path(".agents", "skills", "test-design", "SKILL.md") in targets)
+                check(label + " " + os.path.basename(document) + " 安装引用均可打开",
+                      bool(targets) and all(os.path.isfile(target) for target in targets))
             rc, out = box.run("check", "--profile", "harness", "--only", entry)
             check(label + " 安装校验通过", rc == 0, out if rc else "")
+            backup = box.latest_backup()
             before = box.state()
             rc, out = box.run("apply", "--profile", "harness", "--only", entry)
             check(label + " 重复安装幂等", rc == 0 and box.state() == before)
+            rc, out = box.run("restore", "--backup", backup)
+            check(label + " 共装能力随首装一起恢复",
+                  rc == 0 and all(not os.path.exists(box.path(".agents", "skills", name, "SKILL.md"))
+                                  for name in skill_names)
+                  and not box.state()["components"], out if rc else "")
+            rc, out = box.run("apply", "--profile", "harness", "--only", entry)
+            check(label + " 共装恢复后可重新安装", rc == 0, out if rc else "")
+            method = box.path(".agents", "skills", "test-design", "SKILL.md")
+            os.unlink(method)
+            rc, out = box.run("check", "--profile", "harness", "--only", entry)
+            check(label + " 设计方法缺失可定位", rc == 1 and "test-design" in out)
+            rc, out = box.run("apply", "--profile", "harness", "--only", entry)
+            check(label + " 缺失方法可经原入口修复", rc == 0 and os.path.isfile(method), out if rc else "")
+            template = box.path(".agents", "skills", "test-design", "assets", "design-template.md")
+            edited = read(template) + "\n用户修改的设计模板。\n"
+            write(template, edited)
+            rc, _out = box.run("check", "--profile", "harness", "--only", entry)
+            check(label + " 共装设计模板漂移被检测", rc == 1)
+            rc, _out = box.run("apply", "--profile", "harness", "--only", entry)
+            check(label + " 共装设计模板修改受保护", rc == 1 and read(template) == edited)
 
         # Represent the pre-rename public distribution shape without requiring Git history.
         # Actual pinned legacy payload upgrade is also exercised in release evidence.
         box = Sandbox(os.path.join(root, profile_name, "upgrade"))
-        for name in ("implement-batch", "deliver-spec"):
+        for name in skill_names:
             shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
         legacy = json.loads(json.dumps(next(c for c in components if c["id"] == "implement-batch")))
         legacy.pop("install_with")
@@ -741,12 +773,12 @@ def case_self_test_report_distribution(root):
     for profile_name in ("work-mac", "work-linux", "home-mac"):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
         components = [c for c in profile["components"]
-                      if c["id"] in ("self-test-report", "implement-batch", "deliver-spec")]
-        check(profile_name + " 登记报告与新旧交付组件", len(components) == 3)
-        if len(components) != 3:
+                      if c["id"] in ("self-test-report", "implement-batch", "deliver-spec", "test-design")]
+        check(profile_name + " 登记报告、设计与新旧交付组件", len(components) == 4)
+        if len(components) != 4:
             continue
         box = Sandbox(os.path.join(root, profile_name))
-        for name in ("self-test-report", "implement-batch", "deliver-spec"):
+        for name in ("self-test-report", "implement-batch", "deliver-spec", "test-design"):
             shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
         box.profile(base_profile(components))
         rc, out = box.run("apply", "--profile", "harness", "--only", "self-test-report")
