@@ -8,9 +8,9 @@
 Install from this checkout on the work Mac:
 
 ```sh
-python3 tools/environment/env.py plan --profile work-mac --only self-test-report --only deliver-spec
-python3 tools/environment/env.py apply --profile work-mac --only self-test-report --only deliver-spec
-python3 tools/environment/env.py check --profile work-mac --only self-test-report --only deliver-spec
+python3 tools/environment/env.py plan --profile work-mac --only deliver-spec
+python3 tools/environment/env.py apply --profile work-mac --only deliver-spec
+python3 tools/environment/env.py check --profile work-mac --only deliver-spec
 ```
 
 Use `work-linux` on the Linux machines; registration does not mean deployment there has occurred. The installed shared copy serves Codex and Trae discovery. Upstream `implement` is unchanged. Other clients and native subagent availability require independent verification.
@@ -33,7 +33,7 @@ This Skill controls instructions and handoffs. Repository tests and CI provide e
 
 `deliver-spec`（按规格交付）is the canonical name. `implement-batch` remains a thin compatibility entry: old explicit invocations, resource paths, authorization, checkpoints and acceptance records continue to work. The guide keeps its existing URL for saved links. The rename does not authorize any additional execution or publication.
 
-Old installation commands such as `--only implement-batch` automatically select both the compatibility component and `deliver-spec` through the profile's `install_with` setting. `--only deliver-spec` installs the canonical entry independently. Ordinary `depends_on` still only checks availability. Preview either command with `plan`; user edits continue to block overwrite and guarded `restore` retains the previous managed state. Removing the old entry requires a separate migration decision.
+Both `--only deliver-spec` and the old `--only implement-batch` select the canonical entry plus `test-design` and `self-test-report` through the profile's `install_with` setting; the old command also installs the compatibility entry. All three profiles declare these companions. Ordinary `depends_on` still only checks availability. Preview either command with `plan`; missing declared companions are reported before writes, user edits continue to block overwrite, and guarded `restore` retains the previous managed state. Removing the old entry requires a separate migration decision.
 
 ## Optional botmux execution
 
@@ -47,7 +47,11 @@ Use `setup-aiwb` in a target repository to establish or refresh its integration-
 
 > 使用 setup-aiwb skill 维护当前仓库的集成测试手册，先检查现有环境和命令，只询问缺失项。
 
-`deliver-spec` includes this setup when needed. After the execution plan is confirmed, it writes the spec cases before implementation (default `docs/testing/spec-<id>.md`), with parent-criterion coverage, preconditions, steps, expected results, evidence and cleanup. After all batches, a fresh executor using the confirmed low-cost model executes the cases and fills PASS / FAIL / BLOCKED / NOT_RUN, actual results and evidence. The parent owns case expectations and final acceptance. Failed cases route back to implementation and retain failure/retest history.
+`deliver-spec` includes this setup when needed. After execution-plan confirmation and before implementation dispatch, the parent applies [test-design](../skills/test-design/SKILL.md) to review existing coverage and fill only the gaps in the same project acceptance record (default `docs/testing/spec-<id>.md` when none exists). Stable IDs, old expectations and failure/retry history remain. The parent reviews assertions, data readiness and evidence boundaries without adding a tester role or approval step. Missing method, oracle, data or permissions block only dependent work; they cannot be skipped or recorded as PASS. After all batches, a fresh executor using the confirmed low-cost model executes the cases and records PASS / FAIL / BLOCKED / NOT_RUN, actual results and evidence. The parent owns case expectations and final acceptance.
+
+Design readiness is separate from execution. Approved expectation or relevant candidate changes invalidate affected evidence while retaining original outcomes and the change reason; unchanged evidence needs a documented reuse basis. The acceptance record owns design and results, and self-test-report uses the same case IDs to summarize/index them. It retains the distinction between developer self-test, independent QA and final acceptance.
+
+For a single requirement, install only `test-design` with `python3 tools/environment/env.py apply --profile work-mac --only test-design` (preview with `plan`), then invoke `$test-design` against the project's existing acceptance document. Review or extend its design and continue using that project's implementation and test workflow; no batch, delivery agent or execution is started by the design Skill.
 
 For state, retry snapshots and human-edit synchronization, the [acceptance outline](../skills/deliver-spec/references/spec-acceptance.md#behavior-sequence-coverage) maps invariants to action sequences and observable assertions. It distinguishes production-function, mocked-browser and real-integration evidence and omits irrelevant categories with reasons. Static screens or helper tests alone do not prove the full behavior.
 
@@ -55,7 +59,7 @@ Every delivery includes the agreed [self-test report entry](../skills/deliver-sp
 
 A frontend guide must verify its actual dev/test command and API routing; a Kubernetes/Helm backend guide must verify the mono-repo/chart entry, isolated test resources, candidate image, readiness and access route. Those examples are not preconfigured deployment instructions. Each repository owns its guide; cross-repository specs link them and identify every tested version.
 
-Report writing, update and evidence-review details are maintained in [self-test-report](../skills/self-test-report/SKILL.md), which can also be invoked independently without running implementation. Install/update the reporting dependency with `python3 tools/environment/env.py apply --profile work-mac --only setup-aiwb --only self-test-report --only deliver-spec` (preview with `plan`). Linux profiles register the same resources; deployment there is separate. No real service deployment or billable API test is performed by installing these Skills.
+Report writing, update and evidence-review details are maintained in [self-test-report](../skills/self-test-report/SKILL.md), which can also be invoked independently without running implementation. Install/update setup and the complete delivery entry with `python3 tools/environment/env.py apply --profile work-mac --only setup-aiwb --only deliver-spec` (preview with `plan`); the command includes design and reporting companions. Linux profiles register the same resources; deployment there is separate. No real service deployment or billable API test is performed by installing these Skills.
 
 ## Recovery and verification cost
 
