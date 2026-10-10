@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/Library/Developer/CommandLineTools/usr/bin/python3",
+    "tools/environment/tests/regression.py"
+  ],
+  "exit_code": 0,
+  "candidate": "79c94296eb1bdbfcee5d3f594719a07a5555b052",
+  "started_utc": "2026-10-10T07:22:11.319452+00:00",
+  "ended_utc": "2026-10-10T07:22:48.491517+00:00"
+}

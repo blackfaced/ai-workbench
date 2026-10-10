@@ -1,0 +1,20 @@
+{
+  "case_id": "PILOT-LEGACY-DELEGATION-01",
+  "fault": false,
+  "old_observer": {
+    "apply_rc_zero": true,
+    "botmux_bytes_equal": true,
+    "check_rc_zero": true
+  },
+  "enhanced_observer": {
+    "principal_reference_readable": true,
+    "current_canonical_bytes_equal": true,
+    "canonical_resources_readable": true
+  },
+  "detector_status": "PASS",
+  "principal_reference": "../deliver-spec/SKILL.md",
+  "original_reference": "../deliver-spec/SKILL.md",
+  "apply_rc": 0,
+  "check_rc": 0,
+  "fixture": "real work-mac components; isolated shared discovery, HOME and source copy"
+}

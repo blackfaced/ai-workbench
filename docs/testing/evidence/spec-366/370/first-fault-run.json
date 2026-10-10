@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/Library/Developer/CommandLineTools/usr/bin/python3",
+    "tools/environment/tests/legacy_delegation_pilot.py",
+    "--fault",
+    "--output",
+    "$RUN_ARTIFACTS/370/first-fault"
+  ],
+  "exit_code": 1,
+  "candidate": "79c94296eb1bdbfcee5d3f594719a07a5555b052",
+  "utc": "2026-10-10T07:21:45.298529+00:00"
+}
