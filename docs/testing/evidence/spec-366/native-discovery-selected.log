@@ -1,0 +1,6 @@
+deliver-spec	$HOME/.agents/skills/deliver-spec/SKILL.md
+implement-batch	$HOME/.agents/skills/implement-batch/SKILL.md
+implement-spec	$HOME/.agents/skills/implement-spec/SKILL.md
+retro	$HOME/.agents/skills/retro/SKILL.md
+self-test-report	$HOME/.agents/skills/self-test-report/SKILL.md
+test-design	$HOME/.agents/skills/test-design/SKILL.md

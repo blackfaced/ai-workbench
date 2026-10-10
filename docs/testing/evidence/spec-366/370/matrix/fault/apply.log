@@ -1,0 +1,93 @@
+AI Workbench 环境入口 · apply · profile=harness · host=$HOST · shell=/bin/bash
+
+== 观测（plan / apply / check 共用同一次）
+  [test-design]
+    正文真源：skills/test-design/SKILL.md
+    source=repo:skills/test-design revision=in-repo
+    depends_on=[]
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/SKILL.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/agents/openai.yaml 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/assets/design-template.md 待安装
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.codex/skills/test-design：已不存在 ✓
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.trae/skills/test-design：已不存在 ✓
+  [self-test-report]
+    正文真源：skills/self-test-report/SKILL.md
+    source=repo:skills/self-test-report revision=in-repo
+    depends_on=[]
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/SKILL.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/agents/openai.yaml 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/assets/report-template.md 待安装
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.codex/skills/self-test-report：已不存在 ✓
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.trae/skills/self-test-report：已不存在 ✓
+  [deliver-spec]
+    正文真源：skills/deliver-spec/SKILL.md
+    source=repo:skills/deliver-spec revision=in-repo
+    depends_on=[]
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/SKILL.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/agents/openai.yaml 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/botmux.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/run-record.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/spec-acceptance.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/staged-review.md 待安装
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.codex/skills/deliver-spec：已不存在 ✓
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.trae/skills/deliver-spec：已不存在 ✓
+  [implement-batch]
+    正文真源：skills/implement-batch/SKILL.md
+    source=repo:skills/implement-batch revision=in-repo
+    depends_on=[]
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/SKILL.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/agents/openai.yaml 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/botmux.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/run-record.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/spec-acceptance.md 待安装
+    shared：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/staged-review.md 待安装
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.codex/skills/implement-batch：已不存在 ✓
+    历史副本 $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.trae/skills/implement-batch：已不存在 ✓
+
+== 待改动 18 项
+  ~ test-design:shared：渲染 test-design 的 shared 客户端正文 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/SKILL.md
+  ~ test-design:shared:agents/openai.yaml：写入 test-design 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/agents/openai.yaml
+  ~ test-design:shared:assets/design-template.md：写入 test-design 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/assets/design-template.md
+  ~ self-test-report:shared：渲染 self-test-report 的 shared 客户端正文 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/SKILL.md
+  ~ self-test-report:shared:agents/openai.yaml：写入 self-test-report 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/agents/openai.yaml
+  ~ self-test-report:shared:assets/report-template.md：写入 self-test-report 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/assets/report-template.md
+  ~ deliver-spec:shared：渲染 deliver-spec 的 shared 客户端正文 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/SKILL.md
+  ~ deliver-spec:shared:agents/openai.yaml：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/agents/openai.yaml
+  ~ deliver-spec:shared:references/botmux.md：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/botmux.md
+  ~ deliver-spec:shared:references/run-record.md：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/run-record.md
+  ~ deliver-spec:shared:references/spec-acceptance.md：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/spec-acceptance.md
+  ~ deliver-spec:shared:references/staged-review.md：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/staged-review.md
+  ~ implement-batch:shared：渲染 implement-batch 的 shared 客户端正文 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/SKILL.md
+  ~ implement-batch:shared:agents/openai.yaml：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/agents/openai.yaml
+  ~ implement-batch:shared:references/botmux.md：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/botmux.md
+  ~ implement-batch:shared:references/run-record.md：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/run-record.md
+  ~ implement-batch:shared:references/spec-acceptance.md：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/spec-acceptance.md
+  ~ implement-batch:shared:references/staged-review.md：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/staged-review.md
+
+== 需要人处理 0 项
+  （无）
+
+== 只报告 0 项
+  （无）
+
+== apply 执行
+  → test-design:shared：渲染 test-design 的 shared 客户端正文 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/SKILL.md
+  → test-design:shared:agents/openai.yaml：写入 test-design 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/agents/openai.yaml
+  → test-design:shared:assets/design-template.md：写入 test-design 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/test-design/assets/design-template.md
+  → self-test-report:shared：渲染 self-test-report 的 shared 客户端正文 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/SKILL.md
+  → self-test-report:shared:agents/openai.yaml：写入 self-test-report 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/agents/openai.yaml
+  → self-test-report:shared:assets/report-template.md：写入 self-test-report 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/self-test-report/assets/report-template.md
+  → deliver-spec:shared：渲染 deliver-spec 的 shared 客户端正文 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/SKILL.md
+  → deliver-spec:shared:agents/openai.yaml：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/agents/openai.yaml
+  → deliver-spec:shared:references/botmux.md：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/botmux.md
+  → deliver-spec:shared:references/run-record.md：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/run-record.md
+  → deliver-spec:shared:references/spec-acceptance.md：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/spec-acceptance.md
+  → deliver-spec:shared:references/staged-review.md：写入 deliver-spec 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/deliver-spec/references/staged-review.md
+  → implement-batch:shared：渲染 implement-batch 的 shared 客户端正文 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/SKILL.md
+  → implement-batch:shared:agents/openai.yaml：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/agents/openai.yaml
+  → implement-batch:shared:references/botmux.md：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/botmux.md
+  → implement-batch:shared:references/run-record.md：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/run-record.md
+  → implement-batch:shared:references/spec-acceptance.md：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/spec-acceptance.md
+  → implement-batch:shared:references/staged-review.md：写入 implement-batch 的附带文件 → $RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.agents/skills/implement-batch/references/staged-review.md
+  备份目录：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.ai-workbench/environment/backups/20261010T072153Z
+  安装记录：$RUN_ARTIFACTS/370/matrix/fault/sandbox/home/.ai-workbench/environment/state.json

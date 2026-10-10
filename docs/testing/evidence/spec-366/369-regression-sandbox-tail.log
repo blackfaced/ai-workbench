@@ -1,0 +1,16 @@
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 951, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 1821, in _execute_child
+    raise child_exception_type(errno_num, err_msg, err_filename)
+PermissionError: [Errno 1] Operation not permitted: 'ps'
+
+----------------------------------------------------------------------
+Ran 7 tests in 9.546s
+
+FAILED (errors=1)
+First failure evidence retained: $TMPDIR/aiwb-kimi-fixtures-0h8042la
+
+
+通过 337 项，失败 1 项
+  失败：Kimi ACP 隔离协议与 Profile 缺项回归
+沙盒保留在 $TMPDIR/aiwb-env-regression-e5wjnp3m，自己进去看

@@ -1,0 +1,96 @@
+
+[用例 8] deliver-spec 新入口与 implement-batch 兼容安装
+  ✓ work-mac implement-batch plan 只读且包含规范入口
+  ✓ work-mac implement-batch 安装成功
+  ✓ work-mac implement-batch 规范入口可用
+  ✗ work-mac implement-batch 定向安装包含 test-design
+  ✗ work-mac implement-batch 定向安装包含 self-test-report
+  ✓ work-mac implement-batch 旧入口明确到达规范正文
+  ✓ work-mac implement-batch 保留完整资源 botmux.md
+  ✓ work-mac implement-batch 保留完整资源 spec-acceptance.md
+  ✓ work-mac implement-batch 保留完整资源 run-record.md
+  ✓ work-mac implement-batch 保留完整资源 staged-review.md
+  ✓ work-mac implement-batch 安装校验通过
+  ✓ work-mac implement-batch 重复安装幂等
+  ✓ work-mac deliver-spec plan 只读且包含规范入口
+  ✓ work-mac deliver-spec 安装成功
+  ✓ work-mac deliver-spec 规范入口可用
+  ✗ work-mac deliver-spec 定向安装包含 test-design
+  ✗ work-mac deliver-spec 定向安装包含 self-test-report
+  ✓ work-mac deliver-spec 保留完整资源 botmux.md
+  ✓ work-mac deliver-spec 保留完整资源 spec-acceptance.md
+  ✓ work-mac deliver-spec 保留完整资源 run-record.md
+  ✓ work-mac deliver-spec 保留完整资源 staged-review.md
+  ✓ work-mac deliver-spec 安装校验通过
+  ✓ work-mac deliver-spec 重复安装幂等
+  ✓ work-mac 旧分发经真实 CLI 建立受管状态
+  ✓ work-mac 升级保护旧入口用户修改
+  ✓ work-mac 旧受管入口成功升级
+  ✓ work-mac restore 恢复旧入口与归属
+  ✓ work-mac 回滚后旧 apply 仍可用
+  ✓ work-mac 回滚后可再次升级
+  ✓ work-mac 旧资源漂移被检测
+  ✓ work-mac 旧资源修改不被覆盖
+  ✓ work-linux implement-batch plan 只读且包含规范入口
+  ✓ work-linux implement-batch 安装成功
+  ✓ work-linux implement-batch 规范入口可用
+  ✗ work-linux implement-batch 定向安装包含 test-design
+  ✗ work-linux implement-batch 定向安装包含 self-test-report
+  ✓ work-linux implement-batch 旧入口明确到达规范正文
+  ✓ work-linux implement-batch 保留完整资源 botmux.md
+  ✓ work-linux implement-batch 保留完整资源 spec-acceptance.md
+  ✓ work-linux implement-batch 保留完整资源 run-record.md
+  ✓ work-linux implement-batch 保留完整资源 staged-review.md
+  ✓ work-linux implement-batch 安装校验通过
+  ✓ work-linux implement-batch 重复安装幂等
+  ✓ work-linux deliver-spec plan 只读且包含规范入口
+  ✓ work-linux deliver-spec 安装成功
+  ✓ work-linux deliver-spec 规范入口可用
+  ✗ work-linux deliver-spec 定向安装包含 test-design
+  ✗ work-linux deliver-spec 定向安装包含 self-test-report
+  ✓ work-linux deliver-spec 保留完整资源 botmux.md
+  ✓ work-linux deliver-spec 保留完整资源 spec-acceptance.md
+  ✓ work-linux deliver-spec 保留完整资源 run-record.md
+  ✓ work-linux deliver-spec 保留完整资源 staged-review.md
+  ✓ work-linux deliver-spec 安装校验通过
+  ✓ work-linux deliver-spec 重复安装幂等
+  ✓ work-linux 旧分发经真实 CLI 建立受管状态
+  ✓ work-linux 升级保护旧入口用户修改
+  ✓ work-linux 旧受管入口成功升级
+  ✓ work-linux restore 恢复旧入口与归属
+  ✓ work-linux 回滚后旧 apply 仍可用
+  ✓ work-linux 回滚后可再次升级
+  ✓ work-linux 旧资源漂移被检测
+  ✓ work-linux 旧资源修改不被覆盖
+  ✓ home-mac implement-batch plan 只读且包含规范入口
+  ✓ home-mac implement-batch 安装成功
+  ✓ home-mac implement-batch 规范入口可用
+  ✗ home-mac implement-batch 定向安装包含 test-design
+  ✗ home-mac implement-batch 定向安装包含 self-test-report
+  ✓ home-mac implement-batch 旧入口明确到达规范正文
+  ✓ home-mac implement-batch 保留完整资源 botmux.md
+  ✓ home-mac implement-batch 保留完整资源 spec-acceptance.md
+  ✓ home-mac implement-batch 保留完整资源 run-record.md
+  ✓ home-mac implement-batch 保留完整资源 staged-review.md
+  ✓ home-mac implement-batch 安装校验通过
+  ✓ home-mac implement-batch 重复安装幂等
+  ✓ home-mac deliver-spec plan 只读且包含规范入口
+  ✓ home-mac deliver-spec 安装成功
+  ✓ home-mac deliver-spec 规范入口可用
+  ✗ home-mac deliver-spec 定向安装包含 test-design
+  ✗ home-mac deliver-spec 定向安装包含 self-test-report
+  ✓ home-mac deliver-spec 保留完整资源 botmux.md
+  ✓ home-mac deliver-spec 保留完整资源 spec-acceptance.md
+  ✓ home-mac deliver-spec 保留完整资源 run-record.md
+  ✓ home-mac deliver-spec 保留完整资源 staged-review.md
+  ✓ home-mac deliver-spec 安装校验通过
+  ✓ home-mac deliver-spec 重复安装幂等
+  ✓ home-mac 旧分发经真实 CLI 建立受管状态
+  ✓ home-mac 升级保护旧入口用户修改
+  ✓ home-mac 旧受管入口成功升级
+  ✓ home-mac restore 恢复旧入口与归属
+  ✓ home-mac 回滚后旧 apply 仍可用
+  ✓ home-mac 回滚后可再次升级
+  ✓ home-mac 旧资源漂移被检测
+  ✓ home-mac 旧资源修改不被覆盖
+Passed: 81 Failed: 12

@@ -1,0 +1,4 @@
+work-mac PASS: exact baseline old CLI apply -> new old-name plan/apply/check -> restore full state -> old apply; project checkpoint untouched
+home-mac PASS: exact baseline old CLI apply -> new old-name plan/apply/check -> restore full state -> old apply; project checkpoint untouched
+work-linux PASS: exact baseline old CLI apply -> new old-name plan/apply/check -> restore full state -> old apply; project checkpoint untouched
+baseline 39e72e281a67fffba6e84b6b94be51a7ec69d114 sandbox $TMPDIR/aiwb-368-pinned-a8l0qfk1
