@@ -1,0 +1,372 @@
+沙盒根目录：$TMPDIR/aiwb-env-regression-rvs0uquw
+
+[用例 1] Skill 写入前的归属 / 摘要校验
+  ✓ 首次 apply 成功且落盘
+  ✓ 符号链接建好
+  ✓ 用户改过之后 plan 判为需人处理
+  ✓ apply 不覆盖用户修改
+  ✓ apply 以 rc=1 报出该冲突
+  ✓ 陌生同名文件不被接管
+  ✓ 并给出「不是本入口装的」结论
+
+[用例 2] restore：块级回滚 / 首装完整撤销 / 安装后改动保护
+  ✓ apply 成功
+  ✓ dry-run 不动文件
+  ✓ 受管块已撤掉
+  ✓ 安装后新增的用户配置还在
+  ✓ 块外原有内容一字未动
+  ✓ 插入块时带的空行也撤干净了
+  ✓ 首装的 Skill 文件被删除
+  ✓ 本入口新建的 Skill 目录被删除
+  ✓ 首装的符号链接被删除
+  ✓ 安装记录已清空
+  ✓ 撤销后 plan 回到「待安装」而不是「被改过」
+  ✓ 块被改过时默认跳过
+  ✓ --force 才真的回滚
+
+[用例 3] 按客户端可发现全集判重名
+  ✓ 单副本时检查通过
+  ✓ 聚合发现下重名被判出
+  ✓ check 因此以 rc=1 收尾
+  ✓ 符号链接别名不误判为重复
+  ✓ 原生发现失败不被当作通过
+
+[用例 4] 工具缺失要装、版本低要更新
+  ✓ 缺失且有渠道时进入待改动
+  ✓ apply 真的装上了
+  ✓ 装完 check 通过
+  ✓ 版本落后进入待改动而不是只报告
+  ✓ apply 后版本达标
+  ✓ 更新后 check 通过
+  ✓ 无效渠道被当场揭穿
+  ✓ 缺失且无渠道时判为需人处理
+  ✓ 安装器失败不能记为成功
+  ✓ 安装后身份不符不能记为成功
+  ✓ 有安装器兜底时不误判为无渠道
+  ✓ 安装器把工具装上了
+  ✓ --only 把安装器挡在外面时如实报出
+
+[用例 5] 历史副本清理与 --force 接管
+  ✓ 符号链接形态的历史副本按链接处理
+  ✓ 链接被删掉
+  ✓ 链接指向的真身毫发无伤
+  ✓ 有对不上的文件时整条 block
+  ✓ 该文件确实没被删
+  ✓ 旧 Profile 先把副本装进客户端目录
+  ✓ 安装记录能证明归属时无需 --force
+  ✓ 旧组件记录一并销号
+  ✓ --force 下历史副本进入待改动
+  ✓ 附带文件被装进受管副本
+  ✓ 历史副本随之删除
+  ✓ restore 能把删掉的历史副本原样放回
+  ✓ 同一次 restore 也撤掉了刚装的附带文件
+  ✓ 默认仍然不接管
+  ✓ --force 接管并留下审计说明
+  ✓ 接管后内容换成受管形态
+  ✓ 接管前的原文件能一字不差地还原
+
+[用例 6a] 接管符号链接：不许顺着它改写别人的文件
+  ✓ 默认不接管符号链接目标
+  ✓ 被指向的文件没被动
+  ✓ --force 后换掉的是链接本身
+  ✓ 受管内容落在原路径上
+  ✓ 链接指向的文件依然一字未改
+  ✓ restore 把符号链接接回去
+  ✓ 原内容因此完好可达
+
+[用例 6b] 更新的回滚要恢复上一版记录，而不是一律销号
+  ✓ 第二版装得上
+  ✓ 确实产生了新的备份
+  ✓ 回滚打印出「回到上一版」
+  ✓ Skill 正文回到第一版
+  ✓ 受管块回到第一版
+  ✓ 再次更新不再误判为「不是本入口装的」
+  ✓ 第二版内容重新写上
+  ✓ 受管块也回到第二版
+
+[用例 6c] 原生发现：清单里的解析错误要传出来，超时要真的超时
+  ✓ 干净响应正常输出清单
+  ✓ 响应成功但带解析错误时判失败
+  ✓ 并把错误原文报出来
+  ✓ 不吐出半张清单冒充结果
+  ✓ 0.5s 超时真的在 0.5s 附近返回（实测 0.6s）
+  ✓ 一直不出声也不会挂死（实测 0.6s）
+  ✓ 子进程被收干净，没留下孤儿
+
+[用例 7] 家用与工作 Mac：无法判定时不默认写工作机配置
+  ✓ 备份目录 UTC 格式在新 Python 上无弃用警告
+  ✓ 状态时间 UTC 格式保持兼容
+  ✓ Unix epoch 0 不被误当成当前时间
+  ✓ 多个 Mac Profile 要求显式选择
+  ✓ 显式 home-mac 使用家用配置
+  ✓ 已登记 Linux 主机仍自动匹配
+  ✓ 未知 Linux 主机不猜配置
+  ✓ 跨操作系统的主机名不选错 Profile
+  ✓ 只有一个 Mac Profile 时兼容自动选择
+
+[用例 8] deliver-spec 新入口与 implement-batch 兼容安装
+  ✓ work-mac implement-batch plan 只读且包含规范入口
+  ✓ work-mac implement-batch 安装成功
+  ✓ work-mac implement-batch 规范入口可用
+  ✓ work-mac implement-batch 定向安装包含 test-design
+  ✓ work-mac implement-batch 定向安装包含 self-test-report
+  ✓ work-mac implement-batch 旧入口明确到达规范正文
+  ✓ work-mac implement-batch 保留完整资源 botmux.md
+  ✓ work-mac implement-batch 保留完整资源 spec-acceptance.md
+  ✓ work-mac implement-batch 保留完整资源 run-record.md
+  ✓ work-mac implement-batch 保留完整资源 staged-review.md
+  ✓ work-mac implement-batch SKILL.md 可找到独立测试设计方法
+  ✓ work-mac implement-batch SKILL.md 安装引用均可打开
+  ✓ work-mac implement-batch spec-acceptance.md 可找到独立测试设计方法
+  ✓ work-mac implement-batch spec-acceptance.md 安装引用均可打开
+  ✓ work-mac implement-batch 安装校验通过
+  ✓ work-mac implement-batch 重复安装幂等
+  ✓ work-mac implement-batch 共装能力随首装一起恢复
+  ✓ work-mac implement-batch 共装恢复后可重新安装
+  ✓ work-mac implement-batch 设计方法缺失可定位
+  ✓ work-mac implement-batch 缺失方法可经原入口修复
+  ✓ work-mac implement-batch 共装设计模板漂移被检测
+  ✓ work-mac implement-batch 共装设计模板修改受保护
+  ✓ work-mac deliver-spec plan 只读且包含规范入口
+  ✓ work-mac deliver-spec 安装成功
+  ✓ work-mac deliver-spec 规范入口可用
+  ✓ work-mac deliver-spec 定向安装包含 test-design
+  ✓ work-mac deliver-spec 定向安装包含 self-test-report
+  ✓ work-mac deliver-spec 保留完整资源 botmux.md
+  ✓ work-mac deliver-spec 保留完整资源 spec-acceptance.md
+  ✓ work-mac deliver-spec 保留完整资源 run-record.md
+  ✓ work-mac deliver-spec 保留完整资源 staged-review.md
+  ✓ work-mac deliver-spec SKILL.md 可找到独立测试设计方法
+  ✓ work-mac deliver-spec SKILL.md 安装引用均可打开
+  ✓ work-mac deliver-spec spec-acceptance.md 可找到独立测试设计方法
+  ✓ work-mac deliver-spec spec-acceptance.md 安装引用均可打开
+  ✓ work-mac deliver-spec 安装校验通过
+  ✓ work-mac deliver-spec 重复安装幂等
+  ✓ work-mac deliver-spec 共装能力随首装一起恢复
+  ✓ work-mac deliver-spec 共装恢复后可重新安装
+  ✓ work-mac deliver-spec 设计方法缺失可定位
+  ✓ work-mac deliver-spec 缺失方法可经原入口修复
+  ✓ work-mac deliver-spec 共装设计模板漂移被检测
+  ✓ work-mac deliver-spec 共装设计模板修改受保护
+  ✓ work-mac 旧分发经真实 CLI 建立受管状态
+  ✓ work-mac 升级保护旧入口用户修改
+  ✓ work-mac 旧受管入口成功升级
+  ✓ work-mac restore 恢复旧入口与归属
+  ✓ work-mac 回滚后旧 apply 仍可用
+  ✓ work-mac 回滚后可再次升级
+  ✓ work-mac 旧资源漂移被检测
+  ✓ work-mac 旧资源修改不被覆盖
+  ✓ work-linux implement-batch plan 只读且包含规范入口
+  ✓ work-linux implement-batch 安装成功
+  ✓ work-linux implement-batch 规范入口可用
+  ✓ work-linux implement-batch 定向安装包含 test-design
+  ✓ work-linux implement-batch 定向安装包含 self-test-report
+  ✓ work-linux implement-batch 旧入口明确到达规范正文
+  ✓ work-linux implement-batch 保留完整资源 botmux.md
+  ✓ work-linux implement-batch 保留完整资源 spec-acceptance.md
+  ✓ work-linux implement-batch 保留完整资源 run-record.md
+  ✓ work-linux implement-batch 保留完整资源 staged-review.md
+  ✓ work-linux implement-batch SKILL.md 可找到独立测试设计方法
+  ✓ work-linux implement-batch SKILL.md 安装引用均可打开
+  ✓ work-linux implement-batch spec-acceptance.md 可找到独立测试设计方法
+  ✓ work-linux implement-batch spec-acceptance.md 安装引用均可打开
+  ✓ work-linux implement-batch 安装校验通过
+  ✓ work-linux implement-batch 重复安装幂等
+  ✓ work-linux implement-batch 共装能力随首装一起恢复
+  ✓ work-linux implement-batch 共装恢复后可重新安装
+  ✓ work-linux implement-batch 设计方法缺失可定位
+  ✓ work-linux implement-batch 缺失方法可经原入口修复
+  ✓ work-linux implement-batch 共装设计模板漂移被检测
+  ✓ work-linux implement-batch 共装设计模板修改受保护
+  ✓ work-linux deliver-spec plan 只读且包含规范入口
+  ✓ work-linux deliver-spec 安装成功
+  ✓ work-linux deliver-spec 规范入口可用
+  ✓ work-linux deliver-spec 定向安装包含 test-design
+  ✓ work-linux deliver-spec 定向安装包含 self-test-report
+  ✓ work-linux deliver-spec 保留完整资源 botmux.md
+  ✓ work-linux deliver-spec 保留完整资源 spec-acceptance.md
+  ✓ work-linux deliver-spec 保留完整资源 run-record.md
+  ✓ work-linux deliver-spec 保留完整资源 staged-review.md
+  ✓ work-linux deliver-spec SKILL.md 可找到独立测试设计方法
+  ✓ work-linux deliver-spec SKILL.md 安装引用均可打开
+  ✓ work-linux deliver-spec spec-acceptance.md 可找到独立测试设计方法
+  ✓ work-linux deliver-spec spec-acceptance.md 安装引用均可打开
+  ✓ work-linux deliver-spec 安装校验通过
+  ✓ work-linux deliver-spec 重复安装幂等
+  ✓ work-linux deliver-spec 共装能力随首装一起恢复
+  ✓ work-linux deliver-spec 共装恢复后可重新安装
+  ✓ work-linux deliver-spec 设计方法缺失可定位
+  ✓ work-linux deliver-spec 缺失方法可经原入口修复
+  ✓ work-linux deliver-spec 共装设计模板漂移被检测
+  ✓ work-linux deliver-spec 共装设计模板修改受保护
+  ✓ work-linux 旧分发经真实 CLI 建立受管状态
+  ✓ work-linux 升级保护旧入口用户修改
+  ✓ work-linux 旧受管入口成功升级
+  ✓ work-linux restore 恢复旧入口与归属
+  ✓ work-linux 回滚后旧 apply 仍可用
+  ✓ work-linux 回滚后可再次升级
+  ✓ work-linux 旧资源漂移被检测
+  ✓ work-linux 旧资源修改不被覆盖
+  ✓ home-mac implement-batch plan 只读且包含规范入口
+  ✓ home-mac implement-batch 安装成功
+  ✓ home-mac implement-batch 规范入口可用
+  ✓ home-mac implement-batch 定向安装包含 test-design
+  ✓ home-mac implement-batch 定向安装包含 self-test-report
+  ✓ home-mac implement-batch 旧入口明确到达规范正文
+  ✓ home-mac implement-batch 保留完整资源 botmux.md
+  ✓ home-mac implement-batch 保留完整资源 spec-acceptance.md
+  ✓ home-mac implement-batch 保留完整资源 run-record.md
+  ✓ home-mac implement-batch 保留完整资源 staged-review.md
+  ✓ home-mac implement-batch SKILL.md 可找到独立测试设计方法
+  ✓ home-mac implement-batch SKILL.md 安装引用均可打开
+  ✓ home-mac implement-batch spec-acceptance.md 可找到独立测试设计方法
+  ✓ home-mac implement-batch spec-acceptance.md 安装引用均可打开
+  ✓ home-mac implement-batch 安装校验通过
+  ✓ home-mac implement-batch 重复安装幂等
+  ✓ home-mac implement-batch 共装能力随首装一起恢复
+  ✓ home-mac implement-batch 共装恢复后可重新安装
+  ✓ home-mac implement-batch 设计方法缺失可定位
+  ✓ home-mac implement-batch 缺失方法可经原入口修复
+  ✓ home-mac implement-batch 共装设计模板漂移被检测
+  ✓ home-mac implement-batch 共装设计模板修改受保护
+  ✓ home-mac deliver-spec plan 只读且包含规范入口
+  ✓ home-mac deliver-spec 安装成功
+  ✓ home-mac deliver-spec 规范入口可用
+  ✓ home-mac deliver-spec 定向安装包含 test-design
+  ✓ home-mac deliver-spec 定向安装包含 self-test-report
+  ✓ home-mac deliver-spec 保留完整资源 botmux.md
+  ✓ home-mac deliver-spec 保留完整资源 spec-acceptance.md
+  ✓ home-mac deliver-spec 保留完整资源 run-record.md
+  ✓ home-mac deliver-spec 保留完整资源 staged-review.md
+  ✓ home-mac deliver-spec SKILL.md 可找到独立测试设计方法
+  ✓ home-mac deliver-spec SKILL.md 安装引用均可打开
+  ✓ home-mac deliver-spec spec-acceptance.md 可找到独立测试设计方法
+  ✓ home-mac deliver-spec spec-acceptance.md 安装引用均可打开
+  ✓ home-mac deliver-spec 安装校验通过
+  ✓ home-mac deliver-spec 重复安装幂等
+  ✓ home-mac deliver-spec 共装能力随首装一起恢复
+  ✓ home-mac deliver-spec 共装恢复后可重新安装
+  ✓ home-mac deliver-spec 设计方法缺失可定位
+  ✓ home-mac deliver-spec 缺失方法可经原入口修复
+  ✓ home-mac deliver-spec 共装设计模板漂移被检测
+  ✓ home-mac deliver-spec 共装设计模板修改受保护
+  ✓ home-mac 旧分发经真实 CLI 建立受管状态
+  ✓ home-mac 升级保护旧入口用户修改
+  ✓ home-mac 旧受管入口成功升级
+  ✓ home-mac restore 恢复旧入口与归属
+  ✓ home-mac 回滚后旧 apply 仍可用
+  ✓ home-mac 回滚后可再次升级
+  ✓ home-mac 旧资源漂移被检测
+  ✓ home-mac 旧资源修改不被覆盖
+
+[用例 9] self-test-report 独立安装与 implement-batch 报告引用
+  ✓ work-mac 登记报告、设计与新旧交付组件
+  ✓ work-mac 报告 Skill 可独立安装
+  ✓ work-mac 正文只有一个 frontmatter 且完整匹配
+  ✓ work-mac 完整分发 assets/report-template.md
+  ✓ work-mac 完整分发 agents/openai.yaml
+  ✓ work-mac 安装批次验收引用
+  ✓ work-mac 安装后的正文和模板引用可解析
+  ✓ work-mac 报告与批次 Skill 检查通过
+  ✓ work-mac 重复安装幂等
+  ✓ work-mac 用户模板修改受保护
+  ✓ work-mac 模板漂移不能被判通过
+  ✓ work-linux 登记报告、设计与新旧交付组件
+  ✓ work-linux 报告 Skill 可独立安装
+  ✓ work-linux 正文只有一个 frontmatter 且完整匹配
+  ✓ work-linux 完整分发 assets/report-template.md
+  ✓ work-linux 完整分发 agents/openai.yaml
+  ✓ work-linux 安装批次验收引用
+  ✓ work-linux 安装后的正文和模板引用可解析
+  ✓ work-linux 报告与批次 Skill 检查通过
+  ✓ work-linux 重复安装幂等
+  ✓ work-linux 用户模板修改受保护
+  ✓ work-linux 模板漂移不能被判通过
+  ✓ home-mac 登记报告、设计与新旧交付组件
+  ✓ home-mac 报告 Skill 可独立安装
+  ✓ home-mac 正文只有一个 frontmatter 且完整匹配
+  ✓ home-mac 完整分发 assets/report-template.md
+  ✓ home-mac 完整分发 agents/openai.yaml
+  ✓ home-mac 安装批次验收引用
+  ✓ home-mac 安装后的正文和模板引用可解析
+  ✓ home-mac 报告与批次 Skill 检查通过
+  ✓ home-mac 重复安装幂等
+  ✓ home-mac 用户模板修改受保护
+  ✓ home-mac 模板漂移不能被判通过
+
+[用例 13] install_with 只扩展显式共装项，错误在写入前可见
+  ✓ unknown 不返回部分安装成功
+  ✓ cycle 不返回部分安装成功
+  ✓ depends_on 保留缺依赖跳过的旧语义
+
+[用例 12] test-design 可独立安装，正文与引用完整分发
+  ✓ work-mac 登记独立测试设计组件
+  ✓ work-mac 计划只读且列出测试设计
+  ✓ work-mac 无其它 Skill 依赖即可安装
+  ✓ work-mac 正文和 frontmatter 完整匹配
+  ✓ work-mac 完整分发 agents/openai.yaml
+  ✓ work-mac 完整分发 assets/design-template.md
+  ✓ work-mac 正文中的本地引用均可打开
+  ✓ work-mac 测试设计受管检查通过
+  ✓ work-mac 测试设计重复安装幂等
+  ✓ work-mac 首装恢复撤回全部受管文件和记录
+  ✓ work-mac 恢复保留安装后新增的用户文件
+  ✓ work-mac 恢复后可重新安装
+  ✓ work-mac 用户设计模板修改受保护
+  ✓ work-mac 用户模板漂移不能被判通过
+  ✓ work-linux 登记独立测试设计组件
+  ✓ work-linux 计划只读且列出测试设计
+  ✓ work-linux 无其它 Skill 依赖即可安装
+  ✓ work-linux 正文和 frontmatter 完整匹配
+  ✓ work-linux 完整分发 agents/openai.yaml
+  ✓ work-linux 完整分发 assets/design-template.md
+  ✓ work-linux 正文中的本地引用均可打开
+  ✓ work-linux 测试设计受管检查通过
+  ✓ work-linux 测试设计重复安装幂等
+  ✓ work-linux 首装恢复撤回全部受管文件和记录
+  ✓ work-linux 恢复保留安装后新增的用户文件
+  ✓ work-linux 恢复后可重新安装
+  ✓ work-linux 用户设计模板修改受保护
+  ✓ work-linux 用户模板漂移不能被判通过
+  ✓ home-mac 登记独立测试设计组件
+  ✓ home-mac 计划只读且列出测试设计
+  ✓ home-mac 无其它 Skill 依赖即可安装
+  ✓ home-mac 正文和 frontmatter 完整匹配
+  ✓ home-mac 完整分发 agents/openai.yaml
+  ✓ home-mac 完整分发 assets/design-template.md
+  ✓ home-mac 正文中的本地引用均可打开
+  ✓ home-mac 测试设计受管检查通过
+  ✓ home-mac 测试设计重复安装幂等
+  ✓ home-mac 首装恢复撤回全部受管文件和记录
+  ✓ home-mac 恢复保留安装后新增的用户文件
+  ✓ home-mac 恢复后可重新安装
+  ✓ home-mac 用户设计模板修改受保护
+  ✓ home-mac 用户模板漂移不能被判通过
+
+[用例 10] 既有功能变更必须经过向后兼容门禁
+  ✓ deliver-spec 明确兼容优先于可维护性
+  ✓ 实施计划包含影响面、旧合同、调用方与回滚
+  ✓ 实施角色不得删弱旧行为断言
+  ✓ 验收文档有独立 backward compatibility coverage
+  ✓ 验收覆盖接口配置权限数据共享调用方和时序
+  ✓ 无证据的兼容边界不能通过
+  ✓ 报告 Skill 区分旧路径证据与新路径成功
+  ✓ 报告模板提供兼容影响矩阵
+  ✓ 模板禁止以构建或新路径替代旧行为回归
+  ✓ 懒惰阶梯明确兼容优先于可维护性与简洁性
+  ✓ 懒惰阶梯不得授权破坏旧行为
+  ✓ lazy 标记要求保留旧合同和回归证据
+  ✓ 开工门禁覆盖真实调用方旧合同与前后回归
+  ✓ Hook 每轮摘要包含兼容优先和兼容证据边界
+  ✓ 必要性 review 不得建议破坏兼容
+
+[用例 11] 身份合同核验是每次评审的必经判断
+  ✓ 每次评审自动判断适用性且不依赖用户点名
+  ✓ 核验权威消费方与独立依据，而非同源 Mock
+  ✓ 缺证据不能用零缺陷替代通过，局部审查不冒充整体
+  ✓ 共用摘要同步强制入口且指向正文
+  ✓ 所有批次评审交接与接受都检查记录
+  ✓ 旧主委托引用：已知错误被检出，正确控制与新 HOME 复测通过
+  ✓ Kimi ACP 隔离协议与 Profile 缺项回归
+
+通过 339 项，失败 0 项

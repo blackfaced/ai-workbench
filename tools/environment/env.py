@@ -853,11 +853,27 @@ PLANNERS = {
 
 
 def build_plan(ctx, only):
-    components = [c for c in ctx.profile["components"] if not only or c["id"] in only]
+    by_id = {c["id"]: c for c in ctx.profile["components"]}
     if only:
-        unknown = sorted(set(only) - set(c["id"] for c in components))
+        unknown = sorted(set(only) - set(by_id))
         if unknown:
             die("--only 里有未知 id：%s" % ", ".join(unknown))
+    selected = set()
+
+    def include(cid, path):
+        if cid not in by_id:
+            die("install_with 引用未知组件：%s" % cid)
+        if cid in path:
+            die("install_with 循环：%s" % " -> ".join(path + [cid]))
+        if cid in selected:
+            return
+        for companion in by_id[cid].get("install_with", []):
+            include(companion, path + [cid])
+        selected.add(cid)
+
+    for cid in sorted(only or by_id):
+        include(cid, [])
+    components = [c for c in ctx.profile["components"] if c["id"] in selected]
     probe_tools(ctx, [c for c in components if c["type"] == "tool"])
     ctx.planned_ids = set(c["id"] for c in components)
     plan = Plan()

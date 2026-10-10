@@ -11,4 +11,4 @@
 Good reference for small, composable skills that keep the user in control of the process.
 Install selected Skills through the upstream installer or client-supported mechanism after reviewing their scope. The environment tool records upstream ownership and does not copy or install this collection.
 
-- [retro](https://www.aihero.dev/skills-retro) — explicitly review a difficult session and propose evidence-backed improvements to the agent's working environment. Optional follow-up for [implement-batch](../workflows/implement-batch.md#optional-retrospective); candidates wait for user selection and are not an acceptance gate. Install only this Skill with `npx skills@latest add mattpocock/skills --skill=retro` if wanted.
+- [retro](https://www.aihero.dev/skills-retro) — explicitly review a difficult session and propose evidence-backed improvements to the agent's working environment. Optional follow-up for [deliver-spec](../workflows/implement-batch.md#optional-retrospective); candidates wait for user selection and are not an acceptance gate. Install only this Skill with `npx skills@latest add mattpocock/skills --skill=retro` if wanted.

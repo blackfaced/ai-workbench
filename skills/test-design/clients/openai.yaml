@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Design"
+  short_description: "设计和审查可执行的测试用例，明确断言、数据与证据边界"
+  default_prompt: "使用 $test-design 读取当前需求、真实入口和既有验收记录，补齐有依据的测试设计并审查可执行性。"

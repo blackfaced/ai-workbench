@@ -1,0 +1,45 @@
+import importlib.util,json,os,subprocess,tempfile,shutil
+from pathlib import Path
+REPO=Path('$HOME/.codex/worktrees/deliver-spec-368/ai-workbench')
+BASE='39e72e281a67fffba6e84b6b94be51a7ec69d114'
+s=importlib.util.spec_from_file_location('r',REPO/'tools/environment/tests/regression.py');r=importlib.util.module_from_spec(s);s.loader.exec_module(r)
+def old(path):return subprocess.check_output(['git','show',BASE+':'+path],cwd=REPO,text=True)
+root=tempfile.mkdtemp(prefix='aiwb-368-pinned-')
+for name in ['work-mac','home-mac','work-linux']:
+    b=r.Sandbox(os.path.join(root,name))
+    profile=json.loads(old('tools/environment/profiles/'+name+'.json'))
+    comp=next(c for c in profile['components'] if c['id']=='implement-batch')
+    srcs=[comp['body'],comp['clients']['shared']['frontmatter'],*comp['clients']['shared']['files'].values()]
+    for src in srcs:
+        p=Path(b.repo)/src;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(old(src))
+    (Path(b.env_dir)/'env.py').write_text(old('tools/environment/env.py'))
+    b.profile(r.base_profile([comp]))
+    rc,out=b.run('apply','--profile','harness','--only','implement-batch');assert rc==0,out
+    target=Path(b.path('.agents','skills','implement-batch','SKILL.md'));before=target.read_text()
+    state=b.state();assert 'Implement a spec-level parent Issue' in before
+    checkpoint=Path(b.repo)/'existing-checkpoint.md';checkpoint.write_text('approved=existing; candidate=existing; case=CASE-OLD; result=FAIL; attempt=2')
+    for skill in ['deliver-spec','implement-batch']:
+        dest=Path(b.repo)/'skills'/skill
+        if dest.exists():shutil.rmtree(dest)
+        shutil.copytree(REPO/'skills'/skill,dest)
+    shutil.copy2(REPO/'tools/environment/env.py',Path(b.env_dir)/'env.py')
+    current=json.loads((REPO/'tools/environment/profiles'/f'{name}.json').read_text())
+    comps=[c for c in current['components'] if c['id'] in ('deliver-spec','implement-batch')]
+    b.profile(r.base_profile(comps))
+    rc,out=b.run('plan','--profile','harness','--only','implement-batch');assert rc==0 and target.read_text()==before,out
+    rc,out=b.run('apply','--profile','harness','--only','implement-batch');assert rc==0,out
+    backup=b.latest_backup();assert '../deliver-spec/SKILL.md' in target.read_text()
+    new=Path(b.path('.agents','skills','deliver-spec','SKILL.md'));assert new.exists()
+    assert (REPO/'skills/deliver-spec/SKILL.md').read_text()==old('skills/implement-batch/SKILL.md')
+    for rel in ['spec-acceptance.md','run-record.md','staged-review.md','botmux.md']:
+        assert (target.parent/'references'/rel).read_text()==(REPO/'skills/deliver-spec/references'/rel).read_text()
+    rc,out=b.run('check','--profile','harness','--only','implement-batch');assert rc==0,out
+    rc,out=b.run('restore','--backup',backup);assert rc==0 and target.read_text()==before,out
+    assert not new.exists() and b.state()==state
+    for src in srcs:
+        p=Path(b.repo)/src;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(old(src))
+    b.profile(r.base_profile([comp]))
+    rc,out=b.run('apply','--profile','harness','--only','implement-batch');assert rc==0 and target.read_text()==before,out
+    assert checkpoint.read_text()=='approved=existing; candidate=existing; case=CASE-OLD; result=FAIL; attempt=2'
+    print(name,'PASS: exact baseline old CLI apply -> new old-name plan/apply/check -> restore full state -> old apply; project checkpoint untouched')
+print('baseline',BASE,'sandbox',root)
