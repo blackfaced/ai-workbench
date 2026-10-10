@@ -133,6 +133,21 @@
         "trae": "~/.agents/skills/collect-from-dev"
       },
       "note": "第一方显式入口；项目事实与产物留在所属项目。安装验证不等于真实任务验收。"
+    },
+    {
+      "name": "test-design",
+      "source": "repo:skills/test-design",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/test-design",
+        "trae": "~/.agents/skills/test-design"
+      },
+      "note": "第一方独立测试设计与质量审查 Skill；项目用例与证据留在所属项目，设计不启动实施或生成执行 PASS。安装验证与模型行为证据分开报告。"
     }
   ]
 }
