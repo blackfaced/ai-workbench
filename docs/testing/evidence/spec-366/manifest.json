@@ -1,0 +1,440 @@
+{
+  "tested_candidate": "79c94296eb1bdbfcee5d3f594719a07a5555b052",
+  "accepted_implementation": "8d47e56f95ebe298cf0923087dbf4477879b7620",
+  "requirements": {
+    "366": {
+      "url": "https://code.byted.org/hancheng.hc/dev-tracker/issues/366",
+      "body_sha256": "e4891ac9a4ddee8cfd54b685e9cc6afcd1ee1df547c54ebd650c516c2898349a"
+    },
+    "367": {
+      "url": "https://code.byted.org/hancheng.hc/dev-tracker/issues/367",
+      "body_sha256": "ca803f00c5b96969dfce3b0d64bf02db93af31168a14e7dabdb6d13e3b8736f3"
+    },
+    "368": {
+      "url": "https://code.byted.org/hancheng.hc/dev-tracker/issues/368",
+      "body_sha256": "fdc1f619d3e0d72e5abfb67f8053d4f37bc09723bd270c7a665ccc50741f93fe"
+    },
+    "369": {
+      "url": "https://code.byted.org/hancheng.hc/dev-tracker/issues/369",
+      "body_sha256": "dc57776350c7d0df6ff6249eeb6cb543644c76aca69e30167fbfdcbd8a1e6a2a"
+    },
+    "370": {
+      "url": "https://code.byted.org/hancheng.hc/dev-tracker/issues/370",
+      "body_sha256": "587cdbb82988d14a79d8c481aaece5f29961be775fc7df01dcb89bf5ff921175"
+    }
+  },
+  "snapshots": "Archived immutable evidence; docs/testing/spec-366.md is the sole current acceptance ledger. Source paths are provenance keys, not published links. No copied issue bodies.",
+  "entries": [
+    {
+      "source": "367/red-install.log",
+      "file": "367/red-install.log",
+      "original_sha256": "01391aca2fecb7ff98ea50d2b9b7ab69a1f2410839d67e4892065288aeff9960",
+      "stored_sha256": "01391aca2fecb7ff98ea50d2b9b7ab69a1f2410839d67e4892065288aeff9960",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "367/green-install.log",
+      "file": "367/green-install.log",
+      "original_sha256": "1de3307b75fc88a644beb59185da631c5d17e6560e88761ee9434e603723a680",
+      "stored_sha256": "1de3307b75fc88a644beb59185da631c5d17e6560e88761ee9434e603723a680",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "368-red-old-only.log",
+      "file": "368-red-old-only.log",
+      "original_sha256": "accd5b72c9e23e024a08b772efafb5061550a530d884ac44185f3f1fc7b001d0",
+      "stored_sha256": "accd5b72c9e23e024a08b772efafb5061550a530d884ac44185f3f1fc7b001d0",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "368-green-old-only.log",
+      "file": "368-green-old-only.log",
+      "original_sha256": "998086eec7223fbe70994bb8c5fe1336f13e0879bb7ef478844ad34fc924bb9c",
+      "stored_sha256": "998086eec7223fbe70994bb8c5fe1336f13e0879bb7ef478844ad34fc924bb9c",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "368-pinned-upgrade.log",
+      "file": "368-pinned-upgrade.log",
+      "original_sha256": "4891ec8f19a20fbad669002d83ae662f4ab8316b7c372e936039638af57d0a51",
+      "stored_sha256": "95206713f9110cab1f618df994e2b473284f5e7601a43784d0fa2e5eae2bc94e",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "369-red-install.log",
+      "file": "369-red-install.log",
+      "original_sha256": "e97e5e8beb42c7f435acbc3926b913c168e23a6224189e7abd215243c64a61c3",
+      "stored_sha256": "e97e5e8beb42c7f435acbc3926b913c168e23a6224189e7abd215243c64a61c3",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "369-red-links.log",
+      "file": "369-red-links.log",
+      "original_sha256": "d2400ceb8c3ecb891658808b008250921eabe4899682377a7f36e5da07214a53",
+      "stored_sha256": "d2400ceb8c3ecb891658808b008250921eabe4899682377a7f36e5da07214a53",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "369-green-install.log",
+      "file": "369-green-install.log",
+      "original_sha256": "b17949d4e03722e56ea0b3df3d2c6756b3e95c249b8cb0e1931e2b5408c09931",
+      "stored_sha256": "b17949d4e03722e56ea0b3df3d2c6756b3e95c249b8cb0e1931e2b5408c09931",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "369-green-links.log",
+      "file": "369-green-links.log",
+      "original_sha256": "0f5177444fe5626a00633cd765b0f36e54b9868e39c165ceece3ebb272c4c557",
+      "stored_sha256": "0f5177444fe5626a00633cd765b0f36e54b9868e39c165ceece3ebb272c4c557",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "369-native-apply.log",
+      "file": "369-native-apply.log",
+      "original_sha256": "ebd2886c8047b17d3bfe714ea2231f3441d28ca9eb74b9be1922abc2bf48b657",
+      "stored_sha256": "ccb93cd5cc71b4e11149415f54b3478e542555c3f83fd089aae42c7ca2d278aa",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "369-native-check.log",
+      "file": "369-native-check.log",
+      "original_sha256": "f3c6fc514aa60b7a16b4f5dade44f3877e982077afbb5de9615c3eb5176ce60d",
+      "stored_sha256": "3f84d8bf3075b3d59f1d756ce39cdcf280a3c3cf7d36ca99b3d4ae6323eb3148",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "369-parent-acceptance.md",
+      "file": "369-parent-acceptance.md",
+      "original_sha256": "30e5862be2d9ba7b0a8b3a9357ba116d6ce34453323c221c38a3b35a675e9cee",
+      "stored_sha256": "30e5862be2d9ba7b0a8b3a9357ba116d6ce34453323c221c38a3b35a675e9cee",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "367/regression.log",
+      "file": "367/regression-tail.log",
+      "original_sha256": "b5a9a48b649f30f132ac4735e02b5acf06c527fe668521d327422b4d6b8e2ed6",
+      "stored_sha256": "f9a4a4c50adc5ee1d7591666058fd3c1d81e18f0f15d13074b597c6546300887",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders",
+        "retain last 8 original lines; full original identified by SHA256"
+      ]
+    },
+    {
+      "source": "368-regression.log",
+      "file": "368-regression-tail.log",
+      "original_sha256": "e9aea0fc9537de2006b53a89a7e43e3305a66ad1cf749795148a4d086c07a77d",
+      "stored_sha256": "ba28cb0f4d60d93af2d954415e3901ec2b35346aa96232d29ce6879993cf3d43",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders",
+        "retain last 8 original lines; full original identified by SHA256"
+      ]
+    },
+    {
+      "source": "369-regression.log",
+      "file": "369-regression-tail.log",
+      "original_sha256": "6a3c137a95d318c7576322094666077605568f760dbfaab107174618e46b039e",
+      "stored_sha256": "083db8bcd5d631356598e548ba5ea2fca5709da828ea6b5c64ecaec501e8075f",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders",
+        "retain last 8 original lines; full original identified by SHA256"
+      ]
+    },
+    {
+      "source": "369-regression-sandbox.log",
+      "file": "369-regression-sandbox-tail.log",
+      "original_sha256": "21d0ccf528e548f96e9f686bff07eb8f716f6fea9979375bcd9d971c2c3aa220",
+      "stored_sha256": "784cde3b1c8520d652153bb9d8eb58d00a1d9c24dbb4bb34eef710d523fcfbc9",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders",
+        "retain last 16 original lines; full original identified by SHA256"
+      ]
+    },
+    {
+      "source": "368-pinned-upgrade.py",
+      "file": "368-pinned-upgrade.py.txt",
+      "original_sha256": "0e2c825883e3623b97dbe5f8ea31e7cce2ec9cb8c34d4ef81162c6b5a91431c2",
+      "stored_sha256": "d750650c439ec42300edec9647542a21a5191261f6d1a20a935533c5e833f7b0",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "368-native-discovery.log",
+      "file": "native-discovery-selected.log",
+      "original_sha256": "6d799fb5301020dcef95dc5ea75b42938b1a7a221f4f690e31ae453018f7cbe7",
+      "stored_sha256": "23c11bca25996c296f6330a91a304ef632d8e7d4f65205e0ba68fcbcc5023d0c",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders",
+        "retain only requested/local delivered Skill names; unrelated inventory omitted"
+      ]
+    },
+    {
+      "source": "client-test-design/design.md",
+      "file": "client-test-design/design.md",
+      "original_sha256": "d5f0446780812b69723347db825cb49127ef23dc11932261628c18bde7a0da28",
+      "stored_sha256": "e1e44942ef4cd0aefd470f9c4c77fb13805bf0b2ba3df97aedd335994ab3c366",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "client-test-design/observations.md",
+      "file": "client-test-design/observations.md",
+      "original_sha256": "1ff758cbe3b4a5b792ec98717f8815841767e7be119f2d88e1d0173d30c1df33",
+      "stored_sha256": "1d21664bb061f0d807f75979d897632a05933251c159b73c38ce7efe7d8395da",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "client-test-design/variants.md",
+      "file": "client-test-design/variants.md",
+      "original_sha256": "5fdc6af2d72340538677e8a17a19b40f6ee50061b9bb121fc12392630202878d",
+      "stored_sha256": "5fdc6af2d72340538677e8a17a19b40f6ee50061b9bb121fc12392630202878d",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "client-integration/acceptance.md",
+      "file": "client-integration/acceptance.md",
+      "original_sha256": "73e9b6e45cf584fe366721f6de9f3efad8414f29e7a6f7f8eddca9ab21fa9299",
+      "stored_sha256": "73e9b6e45cf584fe366721f6de9f3efad8414f29e7a6f7f8eddca9ab21fa9299",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "client-integration/before.md",
+      "file": "client-integration/before.md",
+      "original_sha256": "f8ac9ec26f7e77ec8065dcf9b924e07561c077c10fd13d8fd2e8508fa23fa42b",
+      "stored_sha256": "f8ac9ec26f7e77ec8065dcf9b924e07561c077c10fd13d8fd2e8508fa23fa42b",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "client-integration/observations.md",
+      "file": "client-integration/observations.md",
+      "original_sha256": "a2d4dceb231cab2712e22402049a41a0c4b0b7d11bb094f4794f3b4c34a14b77",
+      "stored_sha256": "11853f5e1ebd2a55a4e66dd40341c03fdd4c575019208c1a52b2e4fa1044d421",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "client-integration/report.md",
+      "file": "client-integration/report.md",
+      "original_sha256": "8d863739bef60b1de16fe9666ab83064de8a1eb0ce86e15dc3ee84a8ac870748",
+      "stored_sha256": "8d863739bef60b1de16fe9666ab83064de8a1eb0ce86e15dc3ee84a8ac870748",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/first-fault.log",
+      "file": "370/first-fault.log",
+      "original_sha256": "0492cd934f4e3b843015b54a9555b04e2458432e48cafccecb60ebf33cf1aea3",
+      "stored_sha256": "1801a139531bfe923cad0e0ebeacd6391e35c19c6f069f8211ed71b7cd2d0adb",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/first-fault-run.json",
+      "file": "370/first-fault-run.json",
+      "original_sha256": "35750bc821b398c1366402b87cb35d9958eba359ed0667a0df24007a58f0b6db",
+      "stored_sha256": "8502bde00efe17687d42f021a74222f3e0da9efc2059bd5c2ab2827c11749443",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix.log",
+      "file": "370/matrix.log",
+      "original_sha256": "d30b23c1507a4d74b35aae249f7296e2cfc0bc724af8d44747a7ec14b87eb669",
+      "stored_sha256": "8e76eba05dac9333b5f1a06996bc7580cbb10a03e627ac40bbd5cf76988ef07c",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix-run.json",
+      "file": "370/matrix-run.json",
+      "original_sha256": "79533be65055340f135283ff0ce66f89f8a243c98f46a9957e4092da74c11e70",
+      "stored_sha256": "e915861247d017d28d53a214461397222757a5f66a2907b4b2fce97e0db5a37e",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/regression.log",
+      "file": "370/regression.log",
+      "original_sha256": "8119bd100e28f75435d1e6bbbb8a85404619e02a3239597d9505a539c2f88f38",
+      "stored_sha256": "65bebd748121a0cff3c2c9e240ba108173d189756ee8a1bbf42a10b40db41fca",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/regression-run.json",
+      "file": "370/regression-run.json",
+      "original_sha256": "933d8039854282307e558c61a73414c1e56b8abc4d6e70b275b91714d9372962",
+      "stored_sha256": "933d8039854282307e558c61a73414c1e56b8abc4d6e70b275b91714d9372962",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/first-fault/identity.json",
+      "file": "370/first-fault/identity.json",
+      "original_sha256": "85a0d8bc088eb77ef286dadcf45f6aeabe46579421afd1ad12dd83513629ca9c",
+      "stored_sha256": "85a0d8bc088eb77ef286dadcf45f6aeabe46579421afd1ad12dd83513629ca9c",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/first-fault/fault/apply.log",
+      "file": "370/first-fault/fault/apply.log",
+      "original_sha256": "1987da4ceff559b2801aeb63793b3641642a39398154b9cbd56a76d00e19aa07",
+      "stored_sha256": "0f9c1aea51cd30cb6a9fd5d0dabfe746daa3a478e773b88b0d295d06a8a69ce2",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/first-fault/fault/check.log",
+      "file": "370/first-fault/fault/check.log",
+      "original_sha256": "f85a11f5720f59d4a4fa1b32aa4b2855dda6543184a26d78351a6b80c0a237b2",
+      "stored_sha256": "10de4e7dca81ac7a9d66f38c03c8a3d105304617d46624e8c5d5a313b0f44d56",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/first-fault/fault/result.json",
+      "file": "370/first-fault/fault/result.json",
+      "original_sha256": "3d58c904e0e22ff7b652b04add3904ce7aaeb54e91dccd78e4dfd04cb9d1557d",
+      "stored_sha256": "3d58c904e0e22ff7b652b04add3904ce7aaeb54e91dccd78e4dfd04cb9d1557d",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/identity.json",
+      "file": "370/matrix/identity.json",
+      "original_sha256": "8f40121a866d46b36ebe2f52595074efeeadebeb756fb2bcd4ca8cfbf28431c0",
+      "stored_sha256": "8f40121a866d46b36ebe2f52595074efeeadebeb756fb2bcd4ca8cfbf28431c0",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/fault/apply.log",
+      "file": "370/matrix/fault/apply.log",
+      "original_sha256": "93c730c417ae18844a2f0611dfe892d0c00e21418958613ba2ebc8ea69a18620",
+      "stored_sha256": "a69d4813a4810bd881cc98003da300f3dbed89891ac558088783f14cb2b17598",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/fault/check.log",
+      "file": "370/matrix/fault/check.log",
+      "original_sha256": "f3bfca78a733ffc2e107b0efe35f94d83931d0a5a3a3240f19d380f69cd06172",
+      "stored_sha256": "78e0a0bbdbc568819093b2466ddf8e646afa952ca91561aea8f94a1ab99d2aa9",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/fault/result.json",
+      "file": "370/matrix/fault/result.json",
+      "original_sha256": "3d58c904e0e22ff7b652b04add3904ce7aaeb54e91dccd78e4dfd04cb9d1557d",
+      "stored_sha256": "3d58c904e0e22ff7b652b04add3904ce7aaeb54e91dccd78e4dfd04cb9d1557d",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/correct/apply.log",
+      "file": "370/matrix/correct/apply.log",
+      "original_sha256": "0906507e3dffc6dac224c3981ad8e3ceaf48e2b38ea6b6c9f78dec1e13b45c2a",
+      "stored_sha256": "8c3bb783e76be3cdf25b8429e2ad8c2ebce3e6dd36c8e670923bc66cda4a2eef",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/correct/check.log",
+      "file": "370/matrix/correct/check.log",
+      "original_sha256": "20c0513223348b1c52e4dc5a1d9cf4f8322a6ef36649be1cc4b0a82e5e48388b",
+      "stored_sha256": "e4f0349cde1afef4a9519d207d5c2fb30bb1018c7ce2b10beb7a5155692ada1c",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/correct/result.json",
+      "file": "370/matrix/correct/result.json",
+      "original_sha256": "7ae92c406f3508ff449164c7a0d434640ccbc4f97cbb8819e8244552c807f474",
+      "stored_sha256": "7ae92c406f3508ff449164c7a0d434640ccbc4f97cbb8819e8244552c807f474",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/repeat/apply.log",
+      "file": "370/matrix/repeat/apply.log",
+      "original_sha256": "66ad7f8efd6e4ed79e7054ec9ad30f93967d4a290fc56ec3c28a0ba74f7a3e33",
+      "stored_sha256": "d6bc1b14b6c936e203c7b47589d419a54ba5a3fcf0be51e137dbc2315ebb0134",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/repeat/check.log",
+      "file": "370/matrix/repeat/check.log",
+      "original_sha256": "52a68a70e28005900cf9aaee7aeae9675f50e39cdaa580fd227a3dd930c8323f",
+      "stored_sha256": "9c4b1bd9786c6704bf243ff64275422ade0f49565fbe56c505a75cde0c6537da",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    },
+    {
+      "source": "370/matrix/repeat/result.json",
+      "file": "370/matrix/repeat/result.json",
+      "original_sha256": "7ae92c406f3508ff449164c7a0d434640ccbc4f97cbb8819e8244552c807f474",
+      "stored_sha256": "7ae92c406f3508ff449164c7a0d434640ccbc4f97cbb8819e8244552c807f474",
+      "transform": [
+        "replace local user home, temporary root and hostname with named placeholders"
+      ]
+    }
+  ],
+  "mutation_sha256": "612e18d976d2dff65a7a2f87e0d6811a72e9e33261ac761b54b906bcc7c98846"
+}
