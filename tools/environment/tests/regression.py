@@ -817,6 +817,75 @@ def case_self_test_report_distribution(root):
         check(profile_name + " 模板漂移不能被判通过", rc == 1)
 
 
+def case_self_test_report_v2_contract():
+    print("\n[用例 14] self-test-report V2 只归一化结果、审查证据和形成准入摘要")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    report = read(os.path.join(repo, "skills", "self-test-report", "SKILL.md"))
+    template = read(os.path.join(repo, "skills", "self-test-report", "assets", "report-template.md"))
+    frontmatter = read(os.path.join(repo, "skills", "self-test-report", "clients", "shared.frontmatter.md"))
+    openai = read(os.path.join(repo, "skills", "self-test-report", "clients", "openai.yaml"))
+
+    check("报告提供 compose/update/audit 三种模式",
+          all(term in report for term in ("**compose**", "**update**", "**audit**")))
+    check("三种模式都不能启动测试、部署或额外 agent",
+          "三种模式都不得启动或批准测试" in report
+          and "部署" in report and "新的 agent" in report)
+    check("证据缺口只形成最小请求并交给项目流程",
+          all(term in report for term in
+              ("结构化证据缺口", "建议执行者", "最小补测范围", "由 Tester、deliver-spec 或项目执行流程决定是否运行")))
+    check("Case/Design/Attempt 链路是覆盖统计前提",
+          "需求/合同版本 → Design Revision → Case ID → Attempt → Candidate Identity → Environment" in report
+          and "不能计入覆盖率或最终通过统计" in report
+          and "Case ID | Design Revision | Attempt | Candidate Identity" in report
+          and "| Case ID | Design Revision | Attempt | Candidate / Environment |" in template)
+    check("项目验收记录保持唯一结果真源",
+          "优先读取项目唯一验收记录" in report
+          and "不复制第二份结果真源" in report
+          and "不在报告维护第二份完整矩阵" in template)
+    check("外部执行器区分 transport 与测试状态",
+          all(term in report for term in
+              ("source_type", "transport_status", "`completed`、生成报告或机器人回复不能映射为 PASS")))
+    check("QA 助手设计执行不冒充独立 QA",
+          "同一 QA 助手参与设计又执行时" in report
+          and "不自动构成独立 QA" in report)
+    check("归一化字段保留原始状态、判据、证据和审查者",
+          all(term in report for term in
+              ("Case ID | Design Revision | Attempt | Candidate Identity", "Raw Status", "Actual Observation",
+               "Oracle Source", "Evidence References", "Evidence Validity", "Reviewer")))
+    check("身份合同适用、未知或 false 无理由时不得通过",
+          "`applicable=true` 但缺少权威证据" in report
+          and "适用性为 `unknown`" in report
+          and "`applicable=false` 只有写明为何当前改动不涉及身份、权限或资源归属时才可通过" in report
+          and "同源 Mock" in report)
+    check("证据冲突不能由多数票或执行器名气解决",
+          "单列证据冲突" in report
+          and "不得用多数票或执行器名气推导 PASS" in report)
+    check("报告不代替 Tester 或项目接受者决定",
+          "Tester、项目父流程或项目指定接受者作最终准入判断" in report
+          and "报告生成不等于项目验收" in report)
+    check("旧报告可原地更新，不强制迁移模板布局",
+          "已有报告继续按原有标题、布局和项目约定原地更新" in report
+          and "不要仅为采用 V2 模板而改版" in report)
+    check("默认模板是一页摘要，完整矩阵按风险展开",
+          "默认保持一页可扫读" in template
+          and "## 按条件展开的附录" in template
+          and "### 完整结果矩阵" in template)
+    check("模板显式记录身份合同、冲突和最小证据请求",
+          all(term in template for term in
+              ("## 身份合同核验", "## 证据冲突与缺口", "### 最小证据请求",
+               "self-test-report 只记录请求，不启动测试")))
+    check("模板保留旧状态词和兼容影响矩阵",
+          all(term in template for term in
+              ("PASS", "FAIL", "BLOCKED", "NOT_RUN", "VALID", "STALE", "UNVERIFIED",
+               "### 向后兼容与影响面", "不得删弱旧行为断言来获得 PASS")))
+    check("触发描述明确归一化职责且禁止执行",
+          "外部执行结果和证据归一化" in frontmatter
+          and "不启动测试、部署或代码 review" in frontmatter)
+    check("OpenAI 客户端提示词与 Skill 执行边界一致",
+          all(term in openai for term in
+              ("项目既有 Case、Attempt 和证据", "不启动测试、部署或额外 agent")))
+
+
 
 def case_test_design_distribution(root):
     print("\n[用例 12] test-design 可独立安装，正文与引用完整分发")
@@ -965,6 +1034,7 @@ def main():
     case_profile_selection(os.path.join(root, "c7"))
     case_implement_batch_distribution(os.path.join(root, "c8"))
     case_self_test_report_distribution(os.path.join(root, "c9"))
+    case_self_test_report_v2_contract()
     case_skill_install_with(os.path.join(root, "c13"))
     case_test_design_distribution(os.path.join(root, "c12"))
     case_backward_compatibility_rules()
