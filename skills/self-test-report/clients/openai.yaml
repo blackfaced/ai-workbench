@@ -1,4 +1,4 @@
 interface:
   display_name: "Self-test Report"
-  short_description: "编写、更新与审查自测报告，核实验收证据和交付边界"
-  default_prompt: "使用 $self-test-report 核对当前需求、候选和已有测试结果，编写或更新可复核的自测报告。"
+  short_description: "归一化测试结果并审查证据、身份合同与准入边界"
+  default_prompt: "使用 $self-test-report 从项目既有 Case、Attempt 和证据生成、更新或审查可复核的自测报告，不启动测试、部署或额外 agent。"
