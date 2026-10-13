@@ -1,6 +1,6 @@
 # Engineering principles instruction pack
 
-This is a distributable instruction pack, not an automatically invoked Skill. `rules.md` is the canonical general policy; `digest.md` is its reviewed short projection; `review.md` and `debt.md` are companion procedures. Project/platform-specific policy remains with the consuming repository.
+This is a distributable instruction pack, not an automatically invoked Skill. `rules.md` is the canonical general policy; `digest.md` is its reviewed short projection; `review.md`, `debt.md`, and `environment-identity-assumptions.md` are companion procedures. Project/platform-specific policy remains with the consuming repository.
 
 Consumers resolve all files from one full Git commit, never a mixture of mutable checkouts. `@RULES_DIR@` is rendered to the absolute installed companion directory. Preserve the existing content-addressed hook trust boundary. Update rules and digest together when their meaning changes; fixed-version consumption prevents version mixing but cannot mechanically prove a handwritten summary is faithful.
 
