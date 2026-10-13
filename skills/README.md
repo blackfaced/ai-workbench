@@ -28,6 +28,8 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 - [steelman-grill](steelman-grill/SKILL.md) — managed first-party Skill; requires upstream `grilling`.
 - [viral-clip-doctrine](viral-clip-doctrine/SKILL.md) — 抖音投流爆款剪辑的方案层管线（钩子—气口—指派—收敛—包装—合规），不预设执行工具。
 - [Source records](sources.lock.json) — includes explicitly unverified upstream entries; not a complete dependency lock.
+- [Archify](archify.md) — upstream-owned typed, explorable diagrams; existing local installation.
+- [Diagram Design](diagram-design.md) — opt-in trial for additional diagram types and document figures.
 - [Anthropic Skills](anthropic-skills.md)
 - [mattpocock/skills](matt-pocock-skills.md)
 
