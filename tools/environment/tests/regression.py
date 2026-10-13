@@ -1020,6 +1020,28 @@ def case_identity_review_gate():
                                              "The integrator must reject review completion", "not applicable with a reason")))
 
 
+def case_environment_identity_assumptions():
+    print("\n[用例 12] 环境与身份能力假设九维检查方法存在且被正文引用")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    principles = os.path.join(repo, "skills", "engineering-principles")
+    assumptions = read(os.path.join(principles, "environment-identity-assumptions.md"))
+    rules = read(os.path.join(principles, "rules.md"))
+    digest = read(os.path.join(principles, "digest.md"))
+    nine = ("外部依赖", "所需能力", "环境差异", "身份", "区域绑定", "配置来源",
+            "规模", "拓扑", "失效方式", "兼容", "不支持", "验证证据")
+    check("九维假设全覆盖", all(term in assumptions for term in nine))
+    check("每条假设要求工具定位依据，不凭记忆",
+          "工具实际定位" in assumptions and "不允许凭记忆" in assumptions)
+    check("身份合同适用性判据：触发信号与可判不适用条件",
+          all(term in assumptions for term in ("触发", "不适用", "凭据来源", "权威消费方")))
+    check("适用性结论三选一：已核验/发现缺陷/证据不足不得通过",
+          all(term in assumptions for term in ("已核验", "发现缺陷", "证据不足")))
+    check("开工门禁正文引用九维方法",
+          "environment-identity-assumptions.md" in rules and "九个维度" in rules)
+    check("L1 摘要投影九维方法",
+          "environment-identity-assumptions.md" in digest and "九维假设表" in digest)
+
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -1039,6 +1061,7 @@ def main():
     case_test_design_distribution(os.path.join(root, "c12"))
     case_backward_compatibility_rules()
     case_identity_review_gate()
+    case_environment_identity_assumptions()
     pilot = subprocess.run([sys.executable, os.path.join(HERE, "legacy_delegation_pilot.py")],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "legacy-delegation-pilot.log"), pilot.stdout)
