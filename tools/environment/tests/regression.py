@@ -1048,6 +1048,11 @@ def main():
                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "kimi-discovery.log"), kimi.stdout)
     check("Kimi ACP 隔离协议与 Profile 缺项回归", kimi.returncode == 0, kimi.stdout if kimi.returncode else "")
+    setup = subprocess.run([sys.executable, os.path.join(HERE, "setup_aiwb_distribution.py")],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    write(os.path.join(root, "setup-aiwb-distribution.log"), setup.stdout)
+    check("setup-aiwb 项目接入与既有集成测试指引完整分发、升级和恢复",
+          setup.returncode == 0, setup.stdout if setup.returncode else "")
     print("\n通过 %d 项，失败 %d 项" % (len(PASSES), len(FAILS)))
     if FAILS:
         for name in FAILS:
