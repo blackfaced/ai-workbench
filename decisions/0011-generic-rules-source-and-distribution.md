@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-09-08
 
+The global distribution mechanism below is superseded by [0013 — Project-owned agent context](0013-project-owned-agent-context.md). The reusable rule source and immutable pin remain valid.
+
 AIWB owns the reusable engineering-principles instruction pack under `skills/engineering-principles/`. downstream consumes a full immutable Git commit, adds its own work-environment policy, and remains the sole distributor to global AGENTS and the digest hook. AIWB environment tooling observes ownership and conflicts; it does not duplicate this writer.
 
 Migrate the generic meaning from downstream `0c922c9` without simultaneous doctrine redesign. Preserve internal platform rules and project knowledge at their original owners. Keep the digest with its canonical full rules and review both together. Publish companion review/debt procedures from the same commit; render their paths into the installed package.
