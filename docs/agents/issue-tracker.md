@@ -3,6 +3,8 @@
 Issues and PRDs for this repository live in GitHub repository `blackfaced/ai-workbench`.
 Use the `gh` CLI for issue operations from within this checkout.
 
+GitHub Issues are the sole active source of truth for AIWB project items and their status. Local files are not a second status authority: `todo/` retains personal evaluations and conditional reminders as historical notes, while `docs/testing/` artifacts are evidence only. Do not copy or reconcile project state into either location.
+
 ## Conventions
 
 - Create an issue with `gh issue create --title "..." --body "..."`.
