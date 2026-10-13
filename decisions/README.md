@@ -22,3 +22,5 @@ Current scope: [0010 — Environment-first repository scope](0010-environment-fi
 - [0011 - Generic rule source and distribution](0011-generic-rules-source-and-distribution.md) — AIWB owns generic rules; dev-tracker pins and distributes them.
 
 - [0012 - Home Mac maintenance and explicit Profile selection](0012-home-mac-maintenance-validation.md) — home Mac available and independently verified.
+
+- [0013 - Project-owned agent context](0013-project-owned-agent-context.md) — setup-aiwb configures project context; retire global workflow injection without replacing team rules.

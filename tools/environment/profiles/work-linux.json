@@ -48,7 +48,7 @@
     "除受管的 steelman-grill 外，~/.trae/skills 下的项一律保持现状：只做发现检查（断链 / frontmatter / name 一致性），不删不改。"
   ],
   "hook_notes": [
-    "~/.codex/config.toml 里 `# dev-tracker:l1-hook BEGIN/END` 包住的 UserPromptSubmit 由 dev-tracker 的 sync-rules.sh 分发，owner 不是本仓：只报告，不改正文。比较时 ~/.trae/l1/<hash>/ 的 hash 段已被归一化。"
+    "旧 `# dev-tracker:l1-hook BEGIN/END` UserPromptSubmit 属于 dev-tracker，由其 sync-rules.sh 负责退役/恢复；本仓只报告，不改正文。新项目上下文通过 setup-aiwb 接入。比较时 ~/.trae/l1/<hash>/ 的 hash 段已被归一化。"
   ],
   "path_line_reports": [
     {
@@ -216,7 +216,9 @@
           "frontmatter": "skills/setup-aiwb/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/setup-aiwb/clients/openai.yaml",
-            "references/integration-guide.md": "skills/setup-aiwb/references/integration-guide.md"
+            "references/integration-guide.md": "skills/setup-aiwb/references/integration-guide.md",
+            "references/integration-setup.md": "skills/setup-aiwb/references/integration-setup.md",
+            "references/project-context.md": "skills/setup-aiwb/references/project-context.md"
           }
         }
       },
