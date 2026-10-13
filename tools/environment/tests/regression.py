@@ -1041,6 +1041,26 @@ def case_environment_identity_assumptions():
     check("L1 摘要投影九维方法",
           "environment-identity-assumptions.md" in digest and "九维假设表" in digest)
 
+def case_diagnostic_contract_gate():
+    print("\n[用例 15] 通用双层诊断契约：先判适用性，缺证据不得整体通过")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    rules = read(os.path.join(repo, "skills", "engineering-principles", "rules.md"))
+    digest = read(os.path.join(repo, "skills", "engineering-principles", "digest.md"))
+    check("正文定义通用双层诊断契约并区分两层",
+          all(term in rules for term in ("通用双层诊断契约", "第一层：适用性判断", "第二层：证据门禁")))
+    check("第一层：不适用必须写明理由",
+          all(term in rules for term in ("无需用户点名", "不适用必须写明理由", "理由缺失视同未判断")))
+    check("第二层：要求独立权威证据，不被同源断言替代",
+          all(term in rules for term in ("独立于当前 spec 及其 Mock", "权威消费方", "字段名、同源断言")))
+    check("适用缺证据不得整体通过，零 finding 不替代，受限不外推",
+          all(term in rules for term in ("适用但缺证据时不得宣布整体评审通过",
+                                         "零 finding 不能替代完成核验", "不得外推")))
+    check("身份合同作为通用契约的一个必经实例保留",
+          "身份、权限、资源归属核验就是按本契约执行的一个必经实例" in rules
+          and "身份合同核验是必经项" in rules)
+    check("共用摘要同步通用契约入口且指向正文",
+          all(term in digest for term in ("通用双层诊断契约", "每次必须", "缺证据不得通过", "§7")))
+
 
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
@@ -1062,6 +1082,7 @@ def main():
     case_backward_compatibility_rules()
     case_identity_review_gate()
     case_environment_identity_assumptions()
+    case_diagnostic_contract_gate()
     pilot = subprocess.run([sys.executable, os.path.join(HERE, "legacy_delegation_pilot.py")],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "legacy-delegation-pilot.log"), pilot.stdout)
