@@ -163,6 +163,29 @@
         "trae": "~/.agents/skills/test-design"
       },
       "note": "第一方独立测试设计与质量审查 Skill；项目用例与证据留在所属项目，设计不启动实施或生成执行 PASS。安装验证与模型行为证据分开报告。"
+    },
+    {
+      "name": "archify",
+      "source": "https://github.com/tt-a1i/archify",
+      "revision": "unpinned",
+      "verified": false,
+      "clients": [
+        "shared(~/.agents/skills)"
+      ],
+      "observed_version": "2.16.0",
+      "evidence_date": "2026-10-13",
+      "skill_folder_hash": "051deaa87b3179757770d9ec3a07e340b4cb2cb1",
+      "note": "工作 Mac 现有 skills CLI 安装；doctor 通过。folder hash 来自安装器记录，不是 Git commit。上游拥有正文；本仓不安装、不复制、不自动升级。首装、其他机器及原生发现未在本次验证。"
+    },
+    {
+      "name": "diagram-design",
+      "source": "https://github.com/cathrynlavery/diagram-design",
+      "revision": "0a8ea20ae69b33a5edce6018eedd3a9d26e90c1c",
+      "verified": false,
+      "clients": [],
+      "observed_version": "2.6",
+      "evidence_date": "2026-10-13",
+      "note": "固定 commit 的隔离源码试用；未常驻安装，未验证客户端安装渠道和原生发现。上游拥有正文，本仓仅登记可选使用入口，不纳入 profile apply。"
     }
   ]
 }

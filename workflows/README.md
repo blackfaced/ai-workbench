@@ -4,6 +4,8 @@ Repeatable multi-step processes and domain workflows.
 
 ## Index
 
+- [Diagram authoring](diagram-authoring.md) — choose a view, preserve editable sources, and verify document delivery.
+
 - [单 Issue 轻量试用](single-issue-trial.md) — setup 按需、项目流程实施、证据与 Issue 闭环。
 
 - [Project learning and remote handoff](learning-and-remote-handoff.md) — escaped-bug lessons, consolidation, transfer and result collection.
