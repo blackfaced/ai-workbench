@@ -23,6 +23,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ENV_DIR = os.path.dirname(HERE)
 TOOL = os.path.join(ENV_DIR, "project_context.py")
+TEST_HOME = tempfile.TemporaryDirectory(prefix="project-context-home-")
 
 try:
     import tomllib
@@ -48,6 +49,8 @@ def write(path, text):
 
 
 def run(args, env=None, manage_trust=False):
+    if env is None:
+        env = dict(os.environ, HOME=TEST_HOME.name, CODEX_HOME=os.path.join(TEST_HOME.name, ".codex"))
     full = list(args)
     if "--repo" in full and "--declaration" not in full:
         repo = full[full.index("--repo")+1]

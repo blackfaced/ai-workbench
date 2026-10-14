@@ -15,6 +15,7 @@ def restore(pc, repo, backup, dry_run, force):
     if manifest.get('version') != pc.env.MANIFEST_VERSION:
         raise RuntimeError('backup version mismatch')
     state = pc.load_state(repo)
+    recovery = pc.ProjectBackup(repo)
     done=skipped=0
     global_paths = {os.path.join(os.path.realpath(os.path.expanduser('~')), p[2:]) for p in pc.GLOBAL_TRUST_CONFIG.values()}
     for entry in reversed(manifest['entries']):
@@ -107,6 +108,23 @@ def restore(pc, repo, backup, dry_run, force):
                 new_text=''.join(lines)
             pc.validate_toml(new_text,target)
             changed=new_text != text
+            recovery_entry=None
+            if force and not dry_run:
+                # Force can discard edits that no apply snapshot contains.
+                # Save those bytes and the current component record first,
+                # using a normal v2 snapshot that can itself be restored.
+                recovery_block=dict(block)
+                if entry['kind']=='config_block':
+                    recovery_block['previous_body']=current
+                    recovery_block['applied_body']=None
+                    recovery_block['inserted_blank_after']=state.get('components',{}).get(cid,{}).get('inserted_blank_after',False)
+                elif 'table_before' in block:
+                    recovery_block['table_before']=pc._trust_table(text,key)
+                    recovery_block['table_after']=pc._trust_table(new_text,key)
+                current_state=state.get('components',{})
+                recovery_entry=recovery.save(target,component=cid,kind=entry['kind'],block=recovery_block,
+                                             state_before={cid:dict(current_state[cid])} if cid in current_state else {})
+                print('  recovery backup: '+recovery.dir)
             if not dry_run and changed:
                 # A newly-created native file can be removed only if it has no
                 # added user content; otherwise retain that content as a file.
@@ -115,6 +133,8 @@ def restore(pc, repo, backup, dry_run, force):
                     os.unlink(target)
                 else:
                     context_io.atomic_write(target,new_text,observed)
+            if recovery_entry is not None:
+                recovery.mark_written(recovery_entry)
             if not dry_run:
                 before_state=entry.get('state_before') or {}
                 if before_state: state.setdefault('components',{}).update(before_state)

@@ -89,8 +89,83 @@ class Boundaries(unittest.TestCase):
         for r in repos:self.assertEqual(trust[str(r)]['trust_level'],'trusted')
     def test_explicit_untrusted_preserved(self):
         g=self.home/'.codex/config.toml';g.parent.mkdir();g.write_text('[projects.'+json.dumps(str(self.repo))+']\ntrust_level="untrusted"\n')
-        before=g.read_bytes();self.assertNotEqual(self.run_pc('--manage-trust','--apply').returncode,0)
-        self.assertEqual(before,g.read_bytes());self.assertFalse(self.config().exists())
+        before=g.read_bytes()
+        for flags in [(), ('--no-manage-trust',), ('--manage-trust',)]:
+            for mode in [(), ('--check',), ('--apply',)]:
+                with self.subTest(flags=flags,mode=mode):
+                    p=self.run_pc(*(flags+mode))
+                    self.assertNotEqual(p.returncode,0,p.stdout+p.stderr)
+                    self.assertIn('existing trust_level untrusted',p.stdout)
+                    self.assertEqual(before,g.read_bytes());self.assertFalse(self.config().exists())
+                    self.assertFalse((self.repo/'.ai-workbench').exists())
+    def test_untrusted_worktree_blocks_default_apply_before_any_write(self):
+        wt=self.root/'wt';wt.mkdir()
+        g=self.home/'.codex/config.toml';g.parent.mkdir()
+        g.write_text('[projects.'+json.dumps(str(wt))+']\ntrust_level="untrusted"\n')
+        p=self.run_pc('--worktree',str(wt),'--apply')
+        self.assertNotEqual(p.returncode,0,p.stdout+p.stderr)
+        self.assertFalse(self.config().exists());self.assertFalse(self.config(wt).exists())
+        self.assertFalse((self.repo/'.ai-workbench').exists())
+    def test_all_profile_transitions_and_restore(self):
+        import itertools
+        import tomllib
+        markers={'project':'project-context','owned-full':'owned-work-rules','legacy-only':'legacy-commit-id'}
+        self.decl.write_text(json.dumps({'instructions':'PROJECT_PRIVATE_TEST'}))
+        for source,target in itertools.permutations(['none','project','owned-full','legacy-only'],2):
+            with self.subTest(source=source,target=target):
+                repo=self.root/(source+'-to-'+target);repo.mkdir()
+                configs=[repo/'.codex/config.toml',repo/'.trae/traecli.toml']
+                for config in configs:
+                    config.parent.mkdir();config.write_text('model="fixture"\n[extra]\nkeep=true\n')
+                p=self.run_pc('--profile',source,'--apply',repo=repo)
+                self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+                before=[config.read_bytes() for config in configs]
+                p=self.run_pc('--profile',target,'--apply',repo=repo)
+                self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+                snapshot=sorted((repo/'.ai-workbench/project-context/backups').iterdir())[-1]
+                after=[config.read_bytes() for config in configs]
+                for config in configs:
+                    text=config.read_text();parsed=tomllib.loads(text)
+                    self.assertEqual(parsed['model'],'fixture');self.assertTrue(parsed['extra']['keep'])
+                    self.assertEqual('developer_instructions' in parsed,target!='none')
+                    for profile,marker in markers.items():
+                        self.assertEqual(text.count('# setup-aiwb:'+marker+' BEGIN'),int(profile==target))
+                self.assertEqual(self.run_pc('--profile',target,'--check',repo=repo).returncode,0)
+                self.assertEqual(self.run_pc('--profile',target,'--apply',repo=repo).returncode,0)
+                self.assertEqual([config.read_bytes() for config in configs],after)
+                p=self.run_pc('--restore',snapshot.name,repo=repo)
+                self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+                self.assertEqual([config.read_bytes() for config in configs],before)
+                self.assertEqual(self.run_pc('--profile',source,'--check',repo=repo).returncode,0)
+    def test_alias_cleanup_cannot_borrow_another_clients_legacy_ownership(self):
+        import tomllib
+        alias=self.root/'alias';alias.symlink_to(self.repo,target_is_directory=True)
+        self.decl.write_text(json.dumps({'instructions':'PROJECT_PRIVATE_TEST'}))
+        globals=[self.home/'.codex/config.toml',self.home/'.trae/traecli.toml']
+        for config in globals:
+            config.parent.mkdir();config.write_text('[projects.'+json.dumps(str(alias))+']\ntrust_level="trusted"\n')
+        state=self.repo/'.ai-workbench/project-context/state.json';state.parent.mkdir(parents=True)
+        # Legacy v2 records lack optional owner/client fields; the exact key
+        # still proves only Codex ownership, never ownership of Trae's table.
+        state.write_text(json.dumps({'components':{'trust::codex::'+str(alias):{
+            'project_abs':str(alias),'trust_level':'trusted'}}}))
+        p=self.run_pc('--manage-trust','--apply');self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+        self.assertNotIn(str(alias),tomllib.loads(globals[0].read_text())['projects'])
+        self.assertEqual(tomllib.loads(globals[1].read_text())['projects'][str(alias)],{'trust_level':'trusted'})
+        p=self.run_pc('--manage-trust','--check');self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+    def test_alias_cleanup_refuses_conflicting_owner_or_client(self):
+        alias=self.root/'alias';alias.symlink_to(self.repo,target_is_directory=True)
+        g=self.home/'.codex/config.toml';g.parent.mkdir()
+        text='[projects.'+json.dumps(str(alias))+']\ntrust_level="trusted"\n'
+        text+='[projects.'+json.dumps(str(self.repo))+']\ntrust_level="trusted"\n'
+        state=self.repo/'.ai-workbench/project-context/state.json';state.parent.mkdir(parents=True)
+        for conflicting in [{'owner':'another-tool'},{'client':'trae'}]:
+            with self.subTest(conflicting=conflicting):
+                g.write_text(text)
+                record={'project_abs':str(alias),'trust_level':'trusted',**conflicting}
+                state.write_text(json.dumps({'components':{'trust::codex::'+str(alias):record}}))
+                p=self.run_pc('--profile','none','--manage-trust','--apply')
+                self.assertEqual(p.returncode,0,p.stdout+p.stderr);self.assertEqual(g.read_text(),text)
     def test_foreign_edit_force_cannot_takeover(self):
         self.assertEqual(self.run_pc('--apply').returncode,0)
         self.config().write_text(self.config().read_text().replace('PROJECT_PRIVATE_TEST','edited'))
@@ -117,6 +192,48 @@ class Boundaries(unittest.TestCase):
         g=self.home/'.codex/config.toml';g.write_text(g.read_text()+'\n[projects."/unrelated"]\ntrust_level="untrusted"\n')
         p=self.run_pc('--restore',b);self.assertEqual(p.returncode,0,p.stdout+p.stderr)
         self.assertIn('/unrelated',g.read_text());self.assertNotIn(str(self.repo),g.read_text())
+    def test_force_restore_saves_current_config_and_ledger_before_delete(self):
+        self.assertEqual(self.run_pc('--apply').returncode,0)
+        original=self.backups()[-1]
+        self.config().write_text(self.config().read_text().replace('PROJECT_PRIVATE_TEST','HUMAN_EDIT_ONLY_COPY'))
+        edited=self.config().read_bytes()
+        state=self.repo/'.ai-workbench/project-context/state.json';ledger=json.loads(state.read_text())
+        for flags in [(), ('--force','--dry-run')]:
+            p=self.run_pc('--restore',original.name,*flags)
+            self.assertEqual(p.returncode,0 if flags else 1,p.stdout+p.stderr)
+            self.assertEqual(self.config().read_bytes(),edited);self.assertEqual(len(self.backups()),1)
+        p=self.run_pc('--restore',original.name,'--force');self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+        self.assertFalse(self.config().exists());self.assertEqual(len(self.backups()),2)
+        recovery=self.backups()[-1];manifest=json.loads((recovery/'manifest.json').read_text())
+        entry=manifest['entries'][0]
+        self.assertEqual((recovery/entry['backup_file']).read_bytes(),edited)
+        self.assertEqual(entry['state_before'],ledger['components'])
+        p=self.run_pc('--restore',recovery.name);self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+        self.assertEqual(self.config().read_bytes(),edited);self.assertEqual(json.loads(state.read_text()),ledger)
+    def test_force_restore_saves_edited_trust_and_preserves_other_projects(self):
+        self.assertEqual(self.run_pc('--manage-trust','--apply').returncode,0)
+        original=self.backups()[-1]
+        g=self.home/'.codex/config.toml'
+        g.write_text(g.read_text().replace('"trusted"','"untrusted"')+'\n[projects."/unrelated"]\ntrust_level="trusted"\n')
+        edited=g.read_bytes();state=self.repo/'.ai-workbench/project-context/state.json';ledger=json.loads(state.read_text())
+        p=self.run_pc('--restore',original.name,'--force');self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+        self.assertNotIn(str(self.repo),g.read_text());self.assertIn('/unrelated',g.read_text())
+        recovery=self.backups()[-1];manifest=json.loads((recovery/'manifest.json').read_text())
+        trust=next(e for e in manifest['entries'] if e['kind']=='trust')
+        self.assertEqual((recovery/trust['backup_file']).read_bytes(),edited)
+        p=self.run_pc('--restore',recovery.name);self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+        import tomllib
+        self.assertEqual(tomllib.loads(g.read_text()),tomllib.loads(edited.decode()))
+        self.assertEqual(json.loads(state.read_text()),ledger)
+    def test_force_restore_backup_failure_preserves_current_file(self):
+        self.assertEqual(self.run_pc('--apply').returncode,0)
+        original=self.backups()[-1]
+        self.config().write_text(self.config().read_text().replace('PROJECT_PRIVATE_TEST','HUMAN_EDIT_ONLY_COPY'))
+        edited=self.config().read_bytes();state=self.repo/'.ai-workbench/project-context/state.json';ledger=state.read_bytes()
+        with patch.dict(os.environ,self.env),patch.object(pc.ProjectBackup,'save',side_effect=OSError('backup unavailable')):
+            with self.assertRaisesRegex(OSError,'backup unavailable'):
+                pc.main(['--repo',str(self.repo),'--restore',original.name,'--force'])
+        self.assertEqual(self.config().read_bytes(),edited);self.assertEqual(state.read_bytes(),ledger)
     def test_restore_manifest_path_escape_rejected(self):
         self.assertEqual(self.run_pc('--apply').returncode,0)
         b=self.backups()[-1];m=json.loads((b/'manifest.json').read_text());m['entries'][0]['original_path']=str(self.root/'victim.toml')
@@ -156,6 +273,39 @@ class Boundaries(unittest.TestCase):
         self.assertEqual(p.returncode,0,p.stderr)
         self.assertIn('/v1',entry.read_text())
         self.assertEqual(subprocess.run([str(entry),'--help'],env=self.env,capture_output=True).returncode,0)
+    def test_install_check_requires_present_executable_working_entry(self):
+        import install_project_context as installer_module
+        base=self.root/'releases';entry=self.root/'bin/context';installer=TOOLS/'install_project_context.py'
+        def run(action):
+            return subprocess.run([sys.executable,str(installer),action,'--root',str(base),'--entry',str(entry),
+                                   '--version','v1'],env=self.env,capture_output=True,text=True)
+        p=run('install');self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+        p=run('check');self.assertEqual(p.returncode,0,p.stdout+p.stderr)
+        launcher=entry.read_bytes();ledger=(base/'installation.json').read_bytes()
+        for broken in ['missing-entry','non-executable']:
+            with self.subTest(broken=broken):
+                entry.write_bytes(launcher);entry.chmod(0o755)
+                if broken=='missing-entry':entry.unlink()
+                else:entry.chmod(0o644)
+                p=run('check');self.assertNotEqual(p.returncode,0,p.stdout+p.stderr)
+                self.assertNotIn('"verified": true',p.stdout)
+                self.assertEqual((base/'installation.json').read_bytes(),ledger)
+        # Model an installed interpreter that later stops working/disappears.
+        # Keep the release, launcher and ledger identities consistent, so a
+        # payload/hash check alone cannot detect the runtime failure.
+        python=self.root/'retired-python';shutil.copyfile(shutil.which('false'),python);python.chmod(0o755)
+        manifest=base/'v1/release.json';release=json.loads(manifest.read_text());release['python']=str(python)
+        manifest.write_text(json.dumps(release,indent=2)+'\n')
+        entry.write_text(installer_module.launch_text(base/'v1',str(python),hashlib.sha256(manifest.read_bytes()).hexdigest()))
+        entry.chmod(0o755)
+        state=json.loads(ledger);state['versions']['v1']=release;state['entry_sha256']=hashlib.sha256(entry.read_bytes()).hexdigest()
+        (base/'installation.json').write_text(json.dumps(state));ledger=(base/'installation.json').read_bytes()
+        for broken in ['failed-launch','missing-python']:
+            with self.subTest(broken=broken):
+                if broken=='missing-python':python.unlink()
+                p=run('check');self.assertNotEqual(p.returncode,0,p.stdout+p.stderr)
+                self.assertNotIn('"verified": true',p.stdout)
+                self.assertEqual((base/'installation.json').read_bytes(),ledger)
     def test_actual_tracked_config_refused(self):
         subprocess.run(['git','init',str(self.repo)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True)
         self.config().parent.mkdir();self.config().write_text('team=true\n')

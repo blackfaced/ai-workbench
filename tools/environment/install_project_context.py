@@ -98,6 +98,9 @@ def main(argv=None):
             if m != ledger['versions'][a.version]: raise RuntimeError('release manifest differs from registered identity')
         if a.action=='check':
             if ledger['active']!=a.version: raise RuntimeError('version installed but not active')
+            if not entry.is_file(): raise RuntimeError('stable entry is missing')
+            if not os.access(entry,os.X_OK): raise RuntimeError('stable entry is not executable')
+            subprocess.run([str(entry),'--help'],stdout=subprocess.DEVNULL,check=True)
             print(json.dumps({'version':a.version,'root':str(root),'entry':str(entry),'verified':True}));return 0
         before_entry=entry.read_bytes() if entry.exists() else None
         before_state=state.read_bytes() if state.exists() else None
