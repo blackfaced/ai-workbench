@@ -1062,6 +1062,40 @@ def case_diagnostic_contract_gate():
           all(term in digest for term in ("通用双层诊断契约", "每次必须", "缺证据不得通过", "§7")))
 
 
+
+
+def case_development_feedback_loops():
+    print("\n[用例 16] 开发反馈双环：内循环 QA 只判不修、反馈路径就绪、外环运行核验与 WIP 边界")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    spec = read(os.path.join(repo, "skills", "deliver-spec", "SKILL.md"))
+    check("定义开发反馈双环且声明不恢复退役编排",
+          "## Development feedback loops" in spec
+          and "retired orchestrator" in spec)
+    check("内循环独立 QA 只判不修并复用身份合同闸门",
+          "independent QA" in spec
+          and "QA does not repair code, rewrite expectations, or weaken gates" in spec
+          and "identity/contract impact check" in spec)
+    check("反馈路径作为依赖扩展门禁，缺失环境只挡依赖",
+          "usable feedback path" in spec
+          and "blocks only dependent work" in spec)
+    check("反馈路径按变更表面裁剪，非HTTP不强制引入服务并按适用性闸门记N/A",
+          all(term in spec for term in
+              ("sized to the change's actual surface",
+               "Do not introduce an HTTP service",
+               "N/A with a reason under the same applicability gate as the identity/contract check",
+               "universal heavyweight process")))
+    check("失败切片不释放依赖，未运行检查不算通过",
+          "does not release dependent expansion" in spec
+          and "unrun checks, test names and a Ready log are not PASS" in spec)
+    check("外环对已识别候选做运行核验并按类路由",
+          "verify operating conditions on the identified candidate" in spec
+          and "no production deployment is implied" in spec)
+    check("WIP 预览是反馈不是验收且不豁免门禁",
+          "label it WIP" in spec
+          and "Preview access is feedback, not acceptance" in spec)
+    check("结构测试不证明运行时行为",
+          "do not prove these runtime behaviors" in spec)
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -1083,6 +1117,7 @@ def main():
     case_identity_review_gate()
     case_environment_identity_assumptions()
     case_diagnostic_contract_gate()
+    case_development_feedback_loops()
     pilot = subprocess.run([sys.executable, os.path.join(HERE, "legacy_delegation_pilot.py")],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "legacy-delegation-pilot.log"), pilot.stdout)
