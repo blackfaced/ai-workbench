@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project-owned additive context declaration",
+  "description": "Project-owned input, not runtime authority to modify user-level trust. Native entry paths are fixed and unsupported fields are refused.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {"type": "integer", "const": 1},
+    "trust": {"type": "boolean", "description": "Request only; --manage-trust is still required for a write."},
+    "instructions": {"type": "string", "minLength": 1},
+    "profiles": {"type": "object", "additionalProperties": {"type": "string", "minLength": 1}},
+    "rulesSource": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256"],
+      "properties": {"path": {"type": "string", "minLength": 1}, "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    },
+    "tracker": {
+      "type": "object", "additionalProperties": false,
+      "properties": {"kind": {"type": "string", "minLength": 1}, "workItemIdRequired": {"type": "boolean"}, "idPattern": {"type": "string", "minLength": 1}},
+      "allOf": [{"if": {"required": ["workItemIdRequired"], "properties": {"workItemIdRequired": {"const": true}}}, "then": {"required": ["idPattern"]}}]
+    },
+    "commitConvention": {"type": "object", "additionalProperties": false, "properties": {"carriesWorkItem": {"type": "boolean"}}},
+    "knowledgeSources": {
+      "type": "array",
+      "items": {"type": "object", "additionalProperties": false, "required": ["ref"], "properties": {"ref": {"type": "string", "minLength": 1}, "load": {"const": "on-demand"}}}
+    },
+    "lazyPolicy": {"const": "complete"},
+    "pack": {"type": "object", "additionalProperties": false, "properties": {"source": {"type": "string", "minLength": 1}, "revision": {"type": "string", "minLength": 1}}},
+    "additiveEntry": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "clients": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["codex", "trae"]}},
+        "files": {"type": "object", "additionalProperties": false, "properties": {"codex": {"const": ".codex/config.toml"}, "trae": {"const": ".trae/traecli.toml"}}},
+        "field": {"const": "developer_instructions"},
+        "markerPrefix": {"const": "setup-aiwb:"},
+        "tracked": {"type": "boolean", "description": "True is blocked unless ownership is separately reconciled; private instructions must not leak into team-tracked config."}
+      }
+    }
+  }
+}
