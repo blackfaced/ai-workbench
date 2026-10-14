@@ -279,8 +279,9 @@ def build_plan(repo, profile, pin, workenv, clients, worktrees, rules=None):
                 plan["blocked"].append((client, str(exc)))
                 continue
 
-            # Reconcile every managed id: desired -> write/update, undesired -> remove.
-            for mid in MANAGED_IDS:
+            # Remove owned old profiles before inserting their replacement so
+            # each intermediate file has at most one developer_instructions key.
+            for mid in sorted(MANAGED_IDS, key=lambda mid: mid == desired):
                 begin, end = markers_for(mid)
                 current = env.extract_block(existing, begin, end)
                 cid = "%s::%s::%s" % (os.path.relpath(checkout, repo), client, mid)
@@ -521,8 +522,7 @@ def build_trust_plan(repo, clients, worktrees, manage_trust):
     blocked. cleanups lists OLD alias tables (e.g. /home/... path) that point at
     the SAME realpath and were previously added by us — provenance-gated."""
     changes, blocked, cleanups = [], [], []
-    if not manage_trust:
-        return changes, blocked, cleanups
+    ledger = load_state(repo).get("components", {})
     try:
         checkouts = [_realpath(repo)] + [_realpath(w) for w in worktrees]
     except (OSError, RuntimeError) as exc:
@@ -548,15 +548,17 @@ def build_trust_plan(repo, clients, worktrees, manage_trust):
             elif status.startswith("blocked"):
                 blocked.append((cid, "existing trust_level %s"
                                 % status.split(":", 1)[1]))
-            else:
+            elif manage_trust:
                 changes.append((cid, {"kind": "trust", "client": client,
                                       "global": glob, "abs": ck}))
             # legacy alias cleanup: an old alias project table (different path)
             # that is trusted but NOT this realpath -> scoped removal candidate.
-            for alias in _alias_tables(before, ck):
-                cleanups.append((cid + "::cleanup", {
-                    "kind": "trust-cleanup", "client": client, "global": glob,
-                    "abs": ck, "alias": alias}))
+            if manage_trust:
+                for alias in _alias_tables(before, ck):
+                    if owns_trust_alias(ledger, client, alias):
+                        cleanups.append((cid + "::cleanup", {
+                            "kind": "trust-cleanup", "client": client, "global": glob,
+                            "abs": ck, "alias": alias}))
     return changes, blocked, cleanups
 
 
@@ -604,6 +606,16 @@ def execute_trust(ctx, spec):
     })
 
 
+def owns_trust_alias(components, client, alias):
+    # Legacy v2 records may omit owner/client; their exact component key is
+    # still client-scoped. Explicit contradictory metadata is never ownership.
+    record = components.get("trust::%s::%s" % (client, alias), {})
+    return (record.get("project_abs") == alias
+            and record.get("trust_level") == "trusted"
+            and record.get("client", client) == client
+            and record.get("owner", "setup-aiwb") == "setup-aiwb")
+
+
 def execute_trust_cleanup(ctx, spec):
     """Delete a legacy alias project table ONLY if we can prove from the ledger
     that THIS tool added it for this same realpath. Never touches user's
@@ -616,10 +628,7 @@ def execute_trust_cleanup(ctx, spec):
     observed = context_io.fingerprint(glob)
     before, nl = _read_for_edit(glob)
     # provenance gate: ledger must show we wrote the alias path
-    wrote_alias = any(
-        v.get("project_abs") == alias and v.get("trust_level") == "trusted"
-        for v in ctx.state.get("components", {}).values()
-    )
+    wrote_alias = owns_trust_alias(ctx.state.get("components", {}), spec["client"], alias)
     if not wrote_alias:
         return  # not ours -> leave user data untouched
     header = '[projects."%s"]' % alias
@@ -879,8 +888,8 @@ def main(argv):
         resources.extend(e["original_path"] for e in manifest["entries"])
     for ck in [args.repo] + args.worktree:
         resources.extend(os.path.join(os.path.realpath(ck), rel) for rel in CLIENTS.values())
-    if args.manage_trust or args.restore:
-        resources.extend(os.path.join(os.path.realpath(os.path.expanduser("~")), p[2:]) for p in GLOBAL_TRUST_CONFIG.values())
+    # Every invocation reads trust, even when no trust mutation is authorized.
+    resources.extend(os.path.join(os.path.realpath(os.path.expanduser("~")), p[2:]) for p in GLOBAL_TRUST_CONFIG.values())
     # Locks do not configure trust or native context. Keep through replanning
     # and state flush so different repos sharing a trust file cannot lose data.
     with context_io.locks(resources):

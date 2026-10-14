@@ -20,7 +20,7 @@ python3.11 tools/environment/install_project_context.py rollback --version <reta
 python3.11 tools/environment/install_project_context.py check --version <retained-version>
 ```
 
-An edited launcher, manifest or payload is refused. Old releases are not deleted. This rolls back the tool entry, not applied project configuration, external software or model sessions. The installer is also retained inside each release.
+An edited launcher, manifest or payload is refused. `check` also requires the stable entry to exist, be executable and successfully run `--help` with its pinned interpreter. Old releases are not deleted. This rolls back the tool entry, not applied project configuration, external software or model sessions. The installer is also retained inside each release.
 
 ## Project-owned rules
 
@@ -52,7 +52,7 @@ Default: no user-level trust mutation, even when a non-none profile or declarati
 
 Explicitly pass each new `--worktree <path>` before opening its native client; new worktrees do not inherit untracked config. The tool does not auto-scan Git worktrees. Validate real cwd and realpath trust independently. Keep native config and `.ai-workbench/` in the owning repo's local exclusion entries; installation does not change excludes. Git-tracked native files are refused to avoid writing private rules into team content.
 
-Project ledger/backups: `<project>/.ai-workbench/project-context/`. Restore with `setup-aiwb-context --repo <project> --restore <backup-name> [--dry-run]`. It validates snapshot identity, paths, hashes, current managed blocks and trust-table content. New trust snapshots preserve other projects; legacy whole-file snapshots keep their strict whole-file drift guard. `--force` is restore-only and never bypasses apply ownership guards. Reconcile conflicts before retrying; preserve backup material.
+Project ledger/backups: `<project>/.ai-workbench/project-context/`. Restore with `setup-aiwb-context --repo <project> --restore <backup-name> [--dry-run]`. It validates snapshot identity, paths, hashes, current managed blocks and trust-table content. New trust snapshots preserve other projects; legacy whole-file snapshots keep their strict whole-file drift guard. `--force` is restore-only and never bypasses apply ownership guards. Before a forced restore changes a target, it saves the current file and component ledger record in a new v2 snapshot and prints its `recovery backup` path. That snapshot can be restored with the same command; `--dry-run` creates no recovery snapshot. Reconcile conflicts before retrying; preserve backup material.
 
 TOML parser required on every write/check. Python 3.11+ supplies `tomllib`; older Python needs an explicitly provisioned `tomli`. No parser means refusal, not a placement-only PASS. Cooperating operations lock by ledger/native/trust resources; ordinary editor races are checked by a pre-replace digest but the final check/rename race cannot be eliminated portably. This is not a transaction across multiple files; an I/O failure can leave a backed-up applied prefix. Plans may create diagnostic lock files only, not project/trust configuration.
 
