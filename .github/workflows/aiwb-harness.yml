@@ -25,7 +25,14 @@ jobs:
       - name: Run environment regression tests
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-        run: python tools/environment/tests/regression.py
+        run: |
+          python tools/environment/tests/regression.py
+          if python -c 'import tomllib'; then
+            python tools/environment/tests/test_project_context_render.py
+            python tools/environment/tests/test_project_context_boundaries.py
+          else
+            python -c 'import sys; sys.path.insert(0,"tools/environment"); import project_context; assert project_context.load_toml_parser() is None'
+          fi
 
   portability:
     name: portability (${{ matrix.os }}, Python ${{ matrix.python }})
@@ -51,4 +58,11 @@ jobs:
       - name: Run environment regression tests
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-        run: python tools/environment/tests/regression.py
+        run: |
+          python tools/environment/tests/regression.py
+          if python -c 'import tomllib'; then
+            python tools/environment/tests/test_project_context_render.py
+            python tools/environment/tests/test_project_context_boundaries.py
+          else
+            python -c 'import sys; sys.path.insert(0,"tools/environment"); import project_context; assert project_context.load_toml_parser() is None'
+          fi
