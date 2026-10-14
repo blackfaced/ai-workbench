@@ -103,7 +103,7 @@ Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
   合并成 1 组（matcher `startup|resume|clear|compact`，与 Codex 侧一致）。
 - **项目工作规则**由 `setup-aiwb` 按目标项目建立和验证，团队 `AGENTS.md` 与私有追加配置分别保留归属；
   环境安装器只分发 Skill，不向全局会话注入公司流程。旧全局 AGENTS/L1 hook 的退役与恢复由原分发方
-  downstream 负责，本仓不增加第二个配置写入器。见 [ADR 0013](../../decisions/0013-project-owned-agent-context.md)。
+  downstream 负责；项目配置工具消费项目输入而不接管这些全局规则。见 [ADR 0013](../../decisions/0013-project-owned-agent-context.md) 和 [固定版本项目配置入口](project-context-installation.md)。
 - **VibeBuddy / Trae CLI / Kimi Code / ChatGPT 桌面应用**自己安装的东西：只记录归属、检测冲突。
 
 ## 备份与恢复
