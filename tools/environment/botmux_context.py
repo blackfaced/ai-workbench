@@ -42,12 +42,12 @@ def run(command, cwd):
     if r.returncode:
         # Renderer diagnostics can contain private instruction text. Keep them
         # out of both the TUI and receipt; identify the failed phase instead.
-        phase = 'native prompt-input' if command[1:3] == ['debug','prompt-input'] else ('check' if '--check' in command else 'apply')
+        phase = 'native prompt-input' if any(command[i:i+2] == ['debug','prompt-input'] for i in range(len(command)-1)) else ('check' if '--check' in command else 'apply')
         raise RuntimeError('preflight command failed: %s %s (exit %d)' % (Path(command[0]).name, phase, r.returncode))
     return r.stdout
 
 
-def prepare(registry_path, cwd):
+def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cwd=None, client_options=None):
     registry_hash = digest(registry_path)
     registry = read_json(registry_path)
     if registry.get('version') != 1:
@@ -140,8 +140,8 @@ def prepare(registry_path, cwd):
         decl = read_json(declaration)
         checks = {}
         for client, executable in registry['clients'].items():
-            raw = run([executable, 'debug', 'prompt-input',
-                       'Read-only startup context verification.'], target)
+            raw = run([executable, *(client_options or {}).get(client, []), 'debug', 'prompt-input',
+                       'Read-only startup context verification.'], native_cwd or target)
             messages = json.loads(raw)
             developer = json.dumps([x for x in messages if x.get('role') == 'developer'], ensure_ascii=False)
             user = json.dumps([x for x in messages if x.get('role') == 'user'], ensure_ascii=False)
@@ -159,7 +159,10 @@ def prepare(registry_path, cwd):
                    'target_head':git(target,'rev-parse','HEAD'), 'pin':entry['pin'],
                    'registry_sha256':digest(registry_path), 'declaration_sha256':digest(declaration),
                    'checks':checks, 'native_companions': {str(dest.relative_to(target)): {'sha256':digest(dest), 'source':str(src), 'created':current is None} for src,dest,current in copies}}
-        output = target / '.ai-workbench/project-context/botmux-startup.json'
+        if receipt_name not in ['botmux-startup.json', 'cli-startup.json']:
+            raise RuntimeError('unsupported receipt name')
+        receipt['native_cwd'] = str(native_cwd or target)
+        output = target / '.ai-workbench/project-context' / receipt_name
         context_io.atomic_write(output, json.dumps(receipt, indent=2)+'\n')
         return receipt
 

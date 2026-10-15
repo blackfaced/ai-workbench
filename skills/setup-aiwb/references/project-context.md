@@ -44,6 +44,8 @@ Use the destination's real path when verifying context and trust. Validate a new
 
 For Botmux, retain role identity and transport configuration while taking engineering instructions from the target project. Inspect installed `botmux --help` and the relevant subcommand. Create the session with the prepared project/worktree as its working directory **before** the native client starts. A later prompt telling an already-started session to `cd` does not reload startup instructions. In versions exposing it, `session start --headless --bot ... --working-dir ... --prompt-file ... --json` supplies that directory; inspect the actual session metadata afterward. Do not assume `dispatch --bot-app` accepts `--repo`. Read the existing Botmux workflow when changing a project's normal launch path; avoid duplicating its orchestration in setup or roles.
 
+For explicitly authorized direct terminal startup, follow [direct terminal startup](botmux-startup.md#direct-terminal-startup), reusing the same preparation logic and verifying the installed CLI argument contract. Preserve native installer entries and record which shell entry actually resolves the wrappers.
+
 For an explicitly authorized automatic Botmux startup, follow the [local startup gate](botmux-startup.md). Register project sources and verified runtime scope, preserve existing bot settings, and run provisioning plus native loading checks synchronously before client exec. Async `session.start` hooks cannot establish this order. A missing source, changed reviewed implementation or failed check blocks that start and calls for setup refresh.
 
 ## Verify the effective context
