@@ -21,7 +21,6 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 - [setup-aiwb](setup-aiwb/SKILL.md) — configure and verify project context for clients and worktrees; maintain integration-test guides, including deliver-spec's existing setup path.
 
 - [deliver-spec](deliver-spec/SKILL.md) — plan, implement, review and verify a spec; [installation and usage](../workflows/implement-batch.md).
-- [implement-batch](implement-batch/SKILL.md) — compatible legacy entry delegating to deliver-spec; existing invocation and resource paths remain available.
 - [test-design](test-design/SKILL.md) — 独立测试设计与质量审查；从需求、旧合同和真实入口补齐断言、数据与证据边界。
 - [self-test-report](self-test-report/SKILL.md) — 自测报告编写、更新与证据审查；独立使用或由 deliver-spec 引用，复用同一验收记录。
 

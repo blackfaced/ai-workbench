@@ -1,6 +1,6 @@
 interface:
-  display_name: "Implement Batch (compatibility)"
-  short_description: "兼容入口：沿用已有授权与记录，按 deliver-spec 交付"
-  default_prompt: "使用 $implement-batch 实施这个 spec 父 Issue，先核对已有实现，再展示依赖图、批次和模型安排供我确认。"
+  display_name: "Implement Batch (retired)"
+  short_description: "已退役的文档占位；请显式选择 deliver-spec"
+  default_prompt: "不要执行已退役的 $implement-batch；请显式选择 $deliver-spec，保留已有授权、计划和验收记录。"
 policy:
   allow_implicit_invocation: false

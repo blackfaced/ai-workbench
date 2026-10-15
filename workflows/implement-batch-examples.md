@@ -1,4 +1,4 @@
-# Implement Batch — synthetic walkthroughs
+# Deliver Spec — synthetic walkthroughs
 
 Domain: coding
 
@@ -62,7 +62,7 @@ Recovery replay: reload C2, P2 and the evidence, verify actual Git/session state
 
 ## 3. Behavior coverage counterexamples
 
-Apply the [case outline](../skills/implement-batch/references/spec-acceptance.md#behavior-sequence-coverage) to each fixture. The “required addition” is the resulting case design, not an observed passing test.
+Apply the [case outline](../skills/deliver-spec/references/spec-acceptance.md#behavior-sequence-coverage) to each fixture. The “required addition” is the resulting case design, not an observed passing test.
 
 | Fixture / old evidence | Invariant and required action sequence | Observable assertion / evidence boundary | Walkthrough outcome |
 | --- | --- | --- | --- |
