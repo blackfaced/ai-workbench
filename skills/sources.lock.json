@@ -75,22 +75,15 @@
         "codex": "~/.agents/skills/deliver-spec",
         "trae": "~/.agents/skills/deliver-spec"
       },
-      "note": "第一方规范入口，按规格交付；使用客户端原生子 agent 与 Git worktree。implement-batch 保留为薄兼容入口。格式与安装验证不等于行为验收。"
+      "note": "第一方规范入口，按规格交付；使用客户端原生子 agent 与 Git worktree。格式与安装验证不等于行为验收。"
     },
     {
       "name": "implement-batch",
       "source": "repo:skills/implement-batch",
       "revision": "in-repo",
-      "verified": true,
-      "clients": [
-        "codex",
-        "trae"
-      ],
-      "install_paths": {
-        "codex": "~/.agents/skills/implement-batch",
-        "trae": "~/.agents/skills/implement-batch"
-      },
-      "note": "deliver-spec 的薄兼容入口；旧名定向安装同时选择规范组件，旧资源从 deliver-spec 同一真源分发。保留在途授权、检查点和验收记录。"
+      "verified": false,
+      "clients": [],
+      "note": "已退役；deliver-spec 为唯一第一方交付入口。当前 Profile 不登记旧名，默认及定向安装均不再分发；本仓仅保留历史文档链接。客户端刷新及旧副本清理由独立授权操作处理，不由此登记证明。"
     },
     {
       "name": "setup-aiwb",
@@ -105,7 +98,7 @@
         "codex": "~/.agents/skills/setup-aiwb",
         "trae": "~/.agents/skills/setup-aiwb"
       },
-      "note": "第一方仓库集成测试手册 Skill，可供 deliver-spec（兼容 implement-batch） 使用；不恢复旧 aiwb CLI。安装验证不代表目标项目环境已验证。"
+      "note": "第一方仓库集成测试手册 Skill，可供 deliver-spec 使用；不恢复旧 aiwb CLI。安装验证不代表目标项目环境已验证。"
     },
     {
       "name": "reflect-bug",
@@ -204,6 +197,17 @@
       "observed_version": "2.6",
       "evidence_date": "2026-10-13",
       "note": "固定 commit 的隔离源码试用；未常驻安装，未验证客户端安装渠道和原生发现。上游拥有正文，本仓仅登记可选使用入口，不纳入 profile apply。"
+    },
+    {
+      "name": "anatomy",
+      "source": "https://github.com/wheresryan22/anatomy",
+      "revision": "unpinned",
+      "verified": false,
+      "clients": [
+        "DoubaoWork(.user_skills)"
+      ],
+      "evidence_date": "2026-10-15",
+      "note": "手动复制到 DoubaoWork .user_skills/anatomy（12M，含 kit/examples/references）；Node v22.23.2 满足 20.10+。SKILL.md frontmatter 完整；豆包工作客户端原生发现与手动勾选启用未验证。上游拥有正文，本仓不纳管升级。"
     }
   ]
 }
