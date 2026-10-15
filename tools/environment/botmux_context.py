@@ -38,7 +38,7 @@ def pinned(path, sha):
 
 
 def run(command, cwd):
-    r = subprocess.run(command, cwd=cwd, capture_output=True, text=True, timeout=60)
+    r = subprocess.run(command, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
     if r.returncode:
         # Renderer diagnostics can contain private instruction text. Keep them
         # out of both the TUI and receipt; identify the failed phase instead.

@@ -18,15 +18,20 @@ class Direct(Startup):
         super().setUp()
         old=self.native.read_text()
         body=old.split('\n',1)[1]
-        self.native.write_text('#!'+sys.executable+'\nimport sys,os,json\nfrom pathlib import Path\nif "debug" not in sys.argv:\n Path(os.environ["CLI_RECORD"]).write_text(json.dumps({"args":sys.argv[1:],"cwd":os.getcwd()})); sys.exit(23)\n'+body)
+        self.native.write_text('#!'+sys.executable+'\nimport sys,os,json\nfrom pathlib import Path\nif "debug" not in sys.argv:\n Path(os.environ["CLI_RECORD"]).write_text(json.dumps({"args":sys.argv[1:],"cwd":os.getcwd(),"stdin":sys.stdin.read()})); sys.exit(23)\n'+'sys.stdin.read()\n'+body)
         self.env['CLI_RECORD']=str(self.root/'native-record.json')
-    def direct(self,*args,cwd=None):
-        return subprocess.run([sys.executable,str(TOOLS/'cli_context.py'),'--registry',str(self.registry),'--client','codex','--',*args],cwd=cwd or self.wt,env=self.env,text=True,capture_output=True)
+    def direct(self,*args,cwd=None,input=None):
+        return subprocess.run([sys.executable,str(TOOLS/'cli_context.py'),'--registry',str(self.registry),'--client','codex','--',*args],cwd=cwd or self.wt,env=self.env,text=True,capture_output=True,input=input)
     def test_direct_fresh_worktree_before_exec_and_original_arguments(self):
         args=['exec','--model','a model','literal --cd /other $ ` quote "']
         r=self.direct(*args);self.assertEqual(r.returncode,23,r.stderr)
-        self.assertEqual(json.loads((self.root/'native-record.json').read_text()),{'args':args,'cwd':str(self.wt)})
+        self.assertEqual(json.loads((self.root/'native-record.json').read_text()),{'args':args,'cwd':str(self.wt),'stdin':''})
         self.assertEqual(json.loads((self.wt/'.ai-workbench/project-context/cli-startup.json').read_text())['status'],'PASS')
+    def test_interactive_and_piped_stdin_survive_preflight(self):
+        for args in [[],['exec','-']]:
+            r=self.direct(*args,input='private piped prompt with $ and `\n')
+            self.assertEqual(r.returncode,23,r.stderr)
+            self.assertEqual(json.loads((self.root/'native-record.json').read_text())['stdin'],'private piped prompt with $ and `\n')
     def test_cd_variants_and_prompt_boundary(self):
         for option in [['-C',str(self.wt)],['--cd='+str(self.wt)],['-C'+str(self.wt)]]:
             with self.subTest(option=option):
