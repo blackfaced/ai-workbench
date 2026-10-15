@@ -55,6 +55,24 @@ class Startup(unittest.TestCase):
     def test_bash_argv_is_preserved_after_preflight(self):
         value='space quote " dollar $ backtick `';r=self.run_gate('--shell','/bin/bash','--','-i','-c','printf "%s" "$2" > "$1/argv.txt"','_',str(self.wt),value)
         self.assertEqual(r.returncode,0,r.stderr);self.assertEqual((self.wt/'argv.txt').read_text(),value)
+    def native_companion(self):
+        policy=self.root/'native-policy';policy.write_text('skip selected legacy project resources\n')
+        data=json.loads(self.registry.read_text());entry=next(iter(data['projects'].values()));entry['native_companions']={'.trae/legacy-state':{'source':str(policy),'sha256':hashlib.sha256(policy.read_bytes()).hexdigest()}}
+        self.registry.write_text(json.dumps(data));f=self.repo/'.git/info/exclude';f.write_text(f.read_text()+'/.trae/legacy-state\n');return policy
+    def test_native_companion_copied_without_overwriting_foreign_state(self):
+        policy=self.native_companion();r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr);target=self.wt/'.trae/legacy-state';self.assertEqual(target.read_bytes(),policy.read_bytes())
+        target.write_text('user state');r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78);self.assertEqual(target.read_text(),'user state')
+    def test_shell_failure_has_durable_sanitized_reason(self):
+        policy=self.native_companion();policy.unlink();r=self.run_gate('--shell','/bin/bash','--','-i','-c','touch "$1/SHOULD_NOT_EXIST"','_',str(self.wt),'unused');self.assertEqual(r.returncode,78)
+        record=json.loads(next((self.root/'failures').glob('*.json')).read_text());self.assertEqual(record['error_code'],'AIWB_CONTEXT_STARTUP_BLOCKED');self.assertNotIn('SHOULD_NOT_EXIST',json.dumps(record));self.assertFalse((self.wt/'SHOULD_NOT_EXIST').exists())
+    def test_legacy_tool_release_manifest_remains_verifiable(self):
+        import importlib.util,shutil
+        sys.path.insert(0,str(TOOLS))
+        spec=importlib.util.spec_from_file_location('startup_installer',TOOLS/'install_project_context.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        legacy=self.root/'legacy-release';legacy.mkdir();names=set(module.FILES)-{'botmux_context.py'}
+        for name in names:shutil.copy2(TOOLS/name,legacy/name)
+        (legacy/'release.json').write_text(json.dumps({'files':{name:hashlib.sha256((legacy/name).read_bytes()).hexdigest() for name in names}}))
+        self.assertEqual(set(module.verify(legacy)['files']),names)
     def test_unknown_launch_contract_blocks_shell(self):
         r=self.run_gate('--shell','/bin/bash','--','-c','touch SHOULD_NOT_EXIST');self.assertEqual(r.returncode,78)
 
