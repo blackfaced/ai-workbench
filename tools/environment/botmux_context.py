@@ -42,8 +42,8 @@ def run(command, cwd):
     if r.returncode:
         # Renderer diagnostics can contain private instruction text. Keep them
         # out of both the TUI and receipt; identify the failed phase instead.
-        raise RuntimeError('preflight command failed: ' + Path(command[0]).name
-                           + (' check' if '--check' in command else ' apply'))
+        phase = 'native prompt-input' if command[1:3] == ['debug','prompt-input'] else ('check' if '--check' in command else 'apply')
+        raise RuntimeError('preflight command failed: %s %s (exit %d)' % (Path(command[0]).name, phase, r.returncode))
     return r.stdout
 
 
@@ -107,6 +107,23 @@ def prepare(registry_path, cwd):
         for rel in ['.codex/config.toml', '.trae/traecli.toml']:
             if subprocess.run(['git','-C',str(target),'check-ignore','-q',rel]).returncode:
                 raise RuntimeError('private native path is not locally excluded')
+        copies = []
+        for rel, artifact in entry.get('native_companions', {}).items():
+            if artifact.get('worktrees_only') is True and target == source:
+                continue
+            parts = Path(rel).parts
+            if len(parts) < 2 or parts[0] not in ['.trae','.codex'] or '..' in parts or rel in ['.codex/config.toml','.trae/traecli.toml']:
+                raise RuntimeError('invalid native companion target')
+            src, dest = Path(artifact['source']), target / rel
+            pinned(src, artifact['sha256'])
+            if subprocess.run(['git','-C',str(target),'ls-files','--error-unmatch','--',rel], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                raise RuntimeError('native companion is Git-tracked: ' + rel)
+            if subprocess.run(['git','-C',str(target),'check-ignore','-q',rel]).returncode:
+                raise RuntimeError('native companion is not locally excluded: ' + rel)
+            current = digest(dest)
+            if current is not None and current != artifact['sha256']:
+                raise RuntimeError('native companion conflict; preserve existing file: ' + rel)
+            copies.append((src, dest, current))
         command = [str(installer), '--repo', str(source), '--declaration',
                    str(declaration), '--profile', 'project', '--pin', entry['pin'],
                    '--workenv', entry['workenv']]
@@ -117,6 +134,9 @@ def prepare(registry_path, cwd):
         command += ['--manage-trust']
         run(command + ['--apply'], source)
         run(command + ['--check'], source)
+        for src, dest, current in copies:
+            if current is None:
+                context_io.atomic_write(dest, src.read_bytes(), expected=None)
         decl = read_json(declaration)
         checks = {}
         for client, executable in registry['clients'].items():
@@ -138,7 +158,7 @@ def prepare(registry_path, cwd):
                    'cwd':str(target), 'source':str(source), 'common_dir':common,
                    'target_head':git(target,'rev-parse','HEAD'), 'pin':entry['pin'],
                    'registry_sha256':digest(registry_path), 'declaration_sha256':digest(declaration),
-                   'checks':checks}
+                   'checks':checks, 'native_companions': {str(dest.relative_to(target)): {'sha256':digest(dest), 'source':str(src), 'created':current is None} for src,dest,current in copies}}
         output = target / '.ai-workbench/project-context/botmux-startup.json'
         context_io.atomic_write(output, json.dumps(receipt, indent=2)+'\n')
         return receipt
@@ -160,7 +180,19 @@ def main(argv=None):
     # incoming shell commands merely to discover a cwd or environment.
     if not a.shell or Path(a.shell).name != 'bash' or args[:2] != ['-i','-c'] or len(args)<6 or args[3]!='_':
         raise RuntimeError('unsupported Botmux bash launch arguments')
-    prepare(a.registry, args[4])
+    try:
+        prepare(a.registry, args[4])
+    except (RuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+        # Tmux can discard a failed pane before its stderr is read. Retain a
+        # bounded, owner-local refusal record, never CLI args or prompt/env data.
+        try:
+            root = Path(a.registry).parent
+            context_io.guard(root)
+            key = hashlib.sha256(str(Path(args[4]).resolve()).encode()).hexdigest()
+            context_io.atomic_write(root/'failures'/(key+'.json'), json.dumps({'status':'BLOCKED', 'error_code':'AIWB_CONTEXT_STARTUP_BLOCKED', 'cwd':str(Path(args[4]).resolve()), 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'reason':str(exc)}, indent=2)+'\n')
+        except (RuntimeError, OSError):
+            pass
+        raise
     os.execv(a.shell, [a.shell] + args)
 
 
