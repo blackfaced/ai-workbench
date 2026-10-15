@@ -32,6 +32,23 @@ class Direct(Startup):
             r=self.direct(*args,input='private piped prompt with $ and `\n')
             self.assertEqual(r.returncode,23,r.stderr)
             self.assertEqual(json.loads((self.root/'native-record.json').read_text())['stdin'],'private piped prompt with $ and `\n')
+    def test_excluded_private_guidance_provision_and_conflict(self):
+        self.git(self.repo,'rm','--cached','AGENTS.md')
+        self.git(self.repo,'commit','-qm','private guidance')
+        self.git(self.repo,'worktree','remove',str(self.wt))
+        self.git(self.repo,'worktree','add','-q','--detach',str(self.wt),'HEAD')
+        excludes=self.repo/'.git/info/exclude';excludes.write_text(excludes.read_text()+'/AGENTS.md\n')
+        self.assertFalse((self.wt/'AGENTS.md').exists())
+        r=self.direct('exec','prompt');self.assertEqual(r.returncode,78)
+        registry=json.loads(self.registry.read_text());next(iter(registry['projects'].values()))['private_team_guidance']=True
+        self.registry.write_text(json.dumps(registry))
+        r=self.direct('exec','prompt');self.assertEqual(r.returncode,23,r.stderr)
+        self.assertEqual((self.wt/'AGENTS.md').read_bytes(),(self.repo/'AGENTS.md').read_bytes())
+        (self.wt/'AGENTS.md').write_text('foreign guidance')
+        (self.root/'native-record.json').unlink()
+        r=self.direct('exec','prompt');self.assertEqual(r.returncode,78)
+        self.assertEqual((self.wt/'AGENTS.md').read_text(),'foreign guidance')
+        self.assertFalse((self.root/'native-record.json').exists())
     def test_cd_variants_and_prompt_boundary(self):
         for option in [['-C',str(self.wt)],['--cd='+str(self.wt)],['-C'+str(self.wt)]]:
             with self.subTest(option=option):

@@ -93,8 +93,20 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                         raise RuntimeError('analysis requires refresh: ' + rel)
                 elif digest(p) != sha:
                     raise RuntimeError('analysis requires refresh: ' + rel)
-        team_hash = digest(target / 'AGENTS.md')
-        team = (target / 'AGENTS.md').read_text().strip()
+        team_path = target / 'AGENTS.md'
+        team_copy = False
+        if entry.get('private_team_guidance') is True:
+            # Some owners maintain locally excluded AGENTS.md. Provision only
+            # this explicitly registered artifact, never a tracked team file.
+            pinned(source / 'AGENTS.md', entry['team_sha256'])
+            for root in {source, target}:
+                if subprocess.run(['git','-C',str(root),'ls-files','--error-unmatch','--','AGENTS.md'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                    raise RuntimeError('private guidance is Git-tracked')
+                if subprocess.run(['git','-C',str(root),'check-ignore','-q','AGENTS.md']).returncode:
+                    raise RuntimeError('private guidance is not locally excluded')
+            team_copy = digest(team_path) is None
+        team_hash = entry['team_sha256'] if team_copy else digest(team_path)
+        team = ((source / 'AGENTS.md') if team_copy else team_path).read_text().strip()
         if not team or team_hash != entry['team_sha256']:
             raise RuntimeError('team guidance requires refresh')
         for client, executable in registry['clients'].items():
@@ -134,6 +146,8 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
         command += ['--manage-trust']
         run(command + ['--apply'], source)
         run(command + ['--check'], source)
+        if team_copy:
+            context_io.atomic_write(team_path, (source / 'AGENTS.md').read_bytes(), expected=None)
         for src, dest, current in copies:
             if current is None:
                 context_io.atomic_write(dest, src.read_bytes(), expected=None)
@@ -162,6 +176,7 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
         if receipt_name not in ['botmux-startup.json', 'cli-startup.json']:
             raise RuntimeError('unsupported receipt name')
         receipt['native_cwd'] = str(native_cwd or target)
+        receipt['private_guidance_created'] = team_copy
         output = target / '.ai-workbench/project-context' / receipt_name
         context_io.atomic_write(output, json.dumps(receipt, indent=2)+'\n')
         return receipt
