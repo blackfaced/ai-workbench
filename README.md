@@ -8,6 +8,8 @@ The current verified scope is maintenance of the **work Mac, home Mac mini, and 
 
 Requires Git, Python 3.9 or newer, and a POSIX shell. Run from this checkout:
 
+For new Skill adoption, follow the [project-scoped installation policy](skills/README.md#installation-policy): AIWB prepares reusable content and fixed source versions; your workspace manager owns project activation. The commands below describe the existing environment maintenance tool. Unfiltered `--apply` still installs profile-selected Skills into user-global directories; it is not the recommended project activation path. Limit unrelated maintenance to explicitly selected components with `env.py --only` as documented in the environment guide.
+
 ```sh
 sh tools/environment/bootstrap.sh --profile work-mac          # read-only preview
 sh tools/environment/bootstrap.sh --profile work-mac --apply  # apply eligible changes
