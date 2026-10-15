@@ -11,7 +11,7 @@ import sys
 import tempfile
 import context_io
 
-FILES=('project_context.py','env.py','context_io.py','context_declaration.py','context_restore.py','install_project_context.py')
+FILES=('project_context.py','env.py','context_io.py','context_declaration.py','context_restore.py','botmux_context.py','install_project_context.py')
 HERE=Path(__file__).resolve().parent
 
 
