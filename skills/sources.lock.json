@@ -186,6 +186,17 @@
       "observed_version": "2.6",
       "evidence_date": "2026-10-13",
       "note": "固定 commit 的隔离源码试用；未常驻安装，未验证客户端安装渠道和原生发现。上游拥有正文，本仓仅登记可选使用入口，不纳入 profile apply。"
+    },
+    {
+      "name": "anatomy",
+      "source": "https://github.com/wheresryan22/anatomy",
+      "revision": "unpinned",
+      "verified": false,
+      "clients": [
+        "DoubaoWork(.user_skills)"
+      ],
+      "evidence_date": "2026-10-15",
+      "note": "手动复制到 DoubaoWork .user_skills/anatomy（12M，含 kit/examples/references）；Node v22.23.2 满足 20.10+。SKILL.md frontmatter 完整；豆包工作客户端原生发现与手动勾选启用未验证。上游拥有正文，本仓不纳管升级。"
     }
   ]
 }
