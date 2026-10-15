@@ -11,7 +11,7 @@ import sys
 import tempfile
 import context_io
 
-FILES=('project_context.py','env.py','context_io.py','context_declaration.py','context_restore.py','install_project_context.py')
+FILES=('project_context.py','env.py','context_io.py','context_declaration.py','context_restore.py','botmux_context.py','cli_context.py','install_project_context.py')
 HERE=Path(__file__).resolve().parent
 
 
@@ -22,7 +22,10 @@ def verify(root):
     context_io.guard(root)
     context_io.guard(root/'release.json')
     m=json.loads((root/'release.json').read_text())
-    if set(m['files']) != set(FILES): raise RuntimeError('release file set mismatch')
+    # Retained pre-startup-gate releases have the original six-file payload.
+    # Their registered manifest and every payload hash still remain mandatory.
+    if set(m['files']) not in (set(FILES), set(FILES)-{'cli_context.py'}, set(FILES)-{'botmux_context.py','cli_context.py'}):
+        raise RuntimeError('release file set mismatch')
     for name,sha in m['files'].items():
         context_io.guard(root/name)
         if digest(root/name)!=sha: raise RuntimeError('installed payload drift: '+name)

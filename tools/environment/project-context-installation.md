@@ -56,6 +56,14 @@ Project ledger/backups: `<project>/.ai-workbench/project-context/`. Restore with
 
 TOML parser required on every write/check. Python 3.11+ supplies `tomllib`; older Python needs an explicitly provisioned `tomli`. No parser means refusal, not a placement-only PASS. Cooperating operations lock by ledger/native/trust resources; ordinary editor races are checked by a pre-replace digest but the final check/rename race cannot be eliminated portably. This is not a transaction across multiple files; an I/O failure can leave a backed-up applied prefix. Plans may create diagnostic lock files only, not project/trust configuration.
 
+## Authorized Botmux startup integration
+
+The installed release also carries `botmux_context.py`. Its opt-in [startup gate](../../skills/setup-aiwb/references/botmux-startup.md) uses Botmux's existing local launch-shell slot to call this renderer before native client exec. Project/trust writes remain limited to registered Git common-dir identities and the exact selected checkout. It does not install a Git hook or create an agent loop.
+
+## Authorized direct CLI startup
+
+The installed `cli_context.py` reuses the same preparation function through an owner-managed PATH wrapper for `codex` and `traex`. See [direct terminal startup](../../skills/setup-aiwb/references/botmux-startup.md#direct-terminal-startup) for argument scope, native update preservation, shell ownership, verification and rollback. Native installer symlinks remain intact. Existing worktrees reuse reviewed project facts and undergo configuration/trust/loading checks; automatic setup does not rerun project analysis.
+
 ## Verification
 
 ```sh

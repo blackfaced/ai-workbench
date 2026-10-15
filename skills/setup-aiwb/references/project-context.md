@@ -10,6 +10,8 @@ The resulting context should identify the project's purpose and boundaries, auth
 
 When adopting a reusable instruction pack, select the applicable rules from its authoritative source and record its revision and owner with the project setup. Preserve the source's maintenance boundary: project-specific choices remain project-owned, and generated content retains its source reference. Do not turn a selected pack or project convention into a new global default.
 
+For runtime code, analyze and maintain [project error and observability conventions](error-observability.md) before finalizing its context: identify verified error adapters, diagnostic/measurement reuse points, consumer behavior and regression methods. Put a conditional pointer to the project-owned result in the effective context. For a configuration-only repair, reuse still-valid analysis or record why it is unaffected; do not perform unrelated code cleanup.
+
 ## Choose a native entry point
 
 | Situation | Entry point |
@@ -41,6 +43,10 @@ Untracked project configuration does not follow `git worktree add`. Prepare each
 Use the destination's real path when verifying context and trust. Validate a newly created worktree independently; do not infer that trust or configuration discovered in the main checkout will be inherited. Document the necessary provisioning step in the project's existing launch/worktree guidance. Other machines need their own authorized provisioning and verification; a local absolute symlink is not a portable setup.
 
 For Botmux, retain role identity and transport configuration while taking engineering instructions from the target project. Inspect installed `botmux --help` and the relevant subcommand. Create the session with the prepared project/worktree as its working directory **before** the native client starts. A later prompt telling an already-started session to `cd` does not reload startup instructions. In versions exposing it, `session start --headless --bot ... --working-dir ... --prompt-file ... --json` supplies that directory; inspect the actual session metadata afterward. Do not assume `dispatch --bot-app` accepts `--repo`. Read the existing Botmux workflow when changing a project's normal launch path; avoid duplicating its orchestration in setup or roles.
+
+For explicitly authorized direct terminal startup, follow [direct terminal startup](botmux-startup.md#direct-terminal-startup), reusing the same preparation logic and verifying the installed CLI argument contract. Preserve native installer entries and record which shell entry actually resolves the wrappers.
+
+For an explicitly authorized automatic Botmux startup, follow the [local startup gate](botmux-startup.md). Register project sources and verified runtime scope, preserve existing bot settings, and run provisioning plus native loading checks synchronously before client exec. Async `session.start` hooks cannot establish this order. A missing source, changed reviewed implementation or failed check blocks that start and calls for setup refresh.
 
 ## Verify the effective context
 
