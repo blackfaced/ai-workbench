@@ -167,7 +167,7 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                 'team_guidance': json.dumps(team, ensure_ascii=False)[1:-1] in user,
             }
             if not all(checks[client].values()):
-                raise RuntimeError('native context loading failed: ' + client)
+                raise RuntimeError('native context loading failed: ' + client + ' (' + ', '.join(k for k,v in checks[client].items() if not v) + ')')
         receipt = {'status':'PASS', 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
                    'cwd':str(target), 'source':str(source), 'common_dir':common,
                    'target_head':git(target,'rev-parse','HEAD'), 'pin':entry['pin'],
