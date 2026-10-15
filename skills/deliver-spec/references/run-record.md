@@ -14,7 +14,7 @@ The parent is the sole record writer. Include the attempt ID and required return
 
 ## Attempts
 
-One row per actual implementation/repair, review, integration, check group or final acceptance attempt; not per tool call. Give attempts stable IDs, batch/Issue scope and parent attempt IDs where work is nested. Record both requested and observed effective model/effort; inherited or unavailable identity is `unknown`, not the requested value.
+One row per actual implementation/repair, review, integration, check group or final acceptance attempt; not per tool call. Give attempts stable IDs, batch/Issue scope and parent attempt IDs where work is nested. Record both requested and observed effective model/effort; inherited or unavailable identity is `unknown`, not the requested value. For worker attempts, also record requested → effective feedback cadence and the cadence reason (default, run-record evidence reference, or escalation after a failed `final-gate`).
 
 | Attempt / parent | Batch / Issues | Role / review stage / round | Client task ID; requested → effective model/effort | Start / end (ISO 8601 with timezone) | Candidate base → tip or complete patch | Outcome / reason | Evidence / usage reference |
 | --- | --- | --- | --- | --- | --- | --- | --- |

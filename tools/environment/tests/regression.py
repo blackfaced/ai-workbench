@@ -1175,6 +1175,27 @@ def case_development_feedback_loops():
     check("结构测试不证明运行时行为",
           "do not prove these runtime behaviors" in spec)
 
+
+def case_feedback_cadence():
+    print("\n[用例 17] 反馈节奏按 Worker 可靠性选择：默认不变、独立验收保留、失败升级、证据来自项目运行记录")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    spec = read(os.path.join(repo, "skills", "deliver-spec", "SKILL.md"))
+    record = read(os.path.join(repo, "skills", "deliver-spec", "references", "run-record.md"))
+    check("计划列出每个 Worker 角色的反馈节奏，默认 continuous 且需确认才改",
+          all(term in spec for term in
+              ("feedback cadence", "`continuous`", "`final-gate`",
+               "Default to `continuous`", "changes only after confirmation")))
+    check("final-gate 不移除独立 QA、批次检查与最终验收",
+          "Cadence never removes independent QA, batch checks or final acceptance" in spec)
+    check("节奏依据来自项目自身运行记录，不凭模型名或外部基准",
+          "the project's own run records" in spec
+          and "not model branding or external benchmark figures" in spec)
+    check("final-gate 候选失败按既有返修预算升级而非循环",
+          "escalate that worker to `continuous` or a stronger confirmed model within the existing repair budget" in spec)
+    check("运行记录逐 attempt 记录请求与生效节奏及原因",
+          "requested → effective feedback cadence" in record
+          and "cadence reason" in record)
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -1197,6 +1218,7 @@ def main():
     case_environment_identity_assumptions()
     case_diagnostic_contract_gate()
     case_development_feedback_loops()
+    case_feedback_cadence()
     pilot = subprocess.run([sys.executable, os.path.join(HERE, "legacy_delegation_pilot.py")],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "legacy-delegation-pilot.log"), pilot.stdout)
