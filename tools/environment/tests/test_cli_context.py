@@ -49,6 +49,16 @@ class Direct(Startup):
         r=self.direct('exec','prompt');self.assertEqual(r.returncode,78)
         self.assertEqual((self.wt/'AGENTS.md').read_text(),'foreign guidance')
         self.assertFalse((self.root/'native-record.json').exists())
+    def test_project_document_budget_defaults_are_scoped_and_bounded(self):
+        registry=json.loads(self.registry.read_text());entry=next(iter(registry['projects'].values()))
+        entry['client_defaults']={'codex':{'project_doc_max_bytes':65536}}
+        self.registry.write_text(json.dumps(registry))
+        r=self.direct('exec','prompt');self.assertEqual(r.returncode,23,r.stderr)
+        self.assertEqual(json.loads((self.root/'native-record.json').read_text())['args'],['-c','project_doc_max_bytes=65536','exec','prompt'])
+        r=self.direct('exec','prompt',cwd=self.root);self.assertEqual(r.returncode,23,r.stderr)
+        self.assertEqual(json.loads((self.root/'native-record.json').read_text())['args'],['exec','prompt'])
+        entry['client_defaults']['codex']['project_doc_max_bytes']=999999999
+        self.registry.write_text(json.dumps(registry));r=self.direct('exec','prompt');self.assertEqual(r.returncode,78)
     def test_cd_variants_and_prompt_boundary(self):
         for option in [['-C',str(self.wt)],['--cd='+str(self.wt)],['-C'+str(self.wt)]]:
             with self.subTest(option=option):
