@@ -1,0 +1,4 @@
+interface:
+  display_name: "Writing Docs"
+  short_description: "按读者任务写清技术文档，保留既有结构并核验增量编辑，减少重复与事实误改"
+  default_prompt: "使用 $writing-docs 更新这份技术文档，将新事实归回原章节，保留有效结构并核验改动。"

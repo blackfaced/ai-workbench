@@ -1,0 +1,170 @@
+{
+  "date": "2026-10-15",
+  "method": "Two independent contexts inherited the same model settings; each completed four requests sequentially. Blind review used X=candidate, Y=control. Offline Feishu XML snapshots only.",
+  "source_sha256": {
+    "ai-workbench/skills/writing-docs/SKILL.md": "0b4c1b0ed68a0ff487cba2145d48019981eaf4626cefab290971d42884813aae",
+    "ai-workbench/skills/writing-docs/clients/shared.frontmatter.md": "a8f03323bf6575d54a6e4aa8ad07e9e5261f2b9509a68ba3812013b3e4dedf5e",
+    "ai-workbench/skills/self-test-report/SKILL.md": "19b5a403b6b5825a2fa6411d056e056523227653873892111006477443649354",
+    "ai-workbench/skills/self-test-report/clients/shared.frontmatter.md": "196d5160efc2235f9a76c02090c4b9811c0db0b802b331718693cf33d5ffb7c1",
+    "dev-tracker/skills/tech-design-doc/SKILL.md": "aa1294ce501b2acf62e4f72c94017abc2e302c11f6b9020337e6cb2bbf51617e",
+    "dev-tracker/skills/tech-design-doc/references/writing-discipline.md": "66d6c942c51fd956046bde51587c1f5c791568cad122480bf94fddf64a87896a",
+    "dev-tracker/skills/tech-design-doc/assets/template.md": "00c90fb6c19db7aa7be0ccb8a58f24831e12a67324f83f439b634584d12980d4"
+  },
+  "routing": {
+    "initial_matched": 11,
+    "final_matched": 12,
+    "total": 12
+  },
+  "isolated_regression": {
+    "passed": 404,
+    "failed": 0
+  },
+  "cases": {
+    "design": {
+      "control": {
+        "input_sha256": "a5897e9bdac61f27c68b6c0b91e56e33ff69ec6bb1ce2299034b55ba9448f62d",
+        "output_sha256": "69dfbc46b8959a7b5e03253405261830385e2174da6f0192b2cf19609c7caabb",
+        "text_chars_before": 41238,
+        "text_chars_after": 42489,
+        "headings_before": 62,
+        "headings_after": 62,
+        "retained_heading_order_preserved": true,
+        "resources_before": 8,
+        "resources_after": 8,
+        "resource_payloads_preserved": true,
+        "duplicate_ids": 0
+      },
+      "candidate": {
+        "input_sha256": "a5897e9bdac61f27c68b6c0b91e56e33ff69ec6bb1ce2299034b55ba9448f62d",
+        "output_sha256": "b57d2ad7fcb7617ce258c23ac1c7d032cc5277d748388d63306acf6a3797ec88",
+        "text_chars_before": 41238,
+        "text_chars_after": 41952,
+        "headings_before": 62,
+        "headings_after": 62,
+        "retained_heading_order_preserved": true,
+        "resources_before": 8,
+        "resources_after": 8,
+        "resource_payloads_preserved": true,
+        "duplicate_ids": 0
+      }
+    },
+    "api": {
+      "control": {
+        "input_sha256": "76e84da28fe0b35750dab65aa0ef629c098dd8d0b989633201388fcba76e4916",
+        "output_sha256": "9dc2c2bd9a9fad09adc3ff524e0ccdcf1969a86d4cdad67b56f6cfe018f85877",
+        "text_chars_before": 55032,
+        "text_chars_after": 57646,
+        "headings_before": 100,
+        "headings_after": 101,
+        "retained_heading_order_preserved": true,
+        "resources_before": 0,
+        "resources_after": 0,
+        "resource_payloads_preserved": true,
+        "duplicate_ids": 0
+      },
+      "candidate": {
+        "input_sha256": "76e84da28fe0b35750dab65aa0ef629c098dd8d0b989633201388fcba76e4916",
+        "output_sha256": "e4e5398dc7584f3bc5a86d3299db9b22f32aa31ccac7014593e8844b6939b9ca",
+        "text_chars_before": 55032,
+        "text_chars_after": 56888,
+        "headings_before": 100,
+        "headings_after": 100,
+        "retained_heading_order_preserved": true,
+        "resources_before": 0,
+        "resources_after": 0,
+        "resource_payloads_preserved": true,
+        "duplicate_ids": 0
+      }
+    },
+    "qa": {
+      "control": {
+        "input_sha256": "b2ae5fc26214a04287f5b09fabf535a3e00977307303506224d848c6ab85eb93",
+        "output_sha256": "5790964135a886f41bdf3cd49468981a7dfb22ccae9508fb8b609ffbb7544471",
+        "text_chars_before": 10895,
+        "text_chars_after": 10896,
+        "headings_before": 22,
+        "headings_after": 21,
+        "retained_heading_order_preserved": false,
+        "resources_before": 7,
+        "resources_after": 7,
+        "resource_payloads_preserved": true,
+        "duplicate_ids": 0
+      },
+      "candidate": {
+        "input_sha256": "b2ae5fc26214a04287f5b09fabf535a3e00977307303506224d848c6ab85eb93",
+        "output_sha256": "b90fdd8aa23a85dc7d2360cb015ab4c0b6632700fe08854e7a3a03af03825b35",
+        "text_chars_before": 10895,
+        "text_chars_after": 11080,
+        "headings_before": 22,
+        "headings_after": 21,
+        "retained_heading_order_preserved": true,
+        "resources_before": 7,
+        "resources_after": 7,
+        "resource_payloads_preserved": true,
+        "duplicate_ids": 0
+      }
+    },
+    "handbook": {
+      "control": {
+        "input_sha256": "fc32edd9fe56efbb070c9f976f723a7eeb915285581329496988082cbe54ea0c",
+        "output_sha256": "2031e7d540ca1f5024152cef1ad1f1b9bf953a48905c007febc82240c73379d9",
+        "text_chars_before": 20994,
+        "text_chars_after": 20203,
+        "headings_before": 39,
+        "headings_after": 39,
+        "retained_heading_order_preserved": true,
+        "resources_before": 0,
+        "resources_after": 0,
+        "resource_payloads_preserved": true,
+        "duplicate_ids": 0
+      },
+      "candidate": {
+        "input_sha256": "fc32edd9fe56efbb070c9f976f723a7eeb915285581329496988082cbe54ea0c",
+        "output_sha256": "d11b1b233c3cb9bc9844fc394dabaab0ff43f6f1340bf5a68dfb93e783d174b2",
+        "text_chars_before": 20994,
+        "text_chars_after": 19929,
+        "headings_before": 39,
+        "headings_after": 39,
+        "retained_heading_order_preserved": true,
+        "resources_before": 0,
+        "resources_after": 0,
+        "resource_payloads_preserved": true,
+        "duplicate_ids": 0
+      }
+    }
+  },
+  "blind_review": {
+    "candidate": {
+      "passed": 4,
+      "failed": 0,
+      "blocking_findings": []
+    },
+    "control": {
+      "passed": 3,
+      "failed": 1,
+      "blocking_findings": [
+        "QA summary omitted an unresolved merge-result and post-merge regression coverage risk."
+      ],
+      "nonblocking_findings": [
+        "Design document inserted a numbered item out of order.",
+        "API edit omitted an existing concept mapping explanation."
+      ]
+    },
+    "accepted_for_commit_and_install": true
+  },
+  "main_integration": {
+    "base_commit": "33cb19143b99e6a7997493bc3eba0778a2d4731a",
+    "skill_sources_unchanged": true,
+    "regression": {
+      "passed": 353,
+      "failed": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 tools/environment/tests/regression.py"
+    },
+    "project_context_render": "passed",
+    "project_context_boundaries": {
+      "passed": 28,
+      "failed": 0
+    },
+    "initial_local_failure": "Without the CI bytecode setting, macOS Python cache creation caused three zero-write snapshot assertions to fail. Assertions were unchanged."
+  }
+}

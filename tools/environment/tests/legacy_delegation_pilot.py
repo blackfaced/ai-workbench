@@ -36,7 +36,7 @@ def digest(path):
 def observe(root, fault):
     repo = Path(ENV_DIR).parent.parent
     box = Sandbox(str(root / "sandbox"))
-    names = ("implement-batch", "deliver-spec", "test-design", "self-test-report")
+    names = ("implement-batch", "deliver-spec", "test-design", "self-test-report", "writing-docs")
     profile = json.loads(read(os.path.join(ENV_DIR, "profiles", "work-mac.json")))
     components = [c for c in profile["components"] if c["id"] in names]
     # Frozen pre-retirement distribution contract, not current profile selection.
@@ -54,6 +54,9 @@ def observe(root, fault):
     })
     for name in names:
         shutil.copytree(repo / "skills" / name, Path(box.repo) / "skills" / name)
+    upstream = Path(box.path(".agents", "skills", "writing-for-agents", "SKILL.md"))
+    upstream.parent.mkdir(parents=True)
+    upstream.write_text("---\nname: writing-for-agents\ndescription: Isolated upstream fixture.\n---\n", encoding="utf-8")
     box.profile(base_profile(components))
 
     alias = Path(box.repo) / "skills/implement-batch/SKILL.md"
@@ -128,7 +131,7 @@ def main():
     repo = Path(ENV_DIR).parent.parent
     sources = [Path(__file__), Path(ENV_DIR) / "tests/regression.py", Path(ENV_DIR) / "env.py",
                Path(ENV_DIR) / "skills_discovery.py", Path(ENV_DIR) / "profiles/work-mac.json"]
-    for name in ("implement-batch", "deliver-spec", "test-design", "self-test-report"):
+    for name in ("implement-batch", "deliver-spec", "test-design", "self-test-report", "writing-docs"):
         sources.extend(p for p in (repo / "skills" / name).rglob("*") if p.is_file())
     identity = {"utc": datetime.now(timezone.utc).isoformat(), "python": sys.version,
                 "platform": platform.platform(), "role": "developer self-test",

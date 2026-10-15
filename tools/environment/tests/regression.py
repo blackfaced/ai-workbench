@@ -640,7 +640,7 @@ def case_profile_selection(root):
 def case_implement_batch_distribution(root):
     print("\n[用例 8] implement-batch 退役，deliver-spec 安装及旧文件恢复边界")
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
-    skill_names = ("deliver-spec", "test-design", "self-test-report")
+    skill_names = ("deliver-spec", "test-design", "self-test-report", "writing-docs")
     retired = read(os.path.join(repo, "skills", "implement-batch", "SKILL.md"))
     check("旧正文只保留文档链接，不自动执行或委托",
           "Retired entry" in retired and "Do not start or automatically delegate" in retired
@@ -680,6 +680,10 @@ def case_implement_batch_distribution(root):
         os.makedirs(os.path.dirname(upstream))
         upstream_body = "---\nname: implement-spec\ndescription: Independent upstream fixture.\n---\nKeep unchanged.\n"
         write(upstream, upstream_body)
+        writing_upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+        os.makedirs(os.path.dirname(writing_upstream))
+        writing_upstream_body = "---\nname: writing-for-agents\ndescription: Isolated upstream fixture.\n---\n"
+        write(writing_upstream, writing_upstream_body)
         for name in skill_names:
             shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
         box.profile(base_profile(components))
@@ -713,9 +717,16 @@ def case_implement_batch_distribution(root):
         expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")
                     + "\n\n" + read(os.path.join(source, "SKILL.md")).lstrip("\n"))
         check(profile_name + " 规范正文完整匹配", os.path.isfile(canonical) and read(canonical) == expected)
-        for companion in ("test-design", "self-test-report"):
+        for companion in ("test-design", "self-test-report", "writing-docs"):
             check(profile_name + " 定向安装包含 " + companion,
                   os.path.isfile(box.path(".agents", "skills", companion, "SKILL.md")))
+        report_dir = box.path(".agents", "skills", "self-test-report")
+        links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(os.path.join(report_dir, "SKILL.md")))
+        check(profile_name + " 报告可到达通用写作正文",
+              "../writing-docs/SKILL.md" in links
+              and os.path.isfile(os.path.join(report_dir, "../writing-docs/SKILL.md")))
+        check(profile_name + " 写作来源随正文分发",
+              os.path.isfile(box.path(".agents", "skills", "writing-docs", "references", "sources.md")))
         for resource in ("botmux.md", "spec-acceptance.md", "run-record.md", "staged-review.md"):
             target = os.path.join(installed, "references", resource)
             check(profile_name + " 保留完整资源 " + resource,
@@ -737,6 +748,7 @@ def case_implement_batch_distribution(root):
         check(profile_name + " 新入口首装共装恢复",
               rc == 0 and all(not os.path.exists(box.path(".agents", "skills", name, "SKILL.md"))
                               for name in skill_names) and not box.state()["components"])
+        check(profile_name + " 写作上游未被接管或删除", read(writing_upstream) == writing_upstream_body)
         rc, out = box.run("apply", "--profile", "harness")
         check(profile_name + " 默认首次共装不安装旧名", rc == 0
               and not os.path.lexists(box.path(".agents", "skills", "implement-batch")))
@@ -757,6 +769,9 @@ def case_implement_batch_distribution(root):
 
         # Frozen pre-retirement managed shape: current profiles must never select it.
         box = Sandbox(os.path.join(root, profile_name, "legacy-state"))
+        writing_upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+        os.makedirs(os.path.dirname(writing_upstream))
+        write(writing_upstream, writing_upstream_body)
         for name in skill_names:
             shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
         legacy = dict(DEMO_SKILL, id="implement-batch", name="implement-batch",
@@ -831,17 +846,22 @@ def case_self_test_report_distribution(root):
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
     for profile_name in ("work-mac", "work-linux", "home-mac"):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
-        components = [c for c in profile["components"]
-                      if c["id"] in ("self-test-report", "deliver-spec", "test-design")]
-        check(profile_name + " 登记报告、设计与规范交付组件", len(components) == 3)
-        if len(components) != 3:
+        skill_names = ("self-test-report", "deliver-spec", "test-design", "writing-docs")
+        components = [c for c in profile["components"] if c["id"] in skill_names]
+        check(profile_name + " 登记报告、设计、写作与规范交付组件", len(components) == len(skill_names))
+        if len(components) != len(skill_names):
             continue
         box = Sandbox(os.path.join(root, profile_name))
-        for name in ("self-test-report", "deliver-spec", "test-design"):
+        upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+        os.makedirs(os.path.dirname(upstream))
+        write(upstream, "---\nname: writing-for-agents\ndescription: Isolated upstream fixture.\n---\n")
+        for name in skill_names:
             shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
         box.profile(base_profile(components))
         rc, out = box.run("apply", "--profile", "harness", "--only", "self-test-report")
         check(profile_name + " 报告 Skill 可独立安装", rc == 0, out if rc else "")
+        check(profile_name + " 独立安装报告同时提供通用写作能力",
+              os.path.isfile(box.path(".agents", "skills", "writing-docs", "SKILL.md")))
         installed = box.path(".agents", "skills", "self-test-report")
         source = os.path.join(repo, "skills", "self-test-report")
         expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")
