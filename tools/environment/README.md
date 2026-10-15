@@ -153,10 +153,7 @@ python3 tools/environment/tests/regression.py
 工作 Mac 与两台现有 Linux 机器已验证漂移检查、受管配置与 Skill 的安装/更新/回滚、已有工具的版本更新。
 家用 Mac mini 在 2026-09-12 验证了工具身份、Skill 安装与原生发现、幂等与回滚预览；没有验证软件升级、新机首装或模型驱动任务。详见[家用 Mac 验证记录](home-mac-validation.md)。
 
-**尚未覆盖完整新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首装命令已在现有开发机的隔离容器中
-按 Profile 原样验证并登记；现有安装的渠道不变。受限网络需要先在执行安装命令的 shell 中配置
-HTTP(S) 代理，Docker daemon 的代理不会自动传给容器。隔离测试、版本和限制见
-[Linux 首装验证记录](linux-first-install-validation.md)；容器通过不等于完整新机 `apply` + `check` 验收。
+**尚未覆盖完整新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首装命令曾在现有开发机的隔离容器中按当时的 Profile 命令验证；当前 `work-linux` Profile 未登记这些工具组件，因此现在的 `apply` 不会执行这些首装命令。受限网络需要先在执行安装命令的 shell 中配置 HTTP(S) 代理，Docker daemon 的代理不会自动传给容器。历史隔离测试、版本和限制见 [Linux 首装验证记录](linux-first-install-validation.md)；这项历史验证不等于当前 Profile 已接入，更不等于完整新机 `apply` + `check` 验收。
 
 ## 每台机器的差异
 

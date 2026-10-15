@@ -30,7 +30,7 @@ Existing user-global installations stay unchanged until a separately authorized 
 
 - [setup-aiwb](setup-aiwb/SKILL.md) — configure and verify project context for clients and worktrees; maintain integration-test guides, including deliver-spec's existing setup path.
 
-- [deliver-spec](deliver-spec/SKILL.md) — plan, implement, review and verify a spec; [installation and usage](../workflows/implement-batch.md).
+- [deliver-spec](deliver-spec/SKILL.md) — plan, implement, review and verify a spec; see its [project activation and usage guide](../workflows/implement-batch.md).
 - [test-design](test-design/SKILL.md) — 独立测试设计与质量审查；从需求、旧合同和真实入口补齐断言、数据与证据边界。
 - [self-test-report](self-test-report/SKILL.md) — 自测报告编写、更新与证据审查；独立使用或由 deliver-spec 引用，复用同一验收记录。
 - [writing-docs](writing-docs/SKILL.md) — 技术文档写作与增量编辑；专用 Skill 复用结构保留、语言与改后核验约定，引用上游 `writing-for-agents`。
