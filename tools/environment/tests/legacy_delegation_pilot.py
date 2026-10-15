@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""#370 known-fault experiment at the legacy public installation entry.
+"""#370 known-fault experiment with a frozen historical legacy-entry fixture.
+
+The current profiles retire implement-batch. This isolated fixture deliberately
+reconstructs the previous compatibility shape to retain the old detector lesson;
+it is not an installation channel or evidence that the retired name is usable.
 
     python3 tools/environment/tests/legacy_delegation_pilot.py
     python3 tools/environment/tests/legacy_delegation_pilot.py --fault --output /tmp/new-run
@@ -35,6 +39,19 @@ def observe(root, fault):
     names = ("implement-batch", "deliver-spec", "test-design", "self-test-report", "writing-docs")
     profile = json.loads(read(os.path.join(ENV_DIR, "profiles", "work-mac.json")))
     components = [c for c in profile["components"] if c["id"] in names]
+    # Frozen pre-retirement distribution contract, not current profile selection.
+    components.append({
+        "id": "implement-batch", "type": "skill", "name": "implement-batch",
+        "body": "skills/implement-batch/SKILL.md",
+        "source": "repo:skills/implement-batch", "revision": "historical-fixture",
+        "install_with": ["deliver-spec"],
+        "clients": {"shared": {
+            "dir": "~/.agents/skills",
+            "frontmatter": "skills/implement-batch/clients/shared.frontmatter.md",
+            "files": {"references/" + name: "skills/deliver-spec/references/" + name
+                      for name in ("botmux.md", "spec-acceptance.md", "run-record.md", "staged-review.md")},
+        }},
+    })
     for name in names:
         shutil.copytree(repo / "skills" / name, Path(box.repo) / "skills" / name)
     upstream = Path(box.path(".agents", "skills", "writing-for-agents", "SKILL.md"))
@@ -43,6 +60,9 @@ def observe(root, fault):
     box.profile(base_profile(components))
 
     alias = Path(box.repo) / "skills/implement-batch/SKILL.md"
+    alias.write_text("Compatibility entry for implement-batch. Read and follow "
+                     "[deliver-spec](../deliver-spec/SKILL.md), the single maintained workflow.\n",
+                     encoding="utf-8")
     before = alias.read_text(encoding="utf-8")
     principal = re.search(r"\]\(([^)#]+)\)", before)
     if principal is None:
@@ -91,7 +111,7 @@ def observe(root, fault):
         "principal_reference": links[0] if links else None,
         "original_reference": original_target,
         "apply_rc": apply_rc, "check_rc": check_rc,
-        "fixture": "real work-mac components; isolated shared discovery, HOME and source copy",
+        "fixture": "frozen historical compatibility shape plus current canonical companions; isolated HOME/source",
     }
     write(str(root / "result.json"), json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     print(root.name + " " + result["detector_status"] + " " + json.dumps(result, ensure_ascii=False))

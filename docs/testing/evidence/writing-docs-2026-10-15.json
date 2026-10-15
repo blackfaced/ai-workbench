@@ -151,5 +151,20 @@
       ]
     },
     "accepted_for_commit_and_install": true
+  },
+  "main_integration": {
+    "base_commit": "33cb19143b99e6a7997493bc3eba0778a2d4731a",
+    "skill_sources_unchanged": true,
+    "regression": {
+      "passed": 353,
+      "failed": 0,
+      "command": "PYTHONDONTWRITEBYTECODE=1 python3 tools/environment/tests/regression.py"
+    },
+    "project_context_render": "passed",
+    "project_context_boundaries": {
+      "passed": 28,
+      "failed": 0
+    },
+    "initial_local_failure": "Without the CI bytecode setting, macOS Python cache creation caused three zero-write snapshot assertions to fail. Assertions were unchanged."
   }
 }

@@ -638,130 +638,189 @@ def case_profile_selection(root):
 
 
 def case_implement_batch_distribution(root):
-    print("\n[用例 8] deliver-spec 新入口与 implement-batch 兼容安装")
+    print("\n[用例 8] implement-batch 退役，deliver-spec 安装及旧文件恢复边界")
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    skill_names = ("deliver-spec", "test-design", "self-test-report", "writing-docs")
+    retired = read(os.path.join(repo, "skills", "implement-batch", "SKILL.md"))
+    check("旧正文只保留文档链接，不自动执行或委托",
+          "Retired entry" in retired and "Do not start or automatically delegate" in retired
+          and "preserve the existing spec, authorization, confirmed plan" in retired)
+    acceptance = read(os.path.join(repo, "skills", "deliver-spec", "references", "spec-acceptance.md"))
+    check("验收责任主语清晰且不再自我重复",
+          "The parent agent using deliver-spec retains expected outcomes" in acceptance
+          and "including its deliver-spec" not in acceptance)
+    record = next(s for s in json.loads(read(os.path.join(repo, "skills", "sources.lock.json")))["skills"]
+                  if s["name"] == "implement-batch")
+    check("来源登记不再列旧入口安装渠道", record["verified"] is False
+          and not record["clients"] and "install_paths" not in record)
+
+    def snapshot(home):
+        result = {}
+        for folder, dirs, files in os.walk(home):
+            for name in dirs + files:
+                path = os.path.join(folder, name)
+                rel = os.path.relpath(path, home)
+                if os.path.islink(path):
+                    result[rel] = ("link", os.readlink(path))
+                elif os.path.isfile(path):
+                    with open(path, "rb") as handle:
+                        result[rel] = ("file", handle.read())
+                else:
+                    result[rel] = ("dir",)
+        return result
+
     for profile_name in ("work-mac", "work-linux", "home-mac"):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
-        skill_names = ("implement-batch", "deliver-spec", "test-design", "self-test-report", "writing-docs")
         components = [c for c in profile["components"] if c["id"] in skill_names]
-        upstream_body = "---\nname: writing-for-agents\ndescription: Isolated upstream fixture.\n---\n"
-        for entry in ("implement-batch", "deliver-spec"):
-            label = profile_name + " " + entry
-            box = Sandbox(os.path.join(root, profile_name, entry))
-            upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
-            os.makedirs(os.path.dirname(upstream))
-            write(upstream, upstream_body)
-            for name in skill_names:
-                shutil.copytree(os.path.join(repo, "skills", name),
-                                os.path.join(box.repo, "skills", name))
-            box.profile(base_profile(components))
-            rc, out = box.run("plan", "--profile", "harness", "--only", entry)
-            check(label + " plan 只读且包含规范入口",
-                  rc == 0 and "deliver-spec" in out
-                  and not os.path.exists(box.path(".agents", "skills", "deliver-spec")))
-            rc, out = box.run("apply", "--profile", "harness", "--only", entry)
-            check(label + " 安装成功", rc == 0, out if rc else "")
-            canonical = box.path(".agents", "skills", "deliver-spec", "SKILL.md")
-            check(label + " 规范入口可用", os.path.isfile(canonical))
-            for companion in ("test-design", "self-test-report", "writing-docs"):
-                check(label + " 定向安装包含 " + companion,
-                      os.path.isfile(box.path(".agents", "skills", companion, "SKILL.md")))
-            report_dir = box.path(".agents", "skills", "self-test-report")
-            links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(os.path.join(report_dir, "SKILL.md")))
-            check(label + " 报告可到达通用写作正文",
-                  "../writing-docs/SKILL.md" in links
-                  and os.path.isfile(os.path.join(report_dir, "../writing-docs/SKILL.md")))
-            check(label + " 写作来源随正文分发",
-                  os.path.isfile(box.path(".agents", "skills", "writing-docs", "references", "sources.md")))
-            installed = box.path(".agents", "skills", entry)
-            if entry == "implement-batch":
-                links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(os.path.join(installed, "SKILL.md")))
-                check(label + " 旧入口明确到达规范正文",
-                      "../deliver-spec/SKILL.md" in links
-                      and all(os.path.isfile(os.path.join(installed, link)) for link in links))
-            for resource in ("botmux.md", "spec-acceptance.md", "run-record.md", "staged-review.md"):
-                target = os.path.join(installed, "references", resource)
-                check(label + " 保留完整资源 " + resource,
-                      os.path.isfile(target)
-                      and read(target) == read(os.path.join(repo, "skills", "deliver-spec", "references", resource)))
-            for document in (canonical, os.path.join(installed, "references", "spec-acceptance.md")):
-                links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(document))
-                targets = [os.path.normpath(os.path.join(os.path.dirname(document), link))
-                           for link in links if not re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", link)]
-                check(label + " " + os.path.basename(document) + " 可找到独立测试设计方法",
-                      box.path(".agents", "skills", "test-design", "SKILL.md") in targets)
-                check(label + " " + os.path.basename(document) + " 安装引用均可打开",
-                      bool(targets) and all(os.path.isfile(target) for target in targets))
-            rc, out = box.run("check", "--profile", "harness", "--only", entry)
-            check(label + " 安装校验通过", rc == 0, out if rc else "")
-            backup = box.latest_backup()
-            before = box.state()
-            rc, out = box.run("apply", "--profile", "harness", "--only", entry)
-            check(label + " 重复安装幂等", rc == 0 and box.state() == before)
-            rc, out = box.run("restore", "--backup", backup)
-            check(label + " 共装能力随首装一起恢复",
-                  rc == 0 and all(not os.path.exists(box.path(".agents", "skills", name, "SKILL.md"))
-                                  for name in skill_names)
-                  and not box.state()["components"], out if rc else "")
-            check(label + " 上游 Skill 未被接管或删除", read(upstream) == upstream_body)
-            rc, out = box.run("apply", "--profile", "harness", "--only", entry)
-            check(label + " 共装恢复后可重新安装", rc == 0, out if rc else "")
-            method = box.path(".agents", "skills", "test-design", "SKILL.md")
-            os.unlink(method)
-            rc, out = box.run("check", "--profile", "harness", "--only", entry)
-            check(label + " 设计方法缺失可定位", rc == 1 and "test-design" in out)
-            rc, out = box.run("apply", "--profile", "harness", "--only", entry)
-            check(label + " 缺失方法可经原入口修复", rc == 0 and os.path.isfile(method), out if rc else "")
-            template = box.path(".agents", "skills", "test-design", "assets", "design-template.md")
-            edited = read(template) + "\n用户修改的设计模板。\n"
-            write(template, edited)
-            rc, _out = box.run("check", "--profile", "harness", "--only", entry)
-            check(label + " 共装设计模板漂移被检测", rc == 1)
-            rc, _out = box.run("apply", "--profile", "harness", "--only", entry)
-            check(label + " 共装设计模板修改受保护", rc == 1 and read(template) == edited)
-
-        # Represent the pre-rename public distribution shape without requiring Git history.
-        # Actual pinned legacy payload upgrade is also exercised in release evidence.
-        box = Sandbox(os.path.join(root, profile_name, "upgrade"))
-        upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+        check(profile_name + " 不登记旧名或隐式重装引用",
+              "implement-batch" not in json.dumps(profile)
+              and len(components) == len(skill_names))
+        box = Sandbox(os.path.join(root, profile_name, "canonical"))
+        upstream = box.path(".agents", "skills", "implement-spec", "SKILL.md")
         os.makedirs(os.path.dirname(upstream))
+        upstream_body = "---\nname: implement-spec\ndescription: Independent upstream fixture.\n---\nKeep unchanged.\n"
         write(upstream, upstream_body)
+        writing_upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+        os.makedirs(os.path.dirname(writing_upstream))
+        writing_upstream_body = "---\nname: writing-for-agents\ndescription: Isolated upstream fixture.\n---\n"
+        write(writing_upstream, writing_upstream_body)
         for name in skill_names:
             shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
-        legacy = json.loads(json.dumps(next(c for c in components if c["id"] == "implement-batch")))
-        legacy.pop("install_with")
-        legacy["body"] = "skills/legacy-body.md"
-        previous_body = "Implement a spec-level parent Issue through dependency-ordered batches.\n"
-        write(os.path.join(box.repo, legacy["body"]), previous_body)
-        box.profile(base_profile([legacy]))
-        rc, _out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
-        old_entry = box.path(".agents", "skills", "implement-batch", "SKILL.md")
-        previous_rendered = read(old_entry)
-        check(profile_name + " 旧分发经真实 CLI 建立受管状态", rc == 0)
-        mine = previous_rendered + "\n用户修改，升级不能覆盖。\n"
-        write(old_entry, mine)
         box.profile(base_profile(components))
-        rc, _out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
-        check(profile_name + " 升级保护旧入口用户修改", rc == 1 and read(old_entry) == mine)
-        write(old_entry, previous_rendered)
-        rc, out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
-        check(profile_name + " 旧受管入口成功升级", rc == 0 and "../deliver-spec/SKILL.md" in read(old_entry), out if rc else "")
+        for verb in ("plan", "apply", "check"):
+            for selectors in (("--only", "implement-batch"),
+                              ("--only", "deliver-spec", "--only", "implement-batch")):
+                before = snapshot(box.home)
+                rc, out = box.run(verb, "--profile", "harness", *selectors)
+                check(profile_name + " " + verb + " " + "/".join(selectors) + " 旧名写入前失败",
+                      rc != 0 and "未知 id" in out and "implement-batch" in out
+                      and snapshot(box.home) == before)
+        # Exercise the shell entry too; argument parsing must not bypass rejection.
+        shutil.copy2(os.path.join(ENV_DIR, "bootstrap.sh"), os.path.join(box.env_dir, "bootstrap.sh"))
+        for flag in ([], ["--apply"], ["--check"]):
+            before = snapshot(box.home)
+            proc = subprocess.run(["sh", os.path.join(box.env_dir, "bootstrap.sh"),
+                                   "--profile", "harness", "--only", "implement-batch"] + flag,
+                                  cwd=box.repo, env=dict(os.environ, HOME=box.home),
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+            check(profile_name + " bootstrap " + str(flag) + " 旧名失败且零写入",
+                  proc.returncode != 0 and "未知 id" in proc.stdout and snapshot(box.home) == before)
+        rc, out = box.run("plan", "--profile", "harness", "--only", "deliver-spec")
+        check(profile_name + " 新入口 plan 只读且列出规范组件",
+              rc == 0 and "deliver-spec" in out
+              and not os.path.exists(box.path(".agents", "skills", "deliver-spec")))
+        rc, out = box.run("apply", "--profile", "harness", "--only", "deliver-spec")
+        check(profile_name + " 新入口安装成功", rc == 0, out if rc else "")
+        installed = box.path(".agents", "skills", "deliver-spec")
+        canonical = os.path.join(installed, "SKILL.md")
+        source = os.path.join(repo, "skills", "deliver-spec")
+        expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")
+                    + "\n\n" + read(os.path.join(source, "SKILL.md")).lstrip("\n"))
+        check(profile_name + " 规范正文完整匹配", os.path.isfile(canonical) and read(canonical) == expected)
+        for companion in ("test-design", "self-test-report", "writing-docs"):
+            check(profile_name + " 定向安装包含 " + companion,
+                  os.path.isfile(box.path(".agents", "skills", companion, "SKILL.md")))
+        report_dir = box.path(".agents", "skills", "self-test-report")
+        links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(os.path.join(report_dir, "SKILL.md")))
+        check(profile_name + " 报告可到达通用写作正文",
+              "../writing-docs/SKILL.md" in links
+              and os.path.isfile(os.path.join(report_dir, "../writing-docs/SKILL.md")))
+        check(profile_name + " 写作来源随正文分发",
+              os.path.isfile(box.path(".agents", "skills", "writing-docs", "references", "sources.md")))
+        for resource in ("botmux.md", "spec-acceptance.md", "run-record.md", "staged-review.md"):
+            target = os.path.join(installed, "references", resource)
+            check(profile_name + " 保留完整资源 " + resource,
+                  os.path.isfile(target) and read(target) == read(os.path.join(source, "references", resource)))
+        for document in (canonical, os.path.join(installed, "references", "spec-acceptance.md")):
+            links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(document))
+            targets = [os.path.normpath(os.path.join(os.path.dirname(document), link))
+                       for link in links if not re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", link)]
+            check(profile_name + " " + os.path.basename(document) + " 安装引用均可打开",
+                  bool(targets) and all(os.path.isfile(target) for target in targets))
+        rc, out = box.run("check", "--profile", "harness", "--only", "deliver-spec")
+        check(profile_name + " 安装校验通过", rc == 0, out if rc else "")
         backup = box.latest_backup()
-        rc, _out = box.run("restore", "--backup", backup)
-        check(profile_name + " restore 恢复旧入口与归属", rc == 0 and read(old_entry) == previous_rendered)
+        before = snapshot(box.home)
+        rc, out = box.run("apply", "--profile", "harness")
+        check(profile_name + " 默认共装幂等且不重装旧名", rc == 0 and snapshot(box.home) == before
+              and not os.path.lexists(box.path(".agents", "skills", "implement-batch")))
+        rc, out = box.run("restore", "--backup", backup)
+        check(profile_name + " 新入口首装共装恢复",
+              rc == 0 and all(not os.path.exists(box.path(".agents", "skills", name, "SKILL.md"))
+                              for name in skill_names) and not box.state()["components"])
+        check(profile_name + " 写作上游未被接管或删除", read(writing_upstream) == writing_upstream_body)
+        rc, out = box.run("apply", "--profile", "harness")
+        check(profile_name + " 默认首次共装不安装旧名", rc == 0
+              and not os.path.lexists(box.path(".agents", "skills", "implement-batch")))
+        method = box.path(".agents", "skills", "test-design", "SKILL.md")
+        os.unlink(method)
+        rc, out = box.run("check", "--profile", "harness", "--only", "deliver-spec")
+        check(profile_name + " 设计方法缺失可定位", rc == 1 and "test-design" in out)
+        rc, out = box.run("apply", "--profile", "harness", "--only", "deliver-spec")
+        check(profile_name + " 缺失方法可经新入口修复", rc == 0 and os.path.isfile(method))
+        template = box.path(".agents", "skills", "test-design", "assets", "design-template.md")
+        edited = read(template) + "\n用户修改的设计模板。\n"
+        write(template, edited)
+        rc, _out = box.run("check", "--profile", "harness", "--only", "deliver-spec")
+        check(profile_name + " 共装设计模板漂移被检测", rc == 1)
+        rc, _out = box.run("apply", "--profile", "harness", "--only", "deliver-spec")
+        check(profile_name + " 共装设计模板修改受保护", rc == 1 and read(template) == edited)
+        check(profile_name + " 独立上游 implement-spec 不受安装恢复影响", read(upstream) == upstream_body)
+
+        # Frozen pre-retirement managed shape: current profiles must never select it.
+        box = Sandbox(os.path.join(root, profile_name, "legacy-state"))
+        writing_upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+        os.makedirs(os.path.dirname(writing_upstream))
+        write(writing_upstream, writing_upstream_body)
+        for name in skill_names:
+            shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
+        legacy = dict(DEMO_SKILL, id="implement-batch", name="implement-batch",
+                      body="skills/legacy-body.md", source="repo:skills/implement-batch")
+        legacy["clients"] = {"shared": {"dir": "~/.agents/skills",
+                                         "frontmatter": "skills/legacy-frontmatter.md",
+                                         "files": {"references/botmux.md": "skills/legacy-resource.md"}}}
+        write(os.path.join(box.repo, "skills/legacy-resource.md"), "Frozen historical appendix.\n")
+        write(os.path.join(box.repo, legacy["body"]), "Frozen legacy body.\n")
+        write(os.path.join(box.repo, "skills/legacy-frontmatter.md"),
+              "---\nname: implement-batch\ndescription: Frozen historical fixture.\n---\n")
         box.profile(base_profile([legacy]))
-        rc, _out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
-        check(profile_name + " 回滚后旧 apply 仍可用", rc == 0 and read(old_entry) == previous_rendered)
-        box.profile(base_profile(components))
-        rc, _out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
-        check(profile_name + " 回滚后可再次升级", rc == 0)
+        rc, _out = box.run("apply", "--profile", "harness")
+        old_entry = box.path(".agents", "skills", "implement-batch", "SKILL.md")
+        old_backup = box.latest_backup()
+        old_state = box.state()["components"].copy()
+        old_rendered = read(old_entry)
+        check(profile_name + " 历史 fixture 经真实 CLI 建立受管状态", rc == 0)
+        mine = old_rendered + "\n用户修改，退役不能覆盖。\n"
+        write(old_entry, mine)
         appendix = box.path(".agents", "skills", "implement-batch", "references", "botmux.md")
-        edited = read(appendix) + "\n用户附录修改。\n"
-        write(appendix, edited)
-        rc, _out = box.run("check", "--profile", "harness", "--only", "implement-batch")
-        check(profile_name + " 旧资源漂移被检测", rc == 1)
-        rc, _out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
-        check(profile_name + " 旧资源修改不被覆盖", rc == 1 and read(appendix) == edited)
+        old_appendix = read(appendix)
+        mine_appendix = old_appendix + "\n用户附录修改。\n"
+        write(appendix, mine_appendix)
+        box.profile(base_profile(components))
+        before = snapshot(box.home)
+        rc, out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
+        check(profile_name + " 有旧受管记录也不能重新选择旧名",
+              rc != 0 and "未知 id" in out and snapshot(box.home) == before)
+        rc, out = box.run("apply", "--profile", "harness", "--only", "deliver-spec")
+        new_backup = box.latest_backup()
+        check(profile_name + " 新入口保留旧文件编辑和归属记录", rc == 0 and read(old_entry) == mine
+              and read(appendix) == mine_appendix
+              and all(box.state()["components"].get(key) == value for key, value in old_state.items()))
+        rc, _out = box.run("restore", "--backup", new_backup)
+        check(profile_name + " 恢复新入口不误删旧文件或记录", rc == 0 and read(old_entry) == mine
+              and read(appendix) == mine_appendix and box.state()["components"] == old_state)
+        rc, out = box.run("restore", "--backup", old_backup)
+        check(profile_name + " 历史备份恢复保护安装后用户修改", rc == 0 and "跳过" in out
+              and read(old_entry) == mine and read(appendix) == mine_appendix
+              and box.state()["components"] == old_state)
+        write(old_entry, old_rendered)
+        write(appendix, old_appendix)
+        rc, _out = box.run("restore", "--backup", old_backup)
+        check(profile_name + " 历史首装备份仍可按原归属撤销", rc == 0
+              and not os.path.exists(old_entry) and not box.state()["components"])
+        rc, _out = box.run("apply", "--profile", "harness")
+        check(profile_name + " 旧备份撤销后默认安装仍不复活旧名", rc == 0
+              and not os.path.exists(old_entry))
 
 
 def case_skill_install_with(root):
@@ -783,14 +842,13 @@ def case_skill_install_with(root):
 
 
 def case_self_test_report_distribution(root):
-    print("\n[用例 9] self-test-report 独立安装与 implement-batch 报告引用")
+    print("\n[用例 9] self-test-report 独立安装与 deliver-spec 报告引用")
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
     for profile_name in ("work-mac", "work-linux", "home-mac"):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
-        skill_names = ("self-test-report", "implement-batch", "deliver-spec", "test-design", "writing-docs")
-        components = [c for c in profile["components"]
-                      if c["id"] in skill_names]
-        check(profile_name + " 登记报告、设计、写作与新旧交付组件", len(components) == len(skill_names))
+        skill_names = ("self-test-report", "deliver-spec", "test-design", "writing-docs")
+        components = [c for c in profile["components"] if c["id"] in skill_names]
+        check(profile_name + " 登记报告、设计、写作与规范交付组件", len(components) == len(skill_names))
         if len(components) != len(skill_names):
             continue
         box = Sandbox(os.path.join(root, profile_name))
@@ -816,9 +874,9 @@ def case_self_test_report_distribution(root):
             target = os.path.join(installed, rel)
             check(profile_name + " 完整分发 " + rel,
                   os.path.isfile(target) and read(target) == read(os.path.join(source, src)))
-        rc, out = box.run("apply", "--profile", "harness", "--only", "implement-batch")
-        check(profile_name + " 安装批次验收引用", rc == 0, out if rc else "")
-        acceptance = box.path(".agents", "skills", "implement-batch", "references", "spec-acceptance.md")
+        rc, out = box.run("apply", "--profile", "harness", "--only", "deliver-spec")
+        check(profile_name + " 安装规范验收引用", rc == 0, out if rc else "")
+        acceptance = box.path(".agents", "skills", "deliver-spec", "references", "spec-acceptance.md")
         links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(acceptance))
         report_links = [link for link in links if "self-test-report/" in link]
         check(profile_name + " 安装后的正文和模板引用可解析",
@@ -968,7 +1026,7 @@ def case_backward_compatibility_rules():
     print("\n[用例 10] 既有功能变更必须经过向后兼容门禁")
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
     implement = read(os.path.join(repo, "skills", "deliver-spec", "SKILL.md"))
-    acceptance = read(os.path.join(repo, "skills", "implement-batch", "references", "spec-acceptance.md"))
+    acceptance = read(os.path.join(repo, "skills", "deliver-spec", "references", "spec-acceptance.md"))
     report = read(os.path.join(repo, "skills", "self-test-report", "SKILL.md"))
     template = read(os.path.join(repo, "skills", "self-test-report", "assets", "report-template.md"))
 

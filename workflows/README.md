@@ -10,10 +10,11 @@ Repeatable multi-step processes and domain workflows.
 
 - [Project learning and remote handoff](learning-and-remote-handoff.md) — escaped-bug lessons, consolidation, transfer and result collection.
 
-- [Deliver Spec](implement-batch.md) — spec delivery with planning, implementation, review and evidence; implement-batch remains compatible; [synthetic handoff and delivery scenarios](implement-batch-examples.md).
+- [Deliver Spec](implement-batch.md) — spec delivery with planning, implementation, review and evidence; implement-batch is retired (saved guide URL retained); [synthetic handoff and delivery scenarios](implement-batch-examples.md).
 
 - [Environment maintenance](../tools/environment/README.md) — preview, apply, check, and restore.
 
 - [Agent Security Checklist](agent-security-checklist.md)
 - [ai-berkshire](ai-berkshire.md)
 - [Open Deep Research](open-deep-research.md)
+- [On-demand explainer](on-demand-explainer.md) — escalate delivery form (text → diagram → interactive page → narrated video) when a concept is unfamiliar.
