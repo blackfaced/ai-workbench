@@ -64,6 +64,10 @@ The installed release also carries `botmux_context.py`. Its opt-in [startup gate
 
 The installed `cli_context.py` reuses the same preparation function through an owner-managed PATH wrapper for `codex` and `traex`. See [direct terminal startup](../../skills/setup-aiwb/references/botmux-startup.md#direct-terminal-startup) for argument scope, native update preservation, shell ownership, verification and rollback. Native installer symlinks remain intact. Existing worktrees reuse reviewed project facts and undergo configuration/trust/loading checks; automatic setup does not rerun project analysis.
 
+## Native worktree and Desktop entry points
+
+`native_worktree.py` reuses the registered preparation function at the native CLI materialization boundary and through Desktop Local Environment setup. See [native entry contracts](../../skills/setup-aiwb/references/botmux-startup.md#native-cli-worktree-creation). The declaration may include bounded per-client `clientSettings.project_doc_max_bytes`; the renderer manages it in the existing owned block, preserves sufficient user-owned settings and refuses conflicts. This keeps Desktop loading independent of terminal-only command flags.
+
 ## Verification
 
 ```sh

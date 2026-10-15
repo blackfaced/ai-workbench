@@ -173,7 +173,7 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                    'target_head':git(target,'rev-parse','HEAD'), 'pin':entry['pin'],
                    'registry_sha256':digest(registry_path), 'declaration_sha256':digest(declaration),
                    'checks':checks, 'native_companions': {str(dest.relative_to(target)): {'sha256':digest(dest), 'source':str(src), 'created':current is None} for src,dest,current in copies}}
-        if receipt_name not in ['botmux-startup.json', 'cli-startup.json']:
+        if receipt_name not in ['botmux-startup.json', 'cli-startup.json', 'native-worktree-startup.json']:
             raise RuntimeError('unsupported receipt name')
         receipt['native_cwd'] = str(native_cwd or target)
         receipt['private_guidance_created'] = team_copy
