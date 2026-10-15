@@ -89,7 +89,8 @@ def registered_target(registry, cwd):
     if p.returncode:
         return None
     root, common = p.stdout.strip().splitlines()
-    return Path(root).resolve() if str(Path(common).resolve()) in registry['projects'] else None
+    entry = registry['projects'].get(str(Path(common).resolve()))
+    return (Path(root).resolve(), entry) if entry is not None else None
 
 
 def main(argv=None):
@@ -106,9 +107,21 @@ def main(argv=None):
     cwd = Path.cwd()
     directory, diagnostic, unsafe, bypass = launch_options(args, cwd)
     selected = Path(directory).resolve()
-    target = None if bypass else registered_target(registry, selected)
+    registration = None if bypass else registered_target(registry, selected)
+    defaults = {}
     try:
-        if target is not None:
+        if registration is not None:
+            target, entry = registration
+            configured = entry.get('client_defaults', {})
+            if not isinstance(configured, dict):
+                raise RuntimeError('invalid project client defaults')
+            for client, settings in configured.items():
+                if client not in ['codex','trae'] or not isinstance(settings, dict) or set(settings) != {'project_doc_max_bytes'}:
+                    raise RuntimeError('unsupported project client defaults')
+                budget = settings['project_doc_max_bytes']
+                if type(budget) is not int or not 32768 <= budget <= 1048576:
+                    raise RuntimeError('invalid project document budget')
+                defaults[client] = ['-c','project_doc_max_bytes='+str(budget)]
             if unsafe: raise RuntimeError(unsafe[0])
             for variable, suffix in [('CODEX_HOME','.codex'),('TRAE_HOME','.trae')]:
                 if os.environ.get(variable) and Path(os.environ[variable]).resolve() != (Path.home()/suffix).resolve():
@@ -116,14 +129,14 @@ def main(argv=None):
             # Real native paths in registry prevent the shared no-model checks
             # from reentering these wrappers. Native retains original argv/cwd.
             context.prepare(a.registry, target, receipt_name='cli-startup.json',
-                            native_cwd=selected, client_options={a.client:diagnostic})
+                            native_cwd=selected, client_options={client: defaults.get(client, []) + (diagnostic if client == a.client else []) for client in registry['clients']})
     except (RuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         record = {'status':'BLOCKED', 'error_code':'AIWB_CONTEXT_STARTUP_BLOCKED',
                   'cwd':str(selected), 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'reason':str(exc)}
         key = hashlib.sha256(str(selected).encode()).hexdigest()
         context_io.atomic_write(Path(a.registry).parent/'failures'/(key+'.json'), json.dumps(record,indent=2)+'\n')
         raise
-    os.execv(native, [native, *args])
+    os.execv(native, [native, *defaults.get(a.client, []), *args])
 
 
 if __name__ == '__main__':
