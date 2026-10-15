@@ -29,7 +29,7 @@ python3 tools/environment/env.py restore --backup <UTC 时间戳> [--dry-run] [-
 - `--force` 是**唯一的接管入口**：明知目标「不是本入口装的 / 安装后被改过 / 历史副本内容对不上」，
   仍然覆盖或删除。它不跳过备份，每个被动的文件照样进 manifest，`restore` 能原样撤回；
   `check` 故意**没有** `--force`——它的职责是如实报漂移，不是把漂移说成没事。
-- 退出码：`plan` 恒为 0；`check` 有漂移为 1；`apply` 有「需要人处理」的项为 1 —— 这类项本身不产生
+- 退出码：有效 `plan` 的观测结果为 0；参数或 Profile 引用无效时在写入前非零失败。`check` 有漂移为 1；`apply` 有「需要人处理」的项为 1 —— 这类项本身不产生
   写入，所以其余可执行的改动照常执行（若相反，`~/.local/bin` 不可见的机器会锁死：修它的受管块
   永远写不进去）。写入仍逐组件受各自的冲突检测约束。
 - 三个动词共用同一份 Profile 解析与**同一次 observe**：`plan` 就是关闭写入的 `apply`，`check` 是
@@ -67,7 +67,7 @@ Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
 `~/.agents/skills` 与自家目录**合成同一个可发现集合**。所以「每个客户端各放一份」必然在两边都变成
 重名。现在第一方 Skill 只写 `~/.agents/skills` 一份，Claude Code 用符号链接接进去。
 
-`install_with` 显式列出需要一起选择的组件 ID；plan/apply/check 的 `--only` 会递归包含它们，未知引用或循环在执行任何写入前报错。它用于 `implement-batch` 兼容入口同时安装 `deliver-spec`，不改变 `depends_on` 仅检查可用性的含义，也不按名称猜依赖。默认全 Profile 同样验证这些引用。
+`install_with` 显式列出需要一起选择的组件 ID；plan/apply/check 的 `--only` 会递归包含它们，未知引用或循环在执行任何写入前报错。例如 `deliver-spec` 同时安装 `test-design` 和 `self-test-report`，不改变 `depends_on` 仅检查可用性的含义，也不按名称猜依赖。默认全 Profile 同样验证这些引用。
 
 `stale_copies` 负责清掉历史上散落的副本，判定规则是「删掉不丢东西」：
 
