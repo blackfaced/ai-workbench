@@ -4,7 +4,8 @@ Set up or maintain the target project's agent context and integration-test guide
 
 - For project onboarding, private project rules, client loading, or worktree/Botmux context, read [project context setup](references/project-context.md). Establish the project boundary before configuring its workflow.
 - For an integration-test guide, including `deliver-spec` requests for missing test methods, read [integration setup](references/integration-setup.md) and use [the guide outline](references/integration-guide.md). This remains independently usable; a guide-only request does not require changing client configuration.
-- For full project setup, do both as applicable. Reuse maintained project documents and link them from the effective context rather than copying their contents.
+- For project error handling and observability conventions, read [error and observability setup](references/error-observability.md). Inspect current call paths and relevant recent fixes before recording project-owned reuse points and verification methods. Include this analysis in project onboarding/maintenance when runtime behavior is in scope; a configuration-only repair can reuse valid evidence or state why it is unaffected.
+- For full project setup, cover the applicable context, engineering conventions and integration guide. Reuse maintained project documents and link them from the effective context rather than copying their contents.
 
 ## Ownership and completion
 
