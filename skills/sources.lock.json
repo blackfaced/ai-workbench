@@ -57,22 +57,15 @@
         "codex": "~/.agents/skills/deliver-spec",
         "trae": "~/.agents/skills/deliver-spec"
       },
-      "note": "第一方规范入口，按规格交付；使用客户端原生子 agent 与 Git worktree。implement-batch 保留为薄兼容入口。格式与安装验证不等于行为验收。"
+      "note": "第一方规范入口，按规格交付；使用客户端原生子 agent 与 Git worktree。格式与安装验证不等于行为验收。"
     },
     {
       "name": "implement-batch",
       "source": "repo:skills/implement-batch",
       "revision": "in-repo",
-      "verified": true,
-      "clients": [
-        "codex",
-        "trae"
-      ],
-      "install_paths": {
-        "codex": "~/.agents/skills/implement-batch",
-        "trae": "~/.agents/skills/implement-batch"
-      },
-      "note": "deliver-spec 的薄兼容入口；旧名定向安装同时选择规范组件，旧资源从 deliver-spec 同一真源分发。保留在途授权、检查点和验收记录。"
+      "verified": false,
+      "clients": [],
+      "note": "已退役；deliver-spec 为唯一第一方交付入口。当前 Profile 不登记旧名，默认及定向安装均不再分发；本仓仅保留历史文档链接。客户端刷新及旧副本清理由独立授权操作处理，不由此登记证明。"
     },
     {
       "name": "setup-aiwb",
@@ -87,7 +80,7 @@
         "codex": "~/.agents/skills/setup-aiwb",
         "trae": "~/.agents/skills/setup-aiwb"
       },
-      "note": "第一方仓库集成测试手册 Skill，可供 deliver-spec（兼容 implement-batch） 使用；不恢复旧 aiwb CLI。安装验证不代表目标项目环境已验证。"
+      "note": "第一方仓库集成测试手册 Skill，可供 deliver-spec 使用；不恢复旧 aiwb CLI。安装验证不代表目标项目环境已验证。"
     },
     {
       "name": "reflect-bug",
