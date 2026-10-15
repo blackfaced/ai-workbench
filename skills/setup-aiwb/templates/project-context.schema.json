@@ -25,6 +25,13 @@
     },
     "lazyPolicy": {"const": "complete"},
     "pack": {"type": "object", "additionalProperties": false, "properties": {"source": {"type": "string", "minLength": 1}, "revision": {"type": "string", "minLength": 1}}},
+    "clientSettings": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "codex": {"type": "object", "additionalProperties": false, "properties": {"project_doc_max_bytes": {"type": "integer", "minimum": 32768, "maximum": 1048576}}},
+        "trae": {"type": "object", "additionalProperties": false, "properties": {"project_doc_max_bytes": {"type": "integer", "minimum": 32768, "maximum": 1048576}}}
+      }
+    },
     "additiveEntry": {
       "type": "object", "additionalProperties": false,
       "properties": {

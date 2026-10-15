@@ -20,7 +20,7 @@ FLAGS = set('strict-config oss approve-for-me dangerously-bypass-approvals-and-s
 BYPASS = set('agents dashboard login logout update doctor mcp plugin channel backend completion app app-server remote-control acp sandbox apply a queue archive delete migrate-rollouts unarchive migrate worktree-apply exec-server features models help resume fork'.split())
 
 
-def launch_options(args, cwd):
+def launch_options(args, cwd, client="codex", native_requests=None):
     directory = str(cwd)
     diagnostic = []
     unsafe = []
@@ -55,11 +55,14 @@ def launch_options(args, cwd):
             option = 'worktree'
         else:
             unsafe.append('unsupported CLI option'); i += 1; continue
-        if option in ['worktree','remote','resume','acp']:
+        if option in ['remote','resume','acp']:
             unsafe.append('client-created worktree/remote/resume startup requires a separate native integration; use git worktree add then launch from that checkout')
         if option == 'worktree':
+            if native_requests is not None: native_requests.append(True)
+            if client == 'codex' and name != '--worktree':
+                unsafe.append('Codex native worktree option is --worktree')
             i += 1
-            if not sep and i < len(args) and not args[i].startswith('-'):
+            if client == 'trae' and not sep and i < len(args) and not args[i].startswith('-') and args[i] not in BYPASS | {'exec','e','review','debug'}:
                 i += 1
             continue
         if option in ['ignore-user-config','ignore-rules']:
@@ -71,6 +74,8 @@ def launch_options(args, cwd):
                 i += 1
                 if i == len(args): raise RuntimeError('missing CLI option value')
                 value = args[i]
+            if option == 'worktree-mode' and value != 'git':
+                unsafe.append('native context gate currently requires --worktree-mode git')
             if option == 'cd':
                 directory = str(Path(cwd) / value)
             elif option in ['config','profile','enable','disable']:
@@ -105,7 +110,8 @@ def main(argv=None):
     if not Path(native).is_absolute() or Path(native).resolve() == Path(sys.argv[0]).resolve():
         raise RuntimeError('invalid native client entry')
     cwd = Path.cwd()
-    directory, diagnostic, unsafe, bypass = launch_options(args, cwd)
+    native_requests = []
+    directory, diagnostic, unsafe, bypass = launch_options(args, cwd, a.client, native_requests)
     selected = Path(directory).resolve()
     registration = None if bypass else registered_target(registry, selected)
     defaults = {}
@@ -123,6 +129,8 @@ def main(argv=None):
                     raise RuntimeError('invalid project document budget')
                 defaults[client] = ['-c','project_doc_max_bytes='+str(budget)]
             if unsafe: raise RuntimeError(unsafe[0])
+            if native_requests and not registry.get('native_worktree'):
+                raise RuntimeError('native worktree integration is not installed')
             for variable, suffix in [('CODEX_HOME','.codex'),('TRAE_HOME','.trae')]:
                 if os.environ.get(variable) and Path(os.environ[variable]).resolve() != (Path.home()/suffix).resolve():
                     raise RuntimeError('custom native home requires separate setup: '+variable)
@@ -130,13 +138,17 @@ def main(argv=None):
             # from reentering these wrappers. Native retains original argv/cwd.
             context.prepare(a.registry, target, receipt_name='cli-startup.json',
                             native_cwd=selected, client_options={client: defaults.get(client, []) + (diagnostic if client == a.client else []) for client in registry['clients']})
+            if native_requests:
+                import native_worktree
+                native_worktree.arm(a.registry,target,entry,{client:defaults.get(client,[])+(diagnostic if client==a.client else []) for client in registry['clients']},a.client)
     except (RuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         record = {'status':'BLOCKED', 'error_code':'AIWB_CONTEXT_STARTUP_BLOCKED',
                   'cwd':str(selected), 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'reason':str(exc)}
         key = hashlib.sha256(str(selected).encode()).hexdigest()
         context_io.atomic_write(Path(a.registry).parent/'failures'/(key+'.json'), json.dumps(record,indent=2)+'\n')
         raise
-    os.execv(native, [native, *defaults.get(a.client, []), *args])
+    native_mode = ['--worktree-mode','git'] if registration is not None and native_requests and a.client == 'trae' else []
+    os.execv(native, [native, *defaults.get(a.client, []), *native_mode, *args])
 
 
 if __name__ == '__main__':
