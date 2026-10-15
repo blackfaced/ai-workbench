@@ -6,7 +6,17 @@ Skills are lightweight and opt-in: use one only when the owner requests it or a
 narrow task clearly needs it. They are suggestions, not a mandatory workflow
 framework.
 
-Only profile-selected first-party files are managed by the environment tool. Upstream catalogs remain references; their installers own their files.
+## Installation policy
+
+Default to **project-scoped activation**, not installation into every client's user-global discovery directory. AIWB maintains reusable first-party content, templates and source records; the user's workspace manager selects projects, clients and fixed revisions, and owns activation, updates and rollback. Upstream content keeps its original owner. Do not create a second maintained body or a second activation manager here.
+
+For each selected Skill, hand off its source repository, full commit SHA (or an immutable release plus content digest), source path, required companions/resources, license and verification limits. `sources.lock.json` includes historical installation observations and unpinned entries; it is not a ready-to-apply project manifest. Resolve unpinned sources before activation, without relabeling old evidence as current verification.
+
+First-party packages may separate `SKILL.md` body from `clients/<client>.frontmatter.md`. The downstream manager must assemble the selected metadata plus body, preserve relative references and declared resources, and carry client-specific policy files from the same revision. Do not simply link a body-only directory as a complete client package. Read the corresponding component in `tools/environment/profiles/*.json` for resources and `install_with` companions; those profiles describe the legacy installer, not a project's activation scope.
+
+Activate one canonical package through the target client's verified project discovery entry. Select actual repository roots, not a common parent directory; verify new sessions and new worktrees separately. Preserve project rules, reject unmanaged same-name conflicts, and record source/digest, targets, backups and rollback with the existing workspace manager. A link on disk does not prove client discovery or behavior acceptance. Official self-managed or project-entry-less clients remain explicit exceptions, not a reason to activate all Skills globally.
+
+Existing user-global installations stay unchanged until a separately authorized migration has verified project discovery and protected user edits. The [environment tool](../tools/environment/README.md#skill-installation-scope) still supports legacy profile-selected installs; this policy does not change its executable defaults or retire its recovery support.
 
 ## Index
 
@@ -20,7 +30,7 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 
 - [setup-aiwb](setup-aiwb/SKILL.md) — configure and verify project context for clients and worktrees; derive project error/observability conventions and maintain integration-test guides, including deliver-spec's existing setup path.
 
-- [deliver-spec](deliver-spec/SKILL.md) — plan, implement, review and verify a spec; [installation and usage](../workflows/implement-batch.md).
+- [deliver-spec](deliver-spec/SKILL.md) — plan, implement, review and verify a spec; see its [project activation and usage guide](../workflows/implement-batch.md).
 - [test-design](test-design/SKILL.md) — 独立测试设计与质量审查；从需求、旧合同和真实入口补齐断言、数据与证据边界。
 - [self-test-report](self-test-report/SKILL.md) — 自测报告编写、更新与证据审查；独立使用或由 deliver-spec 引用，复用同一验收记录。
 - [writing-docs](writing-docs/SKILL.md) — 技术文档写作与增量编辑；专用 Skill 复用结构保留、语言与改后核验约定，引用上游 `writing-for-agents`。

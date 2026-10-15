@@ -5,6 +5,12 @@
 一份实现（`env.py`，只用标准库、Python 3.9 兼容）+ 一个薄壳（`bootstrap.sh`，只负责在新机器上找到
 `python3` 并转发参数）。设计依据见 [`decisions/0009-reproducible-development-environments.md`](../../decisions/0009-reproducible-development-environments.md)。
 
+## Skill installation scope
+
+新 Skill 默认按[项目激活策略](../../skills/README.md#installation-policy)接入：AIWB 维护可复用正文、资源和固定来源版本；工作区管理方选择项目与客户端，负责激活、更新和回滚。本工具不新增项目激活管理器。
+
+**当前实现未迁移**：现有 Profile 仍声明用户全局目录，未过滤的 `bootstrap.sh --apply` 会安装其中的 Skill；不要把它当成项目安装命令。只维护工具或配置时，用 `env.py plan/apply/check --only ID` 明确选择相应组件。现有全局安装、安装记录、备份和 guarded restore 保持兼容；移除旧入口是另行授权的迁移动作，不由新建议自动触发。下文描述这些既有机制，不代表新安装推荐范围。
+
 ## 三条命令
 
 ```sh
@@ -61,7 +67,7 @@ Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
 | `skill` | 第一方 Skill 的一份正文 + 每客户端 frontmatter（可带 `files` 附带文件） | 渲染 = `clients/<client>.frontmatter.md` + `SKILL.md` 正文；`files` 用来带客户端专属的界面/策略描述（如 Codex 的 `agents/openai.yaml`）；依赖不满足就跳过并说明原因；`stale_copies` 见下 |
 | `installer` | 包住一个已存在的安装器 | v1 只有 macOS 的 `brew bundle`，`--no-upgrade`：只保证「装了」，不隐式升级 |
 
-### 为什么 Skill 只装一份
+### 既有 Profile 的 Skill 单副本布局（非新项目推荐）
 
 2026-09-07 用 `codex app-server` / `traecli app-server` 的 `skills/list` 实测：两个客户端都把
 `~/.agents/skills` 与自家目录**合成同一个可发现集合**。所以「每个客户端各放一份」必然在两边都变成
@@ -147,10 +153,7 @@ python3 tools/environment/tests/regression.py
 工作 Mac 与两台现有 Linux 机器已验证漂移检查、受管配置与 Skill 的安装/更新/回滚、已有工具的版本更新。
 家用 Mac mini 在 2026-09-12 验证了工具身份、Skill 安装与原生发现、幂等与回滚预览；没有验证软件升级、新机首装或模型驱动任务。详见[家用 Mac 验证记录](home-mac-validation.md)。
 
-**尚未覆盖完整新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首装命令已在现有开发机的隔离容器中
-按 Profile 原样验证并登记；现有安装的渠道不变。受限网络需要先在执行安装命令的 shell 中配置
-HTTP(S) 代理，Docker daemon 的代理不会自动传给容器。隔离测试、版本和限制见
-[Linux 首装验证记录](linux-first-install-validation.md)；容器通过不等于完整新机 `apply` + `check` 验收。
+**尚未覆盖完整新机首装**：Linux 侧 `codex`、`uv`、`rg` 的首装命令曾在现有开发机的隔离容器中按当时的 Profile 命令验证；当前 `work-linux` Profile 未登记这些工具组件，因此现在的 `apply` 不会执行这些首装命令。受限网络需要先在执行安装命令的 shell 中配置 HTTP(S) 代理，Docker daemon 的代理不会自动传给容器。历史隔离测试、版本和限制见 [Linux 首装验证记录](linux-first-install-validation.md)；这项历史验证不等于当前 Profile 已接入，更不等于完整新机 `apply` + `check` 验收。
 
 ## 每台机器的差异
 

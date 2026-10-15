@@ -16,10 +16,13 @@ For transfer, say `使用 handoff-to-dev skill 把当前任务交到 <host> 的 
 
 One lesson format and one handoff/result format support each pair. They live with their producing Skill's references; install both members of a pair when using the complete flow. Concrete incidents, secrets, project deployment commands and working patches never become AIWB's knowledge base. No assistant-global memory writes are performed by these Skills.
 
-Install on the work Mac through the existing environment entry point, using `plan` before `apply`:
+Activate these Skills through the target project's workspace manager, following the [project-scoped activation policy](../skills/README.md#installation-policy). Select `reflect-bug`, `review-lessons`, `handoff-to-dev`, `collect-from-dev` and `deliver-spec` from one fixed AIWB revision, including their frontmatter, relative references and resources. Verify discovery in a new target-project session and worktree; registration or files on disk alone do not establish activation.
+
+The environment Profile remains available only for separately authorized legacy maintenance. When maintaining an existing Profile-managed installation, preview the exact components before applying them:
 
 ```sh
+python3 tools/environment/env.py plan --profile work-mac --only reflect-bug --only review-lessons --only handoff-to-dev --only collect-from-dev --only deliver-spec
 python3 tools/environment/env.py apply --profile work-mac --only reflect-bug --only review-lessons --only handoff-to-dev --only collect-from-dev --only deliver-spec
 ```
 
-Use `work-linux` when actually installing on Linux. Registration is not deployment. An installed handoff Skill does not mean a remote session was transferred or launched. Preserve source/local/remote work until the user's existing cleanup authority covers deletion.
+Use `work-linux` only when maintaining an existing Linux Profile installation. Activation or legacy installation is not deployment. An available handoff Skill does not mean a remote session was transferred or launched. Preserve source/local/remote work until the user's existing cleanup authority covers deletion.

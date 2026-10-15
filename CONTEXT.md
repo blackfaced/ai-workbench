@@ -14,7 +14,8 @@ The current verified scope is maintenance of the work Mac, home Mac mini, and tw
 - **Check**: read-only comparison with the profile plus client discovery and conflict checks. A successful check does not prove fresh-machine installation works.
 - **Managed state**: installation records used to prove ownership before modifying a target. It excludes credentials and client session data.
 - **Backup / restore**: before-and-after records and guarded reversal of managed file changes. External package downgrades are outside this guarantee.
-- **Skill source**: the maintained first-party body or upstream installer. A catalog entry alone does not authorize installation.
+- **Skill source**: the maintained first-party body/resources or upstream package at a fixed revision. A catalog entry alone does not authorize installation.
+- **Skill activation**: the workspace manager's explicit selection of projects and client discovery entries. Project-scoped activation is the default recommendation; existing user-global Profile targets remain a legacy maintenance capability, not the project manifest.
 - **Client discovery**: the Skills a client actually exposes; different paths to the same real target may be aliases, while independent same-name copies are conflicts.
 
 The former unattended agent orchestrator is retired; see [decision 0010](decisions/0010-environment-first-repository-scope.md). Its Contract, Run, and Admission concepts do not apply to environment maintenance.
