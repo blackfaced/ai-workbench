@@ -18,7 +18,8 @@ checks and local Chrome rendering; SVG and PNG were produced without network
 requests. A timeout-label edit passed again. This covers those examples only,
 not all visual types, cross-platform fonts or publication to a document host.
 
-For adoption, choose one upstream/client-supported installation owner and verify
+For adoption, follow the [project-scoped installation policy](README.md#installation-policy)
+with a fixed upstream version and one workspace activation owner, and verify
 native discovery before recording the channel as accepted. Keep one canonical
 package; aliases may point to it. AIWB does not vendor the Skill or add it to
 every machine profile.
