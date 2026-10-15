@@ -4,3 +4,4 @@
 
 - [Spec #366 唯一验收记录](spec-366.md)：需求映射、设计、原始结果与证据有效性。
 - [Spec #366 自测报告](spec-366-report.md)：结论、角色和访问入口；不另维护结果表。
+- [Writing Docs 对照验证](writing-docs-2026-10-15.md)：四份文档副本的旧、新规则对照，description 选择与分发回归。
