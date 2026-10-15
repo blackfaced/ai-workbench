@@ -5,15 +5,11 @@
 - Status: experimental; first local trial targets Traex
 - Source: [first-party Skill](../skills/deliver-spec/SKILL.md)
 
-Install from this checkout on the work Mac:
+## Project activation
 
-```sh
-python3 tools/environment/env.py plan --profile work-mac --only deliver-spec
-python3 tools/environment/env.py apply --profile work-mac --only deliver-spec
-python3 tools/environment/env.py check --profile work-mac --only deliver-spec
-```
+Use the [installation policy](../skills/README.md#installation-policy): select a fixed AIWB revision and activate `deliver-spec`, `test-design`, `self-test-report` and the setup resources needed by the target project through its workspace manager. Keep the client frontmatter, relative references and resources from that same revision. AIWB supplies the content; the workspace manager owns the project/client targets and rollback.
 
-Use `work-linux` on the Linux machines; registration does not mean deployment there has occurred. The installed shared copy serves Codex and Trae discovery. Upstream `implement` is unchanged. Other clients and native subagent availability require independent verification.
+Do not use the environment Profile's user-global `apply` as the default adoption path. Its existing install/recovery support remains available for separately authorized legacy maintenance; this guide changes the recommendation, not executable defaults or existing installs. Upstream `implement` is unchanged. Verify discovery in a new target-project session and new worktree; other clients and native subagent availability require independent verification.
 
 In the target repository's Traex conversation, explicitly request:
 
@@ -33,13 +29,13 @@ This Skill controls instructions and handoffs. Repository tests and CI provide e
 
 `deliver-spec`（按规格交付）is the maintained first-party entry. `implement-batch` is retired to avoid name confusion; this guide keeps its existing URL and the old source keeps documentation links only. To continue in-flight work, explicitly select deliver-spec and retain authorization, the confirmed plan, checkpoints, candidates and acceptance/failure history. Retirement grants no additional execution or publication authority. The independent upstream `implement-spec` is unchanged.
 
-`--only deliver-spec` selects the canonical entry plus `test-design` and `self-test-report` through the profile's `install_with` setting. All three current profiles exclude implement-batch; old-name plan/apply/check requests, including mixed selections, fail as unknown IDs before writes rather than silently selecting a different workflow. Default installation does not reinstall the old name. Ordinary `depends_on` still only checks availability. Preview the new command with `plan`; missing declared companions are reported before writes and user edits continue to block overwrite. Existing old client files and managed records are preserved, not automatically deleted. Guarded `restore` still honors historical backups, which may deliberately restore an old entry; check restored content before use. Client/machine refresh and removal of existing copies are separate operations, not performed by this repository change.
+For legacy Profile maintenance, `--only deliver-spec` selects the canonical entry plus `test-design` and `self-test-report` through the profile's `install_with` setting. All three current profiles exclude implement-batch; old-name plan/apply/check requests, including mixed selections, fail as unknown IDs before writes rather than silently selecting a different workflow. Default installation does not reinstall the old name. Ordinary `depends_on` still only checks availability. Preview the new command with `plan`; missing declared companions are reported before writes and user edits continue to block overwrite. Existing old client files and managed records are preserved, not automatically deleted. Guarded `restore` still honors historical backups, which may deliberately restore an old entry; check restored content before use. Client/machine refresh and removal of existing copies are separate operations, not performed by this repository change.
 
 ## Optional botmux execution
 
 > 使用 deliver-spec，通过 botmux 上已有的机器人协作实施这个 spec。先核实参与 bot 的 harness、模型、会话路由和独立 worktree，给我一份执行计划；确认后再派发，保留独立评审、串行集成和批次验收。
 
-The [botmux transport guide](../skills/deliver-spec/references/botmux.md) maps existing roles to independent harness sessions and uses native dispatch/report routing. Botmux installation does not select this mode or install/configure bots. The same profiles distribute the guide; live delivery, directory isolation and recovery still require the documented pilot. The default native-subagent workflow is unchanged.
+The [botmux transport guide](../skills/deliver-spec/references/botmux.md) maps existing roles to independent harness sessions and uses native dispatch/report routing. Botmux installation does not select this mode or install/configure bots. The guide is part of the selected fixed-version package; existing profiles also retain legacy distribution support. Live delivery, directory isolation and recovery still require the documented pilot. The default native-subagent workflow is unchanged.
 
 ## Repository setup and final integration acceptance
 
@@ -51,7 +47,7 @@ Use `setup-aiwb` in a target repository to establish or refresh its integration-
 
 Design readiness is separate from execution. Approved expectation or relevant candidate changes invalidate affected evidence while retaining original outcomes and the change reason; unchanged evidence needs a documented reuse basis. The acceptance record owns design and results, and self-test-report uses the same case IDs to summarize/index them. It retains the distinction between developer self-test, independent QA and final acceptance.
 
-For a single requirement, install only `test-design` with `python3 tools/environment/env.py apply --profile work-mac --only test-design` (preview with `plan`), then invoke `$test-design` against the project's existing acceptance document. Review or extend its design and continue using that project's implementation and test workflow; no batch, delivery agent or execution is started by the design Skill.
+For a single requirement, select and activate only `test-design` through the project's workspace manager, then invoke `$test-design` against the project's existing acceptance document. Review or extend its design and continue using that project's implementation and test workflow; no batch, delivery agent or execution is started by the design Skill.
 
 For state, retry snapshots and human-edit synchronization, the [acceptance outline](../skills/deliver-spec/references/spec-acceptance.md#behavior-sequence-coverage) maps invariants to action sequences and observable assertions. It distinguishes production-function, mocked-browser and real-integration evidence and omits irrelevant categories with reasons. Static screens or helper tests alone do not prove the full behavior.
 
@@ -59,7 +55,7 @@ Every delivery includes the agreed [self-test report entry](../skills/deliver-sp
 
 A frontend guide must verify its actual dev/test command and API routing; a Kubernetes/Helm backend guide must verify the mono-repo/chart entry, isolated test resources, candidate image, readiness and access route. Those examples are not preconfigured deployment instructions. Each repository owns its guide; cross-repository specs link them and identify every tested version.
 
-Report writing, update and evidence-review details are maintained in [self-test-report](../skills/self-test-report/SKILL.md), which can also be invoked independently without running implementation. Install/update setup and the complete delivery entry with `python3 tools/environment/env.py apply --profile work-mac --only setup-aiwb --only deliver-spec` (preview with `plan`); the command includes design and reporting companions. Linux profiles register the same resources; deployment there is separate. No real service deployment or billable API test is performed by installing these Skills.
+Report writing, update and evidence-review details are maintained in [self-test-report](../skills/self-test-report/SKILL.md), which can also be invoked independently without running implementation. Select `setup-aiwb` and `deliver-spec` with their design/reporting companions through the same project activation manager; installation/update and target discovery need their own verification. Other-machine activation is separate. No real service deployment or billable API test is performed by installing these Skills.
 
 ## Recovery and verification cost
 
@@ -85,7 +81,7 @@ The [staged-review policy](../skills/deliver-spec/references/staged-review.md) p
 
 ## Optional retrospective
 
-After a run with repeated rework, difficult discovery, or tool/check gaps, explicitly select upstream [retro](https://www.aihero.dev/skills-retro) to review the parent session and relevant child logs. It proposes evidence-backed environment improvements for the user to select; it is optional and does not change spec acceptance. Smooth runs can skip it. Installation remains owned by the upstream installer; see [the collection reference](../skills/matt-pocock-skills.md).
+After a run with repeated rework, difficult discovery, or tool/check gaps, explicitly select upstream [retro](https://www.aihero.dev/skills-retro) to review the parent session and relevant child logs. It proposes evidence-backed environment improvements for the user to select; it is optional and does not change spec acceptance. Smooth runs can skip it. Its source remains upstream-owned, with fixed-version project activation owned by the workspace manager; see [the collection reference](../skills/matt-pocock-skills.md).
 
 Use `reflect-bug` for an escaped bug's detection gap and `review-lessons` to consolidate existing project lessons. Retro covers broader session friction such as missing navigation pointers, unconnected checks, or inadequate tool access. Project-specific findings stay with that project.
 

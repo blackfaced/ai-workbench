@@ -8,7 +8,7 @@
 
 ## Setup and evidence
 
-Use the upstream installation channel; AIWB does not copy or update its package.
+For new adoption, follow the [project-scoped installation policy](README.md#installation-policy) with a fixed upstream version and the workspace manager's activation record; AIWB does not copy or update its package.
 On 2026-10-13 the work Mac had 2.16.0 from the `skills` CLI, and `doctor` passed.
 The installer records a skill-folder hash, not a pinned Git commit; see
 [source records](sources.lock.json). This proves local package readiness, not
