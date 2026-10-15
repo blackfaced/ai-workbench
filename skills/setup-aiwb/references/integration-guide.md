@@ -27,6 +27,7 @@ Adapt this outline to the existing repository guide. Remove inapplicable section
 
 - Existing integration-test commands or browser/API entry points; required real versus simulated dependencies.
 - Observable success/failure criteria, expected exit codes, relevant logs/artifacts.
+- Link the project's error/observability conventions: applicable precise-code and unknown-error checks, correlation and retry/counting assertions, telemetry-failure isolation and user-message checks. Identify the actual log/metric/trace query entry; distinguish local emission, collection/query and dashboard/alert evidence, including known access or delivery gaps.
 - Timeout/stop conditions; authorized real API or billable operations.
 - First usable slice and browser actions/assertions; when human verification is selected, the user-facing URL, steps, expected behavior and feedback evidence. Distinguish environment readiness, simulated dependencies and real behavior verification.
 
