@@ -3,6 +3,24 @@
   "_evidence_date": "2026-09-07",
   "skills": [
     {
+      "name": "writing-docs",
+      "source": "repo:skills/writing-docs",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex",
+        "trae"
+      ],
+      "install_paths": {
+        "codex": "~/.agents/skills/writing-docs",
+        "trae": "~/.agents/skills/writing-docs"
+      },
+      "depends_on": [
+        "writing-for-agents"
+      ],
+      "note": "第一方通用技术文档编辑 Skill；正文与 clients/ 元数据为真源。上游 writing-for-agents 自行安装，本仓仅引用。STE 默认借鉴原则，不宣称完整合规；安装检查与模型行为验证分别报告。"
+    },
+    {
       "name": "steelman-grill",
       "source": "repo:skills/steelman-grill",
       "revision": "in-repo",

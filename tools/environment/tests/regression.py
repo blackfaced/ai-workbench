@@ -642,11 +642,15 @@ def case_implement_batch_distribution(root):
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
     for profile_name in ("work-mac", "work-linux", "home-mac"):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
-        skill_names = ("implement-batch", "deliver-spec", "test-design", "self-test-report")
+        skill_names = ("implement-batch", "deliver-spec", "test-design", "self-test-report", "writing-docs")
         components = [c for c in profile["components"] if c["id"] in skill_names]
+        upstream_body = "---\nname: writing-for-agents\ndescription: Isolated upstream fixture.\n---\n"
         for entry in ("implement-batch", "deliver-spec"):
             label = profile_name + " " + entry
             box = Sandbox(os.path.join(root, profile_name, entry))
+            upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+            os.makedirs(os.path.dirname(upstream))
+            write(upstream, upstream_body)
             for name in skill_names:
                 shutil.copytree(os.path.join(repo, "skills", name),
                                 os.path.join(box.repo, "skills", name))
@@ -659,9 +663,16 @@ def case_implement_batch_distribution(root):
             check(label + " 安装成功", rc == 0, out if rc else "")
             canonical = box.path(".agents", "skills", "deliver-spec", "SKILL.md")
             check(label + " 规范入口可用", os.path.isfile(canonical))
-            for companion in ("test-design", "self-test-report"):
+            for companion in ("test-design", "self-test-report", "writing-docs"):
                 check(label + " 定向安装包含 " + companion,
                       os.path.isfile(box.path(".agents", "skills", companion, "SKILL.md")))
+            report_dir = box.path(".agents", "skills", "self-test-report")
+            links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(os.path.join(report_dir, "SKILL.md")))
+            check(label + " 报告可到达通用写作正文",
+                  "../writing-docs/SKILL.md" in links
+                  and os.path.isfile(os.path.join(report_dir, "../writing-docs/SKILL.md")))
+            check(label + " 写作来源随正文分发",
+                  os.path.isfile(box.path(".agents", "skills", "writing-docs", "references", "sources.md")))
             installed = box.path(".agents", "skills", entry)
             if entry == "implement-batch":
                 links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(os.path.join(installed, "SKILL.md")))
@@ -692,6 +703,7 @@ def case_implement_batch_distribution(root):
                   rc == 0 and all(not os.path.exists(box.path(".agents", "skills", name, "SKILL.md"))
                                   for name in skill_names)
                   and not box.state()["components"], out if rc else "")
+            check(label + " 上游 Skill 未被接管或删除", read(upstream) == upstream_body)
             rc, out = box.run("apply", "--profile", "harness", "--only", entry)
             check(label + " 共装恢复后可重新安装", rc == 0, out if rc else "")
             method = box.path(".agents", "skills", "test-design", "SKILL.md")
@@ -711,6 +723,9 @@ def case_implement_batch_distribution(root):
         # Represent the pre-rename public distribution shape without requiring Git history.
         # Actual pinned legacy payload upgrade is also exercised in release evidence.
         box = Sandbox(os.path.join(root, profile_name, "upgrade"))
+        upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+        os.makedirs(os.path.dirname(upstream))
+        write(upstream, upstream_body)
         for name in skill_names:
             shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
         legacy = json.loads(json.dumps(next(c for c in components if c["id"] == "implement-batch")))
@@ -772,17 +787,23 @@ def case_self_test_report_distribution(root):
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
     for profile_name in ("work-mac", "work-linux", "home-mac"):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
+        skill_names = ("self-test-report", "implement-batch", "deliver-spec", "test-design", "writing-docs")
         components = [c for c in profile["components"]
-                      if c["id"] in ("self-test-report", "implement-batch", "deliver-spec", "test-design")]
-        check(profile_name + " 登记报告、设计与新旧交付组件", len(components) == 4)
-        if len(components) != 4:
+                      if c["id"] in skill_names]
+        check(profile_name + " 登记报告、设计、写作与新旧交付组件", len(components) == len(skill_names))
+        if len(components) != len(skill_names):
             continue
         box = Sandbox(os.path.join(root, profile_name))
-        for name in ("self-test-report", "implement-batch", "deliver-spec", "test-design"):
+        upstream = box.path(".agents", "skills", "writing-for-agents", "SKILL.md")
+        os.makedirs(os.path.dirname(upstream))
+        write(upstream, "---\nname: writing-for-agents\ndescription: Isolated upstream fixture.\n---\n")
+        for name in skill_names:
             shutil.copytree(os.path.join(repo, "skills", name), os.path.join(box.repo, "skills", name))
         box.profile(base_profile(components))
         rc, out = box.run("apply", "--profile", "harness", "--only", "self-test-report")
         check(profile_name + " 报告 Skill 可独立安装", rc == 0, out if rc else "")
+        check(profile_name + " 独立安装报告同时提供通用写作能力",
+              os.path.isfile(box.path(".agents", "skills", "writing-docs", "SKILL.md")))
         installed = box.path(".agents", "skills", "self-test-report")
         source = os.path.join(repo, "skills", "self-test-report")
         expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")

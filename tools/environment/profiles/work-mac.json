@@ -256,9 +256,33 @@
       ]
     },
     {
+      "id": "writing-docs",
+      "type": "skill",
+      "name": "writing-docs",
+      "body": "skills/writing-docs/SKILL.md",
+      "source": "repo:skills/writing-docs",
+      "revision": "in-repo",
+      "depends_on": [
+        "writing-for-agents"
+      ],
+      "clients": {
+        "shared": {
+          "dir": "~/.agents/skills",
+          "frontmatter": "skills/writing-docs/clients/shared.frontmatter.md",
+          "files": {
+            "agents/openai.yaml": "skills/writing-docs/clients/openai.yaml",
+            "references/sources.md": "skills/writing-docs/references/sources.md"
+          }
+        }
+      }
+    },
+    {
       "id": "self-test-report",
       "type": "skill",
       "name": "self-test-report",
+      "install_with": [
+        "writing-docs"
+      ],
       "body": "skills/self-test-report/SKILL.md",
       "source": "repo:skills/self-test-report",
       "revision": "in-repo",
