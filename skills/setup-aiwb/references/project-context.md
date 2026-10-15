@@ -10,6 +10,8 @@ The resulting context should identify the project's purpose and boundaries, auth
 
 When adopting a reusable instruction pack, select the applicable rules from its authoritative source and record its revision and owner with the project setup. Preserve the source's maintenance boundary: project-specific choices remain project-owned, and generated content retains its source reference. Do not turn a selected pack or project convention into a new global default.
 
+For runtime code, analyze and maintain [project error and observability conventions](error-observability.md) before finalizing its context: identify verified error adapters, diagnostic/measurement reuse points, consumer behavior and regression methods. Put a conditional pointer to the project-owned result in the effective context. For a configuration-only repair, reuse still-valid analysis or record why it is unaffected; do not perform unrelated code cleanup.
+
 ## Choose a native entry point
 
 | Situation | Entry point |

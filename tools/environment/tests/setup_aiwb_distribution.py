@@ -97,7 +97,8 @@ def fresh_install(root, profile):
 def upgrade(root):
     current = component("work-mac")
     old = copy.deepcopy(current)
-    for relative in ("references/project-context.md", "references/integration-setup.md"):
+    for relative in ("references/project-context.md", "references/integration-setup.md",
+                     "references/error-observability.md"):
         old["clients"]["shared"]["files"].pop(relative)
     box, installed = fixture(root / "upgrade", old)
     body = Path(box.repo) / "skills/setup-aiwb/SKILL.md"
@@ -119,13 +120,14 @@ def upgrade(root):
 
 
 def missing_resource_control(root):
-    broken = copy.deepcopy(component("work-mac"))
-    broken["clients"]["shared"]["files"].pop("references/project-context.md")
-    box, installed = fixture(root / "missing-resource", broken)
-    run(box, "apply")
-    missing = missing_references(installed / "SKILL.md")
-    require(missing == {(installed / "references/project-context.md").resolve()},
-            "reference detector catches omitted project guide even when apply succeeds")
+    for relative in ("references/project-context.md", "references/error-observability.md"):
+        broken = copy.deepcopy(component("work-mac"))
+        broken["clients"]["shared"]["files"].pop(relative)
+        box, installed = fixture(root / ("missing-" + Path(relative).stem), broken)
+        run(box, "apply")
+        missing = missing_references(installed / "SKILL.md")
+        require(missing == {(installed / relative).resolve()},
+                "reference detector catches omitted " + relative + " even when apply succeeds")
 
 
 def main():

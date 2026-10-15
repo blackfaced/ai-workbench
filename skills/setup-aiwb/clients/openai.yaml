@@ -1,4 +1,4 @@
 interface:
   display_name: "Setup AIWB"
   short_description: "按项目配置并验证客户端上下文与工作树入口，维护集成测试手册"
-  default_prompt: "使用 $setup-aiwb 接入当前项目，保留团队规则，配置并验证项目上下文和启动入口，按需补齐测试手册。"
+  default_prompt: "使用 $setup-aiwb 接入当前项目，保留团队规则，从当前实现与近期修复提炼适用的错误处理和可观测性约定，配置并验证项目上下文和启动入口，按需补齐测试手册。"
