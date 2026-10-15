@@ -32,6 +32,7 @@ Only profile-selected first-party files are managed by the environment tool. Ups
 - [Diagram Design](diagram-design.md) — opt-in trial for additional diagram types and document figures.
 - [Anthropic Skills](anthropic-skills.md)
 - [mattpocock/skills](matt-pocock-skills.md)
+- [Anatomy](anatomy.md) — upstream open skill; explorable 3D cutaway models and narrated explainers; installed to DoubaoWork, discovery pending.
 
 ## Distributable instruction packs
 

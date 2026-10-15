@@ -17,3 +17,4 @@ Repeatable multi-step processes and domain workflows.
 - [Agent Security Checklist](agent-security-checklist.md)
 - [ai-berkshire](ai-berkshire.md)
 - [Open Deep Research](open-deep-research.md)
+- [On-demand explainer](on-demand-explainer.md) — escalate delivery form (text → diagram → interactive page → narrated video) when a concept is unfamiliar.
