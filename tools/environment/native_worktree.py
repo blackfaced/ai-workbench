@@ -73,8 +73,12 @@ def git_proxy(registry_path,args):
         # Both verified clients pass the absolute checkout then a commit/ref.
         paths=[Path(x) for x in tail if x.startswith('/')]
         if len(paths)!=1 or '--no-checkout' not in tail:raise RuntimeError('unsupported native worktree creation contract')
+        context_io.guard(paths[0])
         target=paths[0].resolve()
-        if target.exists():raise RuntimeError('native checkout target already exists')
+        # TraeX allocates an empty directory before invoking Git. Preserve any
+        # existing content; an empty owner-writable native allocation is safe.
+        if target.exists() and (not target.is_dir() or any(target.iterdir())):
+            raise RuntimeError('native checkout target contains existing content')
         state['target']=str(target);state['status']='MATERIALIZING'
         context_io.atomic_write(path,json.dumps(state,indent=2)+'\n')
     effective=Path.cwd()
