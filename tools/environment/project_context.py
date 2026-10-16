@@ -92,7 +92,7 @@ def _provenance_lines(pin, workenv):
     ]
 
 
-def render_body(profile, pin, workenv, rules=None):
+def render_body(profile, pin, workenv, rules=None, settings=None):
     """Render only project-owned text. Legacy profiles select marker IDs only."""
     if profile == "none":
         return None
@@ -102,8 +102,10 @@ def render_body(profile, pin, workenv, rules=None):
     # when safe and basic-string fallback handles embedded literal delimiters.
     text = "\n" + "\n".join(_provenance_lines(pin, workenv)) + "\n\n" + rules + "\n"
     if "'''" not in text:
-        return ["%s = '''" % FIELD] + text.split("\n")[:-1] + ["'''"]
-    return [FIELD + " = " + json.dumps(text, ensure_ascii=False)]
+        lines = ["%s = '''" % FIELD] + text.split("\n")[:-1] + ["'''"]
+    else:
+        lines = [FIELD + " = " + json.dumps(text, ensure_ascii=False)]
+    return lines + [key+" = "+str(value) for key,value in sorted((settings or {}).items())]
 
 
 # --------------------------------------------------------------------------
@@ -230,7 +232,7 @@ def desired_id(profile):
     return PROFILE_TO_ID[profile]
 
 
-def build_plan(repo, profile, pin, workenv, clients, worktrees, rules=None):
+def build_plan(repo, profile, pin, workenv, clients, worktrees, rules=None, native_settings=None):
     """Return a Plan of actions over the enumerated checkouts.
 
     ``worktrees`` is an explicit list of checkout roots (main repo + declared
@@ -294,7 +296,24 @@ def build_plan(repo, profile, pin, workenv, clients, worktrees, rules=None):
                         else:
                             plan["notes"].append((cid, "owned legacy block retained; declaration migration pending"))
                         continue
-                    want_lines = render_body(profile, pin, workenv, rules)
+                    settings = dict((native_settings or {}).get(client, {}))
+                    # Existing user-owned scalar settings stay outside our block.
+                    # Refuse a conflicting smaller budget instead of adding a
+                    # duplicate TOML key or overwriting that user's setting.
+                    outside = existing
+                    for managed in MANAGED_IDS:
+                        b,e = markers_for(managed)
+                        outside = re.sub(r'(?ms)^'+re.escape(b)+r'\r?\n.*?^'+re.escape(e)+r'\r?$\n?', '', outside)
+                    parsed = load_toml_parser().loads(outside)
+                    conflict = False
+                    for key,value in list(settings.items()):
+                        if key in parsed:
+                            if type(parsed[key]) is not int or parsed[key] < value:
+                                plan['blocked'].append((cid, 'user-owned native setting conflicts: '+key))
+                                conflict = True
+                            settings.pop(key)
+                    if conflict: continue
+                    want_lines = render_body(profile, pin, workenv, rules, settings)
                     desired_text = "\n".join(want_lines)
                     if current is not None and current == desired_text:
                         reason = foreign(cid, current)
@@ -783,7 +802,7 @@ def _main(argv):
 
     import context_declaration
     rules = context_declaration.rule_text(decl, profile, repo) if profile != "none" else None
-    plan = build_plan(repo, profile, args.pin, workenv, clients, args.worktree, rules)
+    plan = build_plan(repo, profile, args.pin, workenv, clients, args.worktree, rules, decl.get("clientSettings", {}))
 
     # Only an explicit runtime flag authorizes mutation of global trust. A
     # project declaration may request trust but cannot grant its own permission.

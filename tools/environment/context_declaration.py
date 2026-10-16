@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT_FIELDS = {'version','tracker','commitConvention','knowledgeSources','lazyPolicy',
-               'pack','additiveEntry','profiles','instructions','rulesSource','trust'}
+               'pack','additiveEntry','profiles','instructions','rulesSource','trust','clientSettings'}
 
 
 def string(value, label):
@@ -58,6 +58,13 @@ def validate(decl, clients):
     if decl.get('pack') and set(decl['pack']) != {'source','revision'}:
         raise RuntimeError('pack needs both source and revision')
     for k,v in decl.get('pack', {}).items(): string(v, 'pack.'+k)
+    settings = decl.get('clientSettings', {})
+    fields(settings, set(clients), 'clientSettings')
+    for client, values in settings.items():
+        fields(values, {'project_doc_max_bytes'}, 'clientSettings.'+client)
+        for value in values.values():
+            if type(value) is not int or not 32768 <= value <= 1048576:
+                raise RuntimeError('project document budget must be 32 KiB to 1 MiB')
     entry = decl.get('additiveEntry', {})
     fields(entry, {'clients','files','field','markerPrefix','tracked'}, 'additiveEntry')
     chosen = entry.get('clients', list(clients))

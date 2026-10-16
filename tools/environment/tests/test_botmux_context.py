@@ -69,7 +69,7 @@ class Startup(unittest.TestCase):
         import importlib.util,shutil
         sys.path.insert(0,str(TOOLS))
         spec=importlib.util.spec_from_file_location('startup_installer',TOOLS/'install_project_context.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
-        legacy=self.root/'legacy-release';legacy.mkdir();names=set(module.FILES)-{'botmux_context.py','cli_context.py'}
+        legacy=self.root/'legacy-release';legacy.mkdir();names=set(module.FILES)-{'botmux_context.py','cli_context.py','native_worktree.py'}
         for name in names:shutil.copy2(TOOLS/name,legacy/name)
         (legacy/'release.json').write_text(json.dumps({'files':{name:hashlib.sha256((legacy/name).read_bytes()).hexdigest() for name in names}}))
         self.assertEqual(set(module.verify(legacy)['files']),names)
