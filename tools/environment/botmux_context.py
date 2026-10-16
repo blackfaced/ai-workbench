@@ -158,7 +158,7 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
             if subprocess.run(['git','-C',str(target),'check-ignore','-q',rel]).returncode:
                 raise RuntimeError('native companion is not locally excluded: ' + rel)
             current = digest(dest)
-            if current is not None and current != artifact['sha256']:
+            if current is not None and current != artifact['sha256'] and artifact.get('seed_only') is not True:
                 raise RuntimeError('native companion conflict; preserve existing file: ' + rel)
             copies.append((src, dest, current))
         command = [str(installer), '--repo', str(source), '--declaration',
