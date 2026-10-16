@@ -47,6 +47,35 @@ def run(command, cwd):
     return r.stdout
 
 
+def analysis_status(entry, target):
+    """Analysis applicability is evidence, not permission to start a client."""
+    revision = entry.get('analysis_revision')
+    if revision is not None and (not isinstance(revision, str) or len(revision) not in (40, 64) or any(c not in '0123456789abcdef' for c in revision)):
+        raise RuntimeError('analysis revision must be an immutable commit id')
+    files = entry['source_files']
+    for rel in files:
+        if Path(rel).is_absolute() or '..' in Path(rel).parts:
+            raise RuntimeError('invalid analysis source path')
+    result = {'revision': revision, 'target_revision': git(target, 'rev-parse', 'HEAD'),
+              'status': 'UNVERIFIED', 'reason': 'baseline_missing',
+              'checked_files': 0, 'differences': []}
+    if not revision or not files:
+        return result
+    if result['target_revision'] != revision:
+        # A parallel/older branch need not contain the baseline's modules.
+        # Do not compare that branch against another revision's file inventory.
+        result['reason'] = 'different_revision'
+        return result
+    for rel, sha in files.items():
+        actual = digest(target / rel)
+        if actual != sha:
+            result['differences'].append({'path': rel, 'expected': sha, 'actual': actual})
+    result['checked_files'] = len(files)
+    result['status'] = 'STALE' if result['differences'] else 'CURRENT'
+    result['reason'] = 'working_tree_changed' if result['differences'] else 'matches_baseline'
+    return result
+
+
 def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cwd=None, client_options=None):
     registry_hash = digest(registry_path)
     registry = read_json(registry_path)
@@ -82,17 +111,7 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
         pinned(declaration, entry['declaration_sha256'])
         for path, sha in entry['companions'].items():
             pinned(Path(path), sha)
-        for rel, sha in entry['source_files'].items():
-            if Path(rel).is_absolute() or '..' in Path(rel).parts:
-                raise RuntimeError('invalid analysis source path')
-            for root in {source, target}:
-                p = root / rel
-                if sha is None:
-                    context_io.guard(p)
-                    if p.exists():
-                        raise RuntimeError('analysis requires refresh: ' + rel)
-                elif digest(p) != sha:
-                    raise RuntimeError('analysis requires refresh: ' + rel)
+        analysis = analysis_status(entry, target)
         team_path = target / 'AGENTS.md'
         team_copy = False
         if entry.get('private_team_guidance') is True:
@@ -107,8 +126,14 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
             team_copy = digest(team_path) is None
         team_hash = entry['team_sha256'] if team_copy else digest(team_path)
         team = ((source / 'AGENTS.md') if team_copy else team_path).read_text().strip()
-        if not team or team_hash != entry['team_sha256']:
-            raise RuntimeError('team guidance requires refresh')
+        if not team:
+            raise RuntimeError('team guidance is empty')
+        if team_hash != entry['team_sha256']:
+            tracked = subprocess.run(['git','-C',str(target),'ls-files','--error-unmatch','--','AGENTS.md'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+            if entry.get('private_team_guidance') is True or not tracked:
+                raise RuntimeError('private team guidance requires refresh')
+            # Tracked guidance belongs to the selected checkout, including its
+            # local edits. Verify native loading of this content; never replace it.
         for client, executable in registry['clients'].items():
             if client not in ['codex', 'trae'] or not Path(executable).is_absolute():
                 raise RuntimeError('unsupported client registration')
@@ -170,7 +195,8 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                 raise RuntimeError('native context loading failed: ' + client + ' (' + ', '.join(k for k,v in checks[client].items() if not v) + ')')
         receipt = {'status':'PASS', 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
                    'cwd':str(target), 'source':str(source), 'common_dir':common,
-                   'target_head':git(target,'rev-parse','HEAD'), 'pin':entry['pin'],
+                   'target_head':analysis['target_revision'], 'pin':entry['pin'],
+                   'analysis':analysis, 'team_guidance':{'sha256':team_hash, 'differs_from_registration':team_hash != entry['team_sha256']},
                    'registry_sha256':digest(registry_path), 'declaration_sha256':digest(declaration),
                    'checks':checks, 'native_companions': {str(dest.relative_to(target)): {'sha256':digest(dest), 'source':str(src), 'created':current is None} for src,dest,current in copies}}
         if receipt_name not in ['botmux-startup.json', 'cli-startup.json', 'native-worktree-startup.json']:
@@ -179,6 +205,8 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
         receipt['private_guidance_created'] = team_copy
         output = target / '.ai-workbench/project-context' / receipt_name
         context_io.atomic_write(output, json.dumps(receipt, indent=2)+'\n')
+        if analysis['status'] != 'CURRENT':
+            sys.stderr.write('AIWB_CONTEXT_ANALYSIS_' + analysis['status'] + ': ' + analysis['reason'] + '; startup continues; verify current checkout before using linked analysis. Evidence: ' + str(output) + '\n')
         return receipt
 
 

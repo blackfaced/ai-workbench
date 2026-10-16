@@ -28,7 +28,7 @@ class Startup(unittest.TestCase):
         self.installer=self.root/'setup';self.installer.write_text('#!'+sys.executable+'\nimport runpy,sys\nsys.path.insert(0,'+repr(str(TOOLS))+')\nrunpy.run_path('+repr(str(TOOLS/'project_context.py'))+',run_name="__main__")\n');self.installer.chmod(0o755)
         self.native=self.root/'native';self.native.write_text('#!'+sys.executable+'\nfrom pathlib import Path\nimport json,tomllib\np=Path.cwd();d=tomllib.loads((p/".codex/config.toml").read_text())["developer_instructions"]\nprint(json.dumps([{"role":"developer","content":d},{"role":"user","content":(p/"AGENTS.md").read_text()}]))\n');self.native.chmod(0o755)
         sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
-        self.registry=self.root/'registry.json';entry={'repo':str(self.repo),'declaration':str(self.decl),'declaration_sha256':sha(self.decl),'pin':'fixture-pin','workenv':'fixture','companions':{str(self.doc):sha(self.doc)},'source_files':{'runtime.txt':sha(self.repo/'runtime.txt'),'not-yet.txt':None},'team_sha256':sha(self.repo/'AGENTS.md')}
+        self.registry=self.root/'registry.json';entry={'repo':str(self.repo),'declaration':str(self.decl),'declaration_sha256':sha(self.decl),'pin':'fixture-pin','workenv':'fixture','companions':{str(self.doc):sha(self.doc)},'analysis_revision':subprocess.check_output(['git','-C',str(self.repo),'rev-parse','HEAD'],text=True).strip(),'source_files':{'runtime.txt':sha(self.repo/'runtime.txt'),'not-yet.txt':None},'team_sha256':sha(self.repo/'AGENTS.md')}
         self.registry.write_text(json.dumps({'version':1,'installer':{'path':str(self.installer),'sha256':sha(self.installer)},'clients':{'codex':str(self.native),'trae':str(self.native)},'projects':{str(self.repo/'.git'):entry}}))
     def git(self,root,*args):
         subprocess.run(['git','-C',str(root),*args],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
@@ -36,19 +36,47 @@ class Startup(unittest.TestCase):
         return subprocess.run([sys.executable,str(TOOLS/'botmux_context.py'),'--registry',str(self.registry),*args],env=self.env,text=True,capture_output=True)
     def test_worktree_provision_trust_native_and_repeat(self):
         r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
-        result=json.loads(r.stdout);self.assertEqual(result['status'],'PASS');self.assertTrue(all(all(x.values()) for x in result['checks'].values()))
+        result=json.loads(r.stdout);self.assertEqual(result['status'],'PASS');self.assertEqual(result['analysis']['status'],'CURRENT');self.assertTrue(all(all(x.values()) for x in result['checks'].values()))
         paths=[self.wt/'.codex/config.toml',self.wt/'.trae/traecli.toml',self.home/'.codex/config.toml',self.home/'.trae/traecli.toml'];before=[p.read_bytes() for p in paths]
         self.assertIn(str(self.wt),paths[2].read_text());r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(before,[p.read_bytes() for p in paths])
     def test_foreign_native_blocks_before_shell_exec(self):
         p=self.wt/'.codex/config.toml';p.parent.mkdir();p.write_text('developer_instructions="user edits"\n');before=p.read_bytes()
         r=self.run_gate('--shell','/bin/bash','--','-i','-c','touch "$1/SHOULD_NOT_EXIST"','_',str(self.wt),'unused')
         self.assertEqual(r.returncode,78);self.assertFalse((self.wt/'SHOULD_NOT_EXIST').exists());self.assertEqual(p.read_bytes(),before)
-    def test_missing_companion_and_reviewed_source_drift_block_writes(self):
-        for mutation in ['missing','target-source']:
-            with self.subTest(mutation=mutation):
-                if mutation=='missing':self.doc.unlink()
-                else:self.doc.write_text('maintained project convention');(self.wt/'runtime.txt').write_text('changed')
-                r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78);self.assertFalse((self.wt/'.codex/config.toml').exists())
+    def test_missing_companion_blocks_writes(self):
+        self.doc.unlink()
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78);self.assertFalse((self.wt/'.codex/config.toml').exists())
+    def test_changed_working_tree_is_stale_without_blocking(self):
+        (self.wt/'runtime.txt').write_text('changed')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
+        analysis=json.loads(r.stdout)['analysis'];self.assertEqual(analysis['status'],'STALE')
+        self.assertEqual(analysis['differences'][0]['path'],'runtime.txt')
+        self.assertIn('AIWB_CONTEXT_ANALYSIS_STALE',r.stderr)
+    def test_legacy_or_empty_analysis_is_not_reported_as_current(self):
+        registry=json.loads(self.registry.read_text());entry=next(iter(registry['projects'].values()))
+        for field in ['analysis_revision','source_files']:
+            if field=='analysis_revision':entry.pop(field)
+            else:entry[field]={}
+            self.registry.write_text(json.dumps(registry))
+            r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
+            self.assertEqual(json.loads(r.stdout)['analysis']['status'],'UNVERIFIED')
+    def test_older_worktree_keeps_analysis_evidence_and_starts(self):
+        (self.wt/'runtime.txt').unlink()
+        (self.wt/'not-yet.txt').write_text('branch-specific implementation')
+        self.git(self.wt,'add','runtime.txt','not-yet.txt');self.git(self.wt,'commit','-qm','parallel branch')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
+        result=json.loads(r.stdout);self.assertEqual(result['analysis']['status'],'UNVERIFIED')
+        self.assertEqual(result['analysis']['reason'],'different_revision')
+        self.assertEqual(result['analysis']['checked_files'],0)
+        self.assertIn('AIWB_CONTEXT_ANALYSIS_UNVERIFIED',r.stderr)
+        self.assertFalse((self.wt/'runtime.txt').exists())
+        self.assertEqual(len(next(iter(json.loads(self.registry.read_text())['projects'].values()))['source_files']),2)
+    def test_tracked_team_guidance_uses_current_worktree(self):
+        team=self.wt/'AGENTS.md';team.write_text('This branch has its own team guidance\n')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
+        result=json.loads(r.stdout);self.assertTrue(result['team_guidance']['differs_from_registration'])
+        self.assertEqual(team.read_text(),'This branch has its own team guidance\n')
+        self.assertTrue(all(c['team_guidance'] for c in result['checks'].values()))
     def test_unregistered_repo_does_not_inherit_even_same_origin(self):
         other=self.root/'other';subprocess.run(['git','clone','-q',str(self.repo),str(other)],check=True)
         r=self.run_gate('--check-cwd',str(other));self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(json.loads(r.stdout)['status'],'unregistered');self.assertFalse((other/'.codex').exists())
