@@ -90,6 +90,14 @@ class Startup(unittest.TestCase):
     def test_native_companion_copied_without_overwriting_foreign_state(self):
         policy=self.native_companion();r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr);target=self.wt/'.trae/legacy-state';self.assertEqual(target.read_bytes(),policy.read_bytes())
         target.write_text('user state');r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78);self.assertEqual(target.read_text(),'user state')
+    def test_native_owned_seed_preserves_existing_per_checkout_state(self):
+        self.native_companion();data=json.loads(self.registry.read_text());entry=next(iter(data['projects'].values()))
+        entry['native_companions']['.trae/legacy-state']['seed_only']=True;self.registry.write_text(json.dumps(data))
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
+        target=self.wt/'.trae/legacy-state';target.write_text('native client already migrated this checkout')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(target.read_text(),'native client already migrated this checkout')
+        self.assertFalse(json.loads(r.stdout)['native_companions']['.trae/legacy-state']['created'])
     def test_shell_failure_has_durable_sanitized_reason(self):
         policy=self.native_companion();policy.unlink();r=self.run_gate('--shell','/bin/bash','--','-i','-c','touch "$1/SHOULD_NOT_EXIST"','_',str(self.wt),'unused');self.assertEqual(r.returncode,78)
         record=json.loads(next((self.root/'failures').glob('*.json')).read_text());self.assertEqual(record['error_code'],'AIWB_CONTEXT_STARTUP_BLOCKED');self.assertNotIn('SHOULD_NOT_EXIST',json.dumps(record));self.assertFalse((self.wt/'SHOULD_NOT_EXIST').exists())
