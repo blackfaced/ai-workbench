@@ -46,7 +46,7 @@ For Botmux, retain role identity and transport configuration while taking engine
 
 For explicitly authorized direct terminal startup, follow [direct terminal startup](botmux-startup.md#direct-terminal-startup), reusing the same preparation logic and verifying the installed CLI argument contract. Preserve native installer entries and record which shell entry actually resolves the wrappers.
 
-For an explicitly authorized automatic Botmux startup, follow the [local startup gate](botmux-startup.md). Register project sources and verified runtime scope, preserve existing bot settings, and run provisioning plus native loading checks synchronously before client exec. Async `session.start` hooks cannot establish this order. A missing source, changed reviewed implementation or failed check blocks that start and calls for setup refresh.
+For an explicitly authorized automatic Botmux startup, follow the [local startup gate](botmux-startup.md). Register project sources and verified runtime scope, preserve existing bot settings, and run provisioning plus native loading checks synchronously before client exec. Async `session.start` hooks cannot establish this order. Missing or altered pinned configuration/rule sources and failed native loading block startup. Branch-sensitive analysis differences are recorded in the existing startup receipt and warn without blocking; inspect the current checkout before adopting those findings.
 
 ## Verify the effective context
 

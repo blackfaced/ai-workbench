@@ -49,4 +49,6 @@ Report these results separately:
 - **Context setup:** project-owned artifact, source revisions, effective pointer, distributed companions and direct/worktree/Botmux loading evidence as applicable.
 - **Behavior evidence:** local output tests versus real collection/query and dashboard/alert checks; reuse existing evidence only with its version/environment limits. Setup completion does not imply production observability acceptance.
 
+Record the analyzed immutable revision with the evidence inventory. Other revisions may lack its modules; they can load shared rules, but must verify relevant findings against their own code before adoption. A startup applicability warning calls for this bounded review, not a branch merge or deletion of evidence.
+
 Refresh affected entries when error adapters, schemas, shared helpers, lifecycle/attempt semantics, locale mappings, exporters/queries or client/source revisions change. Preserve still-valid entries and existing evidence; repeat setup with unchanged facts should produce no duplicate documents or instruction sections. Link the project's integration guide to these checks rather than maintaining a second command list.
