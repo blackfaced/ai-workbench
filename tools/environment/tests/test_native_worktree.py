@@ -22,6 +22,7 @@ from pathlib import Path
 if '--version' in sys.argv:print('fixture-native');sys.exit(0)
 if '--worktree' in sys.argv:
  target=Path('''+repr(str(self.target))+''')
+ if os.environ.get('ALLOCATE_EMPTY'):target.mkdir()
  subprocess.run(['git','worktree','add','--detach','--no-checkout',str(target),'HEAD'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
  subprocess.run(['git','-C',str(target),'--work-tree=.','reset','--hard','--no-recurse-submodules','HEAD'],check=True,stdout=subprocess.DEVNULL)
  receipt=json.loads((target/'.ai-workbench/project-context/native-worktree-startup.json').read_text())
@@ -33,6 +34,10 @@ if '--worktree' in sys.argv:
         r=self.direct('--worktree','exec','prompt');self.assertEqual(r.returncode,0,r.stderr)
         self.assertTrue(json.loads(r.stdout.strip().splitlines()[-1])['first_start_private_loaded'])
         token=json.loads(next((self.root/'pending').glob('*.json')).read_text());self.assertEqual(token['status'],'PASS');self.assertEqual(token['target'],str(self.target))
+    def test_native_preallocated_empty_directory_is_supported(self):
+        self.env['ALLOCATE_EMPTY']='1'
+        r=self.direct('--worktree','exec','prompt');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertTrue(json.loads(r.stdout.strip().splitlines()[-1])['first_start_private_loaded'])
     def test_desktop_setup_reuses_native_loading_and_identity(self):
         env=dict(self.env,CODEX_SOURCE_TREE_PATH=str(self.repo),CODEX_WORKTREE_PATH=str(self.wt))
         r=subprocess.run([sys.executable,str(TOOLS/'native_worktree.py'),'--registry',str(self.registry),'--desktop'],cwd=self.wt,env=env,capture_output=True,text=True)
