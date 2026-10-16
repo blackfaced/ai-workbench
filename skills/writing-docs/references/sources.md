@@ -9,8 +9,9 @@
 | [GitLab agent 文档指导](https://docs.gitlab.com/development/documentation/ai-instruction-files-documentation/) | 指令具体、配判断示例、在新会话验证；规范一处维护 | 不引入 GitLab 的完整审查与发布流程。 |
 | [GitLab AI 内容规范](https://docs.gitlab.com/development/documentation/styleguide/#ai-generated-content) | 每节提供新信息、事实可核查、使用现有合适页面 | 同一规则仍可在其他位置作必要摘要，避免复制完整定义。 |
 | [Diátaxis 使用指南](https://diataxis.fr/how-to-use-diataxis/) | 从局部阅读问题改进文档 | 体裁判断不自动授权重组目录。 |
+| [Jim Highsmith：Practitioner Voice](https://martinfowler.com/articles/practitioner-voice.html#TheCraftOfPractitionerVoice)（2026-10-13） | 保留实践判断与真实取舍，区分论证修订、语言编辑和校对，按读者校准术语 | 面向经验文章的主张需按工程文档用途调整；故事化、交织叙事与结尾金句不作默认要求，不能以共鸣代替合同、决策或证据，也不能替作者虚构经验。 |
 | [ASD-STE100 官方 FAQ](https://www.asd-ste100.org/STE_faq.html)及[标准介绍](https://www.asd-ste100.org/about_STE.html) | 短句、单句单主题、主动表达、术语一致、步骤条件前置 | 完整 STE 包含英文写作规则和受控词典；中文借鉴原则不等于合规。 |
 
 STE 官方说明允许在其他写作场景借用部分原则。完整英文合规需要按用户指定标准版本逐项核验；本 Skill 不复制标准全文或词典。研究、决策与验收文档仍须保留理由、限定条件和证据，不能为简化表达删掉它们。
 
-验证本 Skill 时，用同一原文和变更请求，在新会话比较采用前后的事实误改/遗漏、无关结构变化、重复定义、摘要冲突与人工返工；篇幅只作辅助指标。测试在离线副本进行，不默认发布或改动原文。
+验证本 Skill 时，用同一原文和变更请求，在新会话比较采用前后的事实误改/遗漏、判断及其确定性与取舍的变化、无关结构变化、重复定义、摘要冲突与人工返工；篇幅只作辅助指标。测试在离线副本进行，不默认发布或改动原文。
