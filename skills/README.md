@@ -28,7 +28,7 @@ Existing user-global installations stay unchanged until a separately authorized 
 - [collect-from-dev](collect-from-dev/SKILL.md) — 核对远端候选与测试证据，在独立本地工作树取回开发结果.
 
 
-- [setup-aiwb](setup-aiwb/SKILL.md) — configure and verify project context for clients and worktrees; derive project error/observability conventions and maintain integration-test guides, including deliver-spec's existing setup path.
+- [setup-aiwb](setup-aiwb/SKILL.md) — compose with upstream `setup-matt-pocock-skills` for the tracker, triage and Domain Docs baseline, then configure and verify project context for clients and worktrees, derive error/observability conventions and maintain integration-test guides.
 
 - [deliver-spec](deliver-spec/SKILL.md) — plan, implement, review and verify a spec; see its [project activation and usage guide](../workflows/implement-batch.md).
 - [test-design](test-design/SKILL.md) — 独立测试设计与质量审查；从需求、旧合同和真实入口补齐断言、数据与证据边界。
