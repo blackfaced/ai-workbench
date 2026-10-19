@@ -137,21 +137,40 @@ def upstream_baseline_contract():
     entries = {entry["name"]: entry for entry in lock["skills"]}
     upstream = entries["setup-matt-pocock-skills"]
     setup = entries["setup-aiwb"]
-    require("invoke the installed upstream `setup-matt-pocock-skills` first" in body,
-            "setup-aiwb invokes the upstream engineering baseline before onboarding")
+    require("resolve, validate and read the passive upstream dependency" in body
+            and "Do not invoke it by Skill name" in body,
+            "setup-aiwb reads the passive project dependency instead of invoking by name")
+    require("references/matt-project-baseline.md" in body,
+            "setup-aiwb reaches the fixed project dependency contract")
+    dependency = (SOURCE / "references/matt-project-baseline.md").read_text()
+    require("<project-root>/.agents/skills/setup-matt-pocock-skills/SKILL.md" in dependency,
+            "dependency contract names the only accepted project entry")
+    require("Do not search user-global discovery directories" in dependency
+            and "do not establish the package identity" in dependency,
+            "global same-name copies and equal-content substitutions are rejected")
+    for required in ("agents/openai.yaml", "domain.md", "issue-tracker-github.md",
+                     "issue-tracker-gitlab.md", "issue-tracker-local.md", "triage-labels.md"):
+        require(required in dependency, "dependency contract requires " + required)
     require("Continue only independent requests such as a guide-only update" in body,
-            "a missing upstream baseline blocks only dependent setup")
+            "a missing project dependency blocks only dependent setup")
     require("docs/agents/issue-tracker.md" in context and "docs/agents/domain.md" in context,
             "project context reuses tracker and Domain Docs outputs")
     require(upstream["revision"] == "5c89081d4bbeb3d039a42093653f90bb698d780e"
             and upstream["tree_digest"] == "ec07f82df54064d01aa1648670e81da41e2cbdc2"
             and upstream["source_path"] == "skills/engineering/setup-matt-pocock-skills",
             "upstream setup source is pinned with its complete path and tree digest")
+    require("`.agents/skills/setup-matt-pocock-skills/`" in upstream["note"]
+            and "不回退用户全局同名副本" in upstream["note"],
+            "source handoff preserves the project-only no-fallback contract")
     require(setup.get("depends_on") == ["setup-matt-pocock-skills"],
             "setup-aiwb declares the upstream setup dependency")
     for profile in ("work-mac", "work-linux", "home-mac"):
-        require("install_with" not in component(profile),
+        entry = component(profile)
+        require("install_with" not in entry,
                 profile + " legacy profile does not take over project activation")
+        require(entry["clients"]["shared"]["files"].get("references/matt-project-baseline.md")
+                == "skills/setup-aiwb/references/matt-project-baseline.md",
+                profile + " distributes the project dependency contract")
 
 
 def main():
