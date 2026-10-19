@@ -130,7 +130,32 @@ def missing_resource_control(root):
                 "reference detector catches omitted " + relative + " even when apply succeeds")
 
 
+def upstream_baseline_contract():
+    body = (SOURCE / "SKILL.md").read_text()
+    context = (SOURCE / "references/project-context.md").read_text()
+    lock = json.loads((REPO / "skills/sources.lock.json").read_text())
+    entries = {entry["name"]: entry for entry in lock["skills"]}
+    upstream = entries["setup-matt-pocock-skills"]
+    setup = entries["setup-aiwb"]
+    require("invoke the installed upstream `setup-matt-pocock-skills` first" in body,
+            "setup-aiwb invokes the upstream engineering baseline before onboarding")
+    require("Continue only independent requests such as a guide-only update" in body,
+            "a missing upstream baseline blocks only dependent setup")
+    require("docs/agents/issue-tracker.md" in context and "docs/agents/domain.md" in context,
+            "project context reuses tracker and Domain Docs outputs")
+    require(upstream["revision"] == "5c89081d4bbeb3d039a42093653f90bb698d780e"
+            and upstream["tree_digest"] == "ec07f82df54064d01aa1648670e81da41e2cbdc2"
+            and upstream["source_path"] == "skills/engineering/setup-matt-pocock-skills",
+            "upstream setup source is pinned with its complete path and tree digest")
+    require(setup.get("depends_on") == ["setup-matt-pocock-skills"],
+            "setup-aiwb declares the upstream setup dependency")
+    for profile in ("work-mac", "work-linux", "home-mac"):
+        require("install_with" not in component(profile),
+                profile + " legacy profile does not take over project activation")
+
+
 def main():
+    upstream_baseline_contract()
     with tempfile.TemporaryDirectory(prefix="aiwb-setup-distribution-") as directory:
         root = Path(directory)
         for profile in ("work-mac", "work-linux", "home-mac"):

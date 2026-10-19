@@ -1,5 +1,13 @@
 Set up or maintain the target project's agent context and integration-test guide. Use the project's actual rules, tools and entry points. This is a Skill, not the retired `aiwb setup` CLI; the selected client continues to own planning and execution.
 
+## Establish the engineering baseline
+
+For project onboarding or full project setup, invoke the installed upstream `setup-matt-pocock-skills` first. It owns the repository's issue-tracker choice, triage vocabulary when applicable, Domain Docs layout, and the corresponding `AGENTS.md` or `CLAUDE.md` pointers. Let that Skill explore, confirm and update its own outputs; do not reproduce its templates or maintain a second definition here.
+
+If its maintained outputs already match the current repository and the tracker/domain choices have not changed, reuse them without restarting setup. If the Skill or one of its required resources is unavailable, report the incomplete dependency and stop the baseline-dependent part of project setup. Continue only independent requests such as a guide-only update. Installation and project activation belong to the workspace manager; this Skill does not install the dependency or fall back to a global copy.
+
+After the baseline is established, read [project context setup](references/project-context.md) and extend those project-owned facts with AIWB's client loading, private context, worktree/Botmux, error/observability and integration-test guidance. Preserve the upstream ownership boundary and link to its outputs instead of copying them.
+
 ## Choose the requested setup
 
 - For project onboarding, private project rules, client loading, or worktree/Botmux context, read [project context setup](references/project-context.md). Establish the project boundary before configuring its workflow.
