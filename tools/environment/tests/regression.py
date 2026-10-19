@@ -1196,6 +1196,39 @@ def case_feedback_cadence():
           "requested → effective feedback cadence" in record
           and "cadence reason" in record)
 
+def case_matt_pocock_source_pin():
+    print("\n[用例 18] 上游 grilling 来源已固定，steelman-grill 声明运行期加载自检")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    lock = json.loads(read(os.path.join(repo, "skills", "sources.lock.json")))
+    entries = {entry["name"]: entry for entry in lock["skills"]}
+    upstream = entries["matt-pocock-engineering-skills"]
+    steelman = entries["steelman-grill"]
+    skill = read(os.path.join(repo, "skills", "steelman-grill", "SKILL.md"))
+
+    check("上游 checkout 固定到具体 commit 并登记 tree digest",
+          re.fullmatch(r"[0-9a-f]{40}", upstream["revision"]) is not None
+          and upstream["source_path"] == "skills"
+          and re.fullmatch(r"[0-9a-f]{40}", upstream["tree_digest"]) is not None)
+    check("硬依赖 grilling 单列 digest，便于直接定位漂移",
+          "grilling" in upstream.get("depends_on", [])
+          and re.fullmatch(r"[0-9a-f]{40}",
+                          upstream["dependency_digests"]["grilling"]["tree_digest"]) is not None)
+    check("steelman-grill 声明对 grilling 的依赖",
+          "grilling" in steelman.get("depends_on", []))
+    check("steelman-grill 有运行期加载自检与明确动作",
+          "## 0. 开跑前的加载自检" in skill
+          and "本轮使用：grilling、steelman-grill" in skill
+          and "停下来告诉用户 grilling 未加载" in skill)
+    check("加载自检写明 grilling 未加载时的可观测症状",
+          all(term in skill for term in
+              ("一次把整个 frontier 问完", "每题只有单行 `➡️`", "没有 🛡️/⚔️/🔑")))
+    check("四段式按题展开并跟随安装版本的轮次分隔",
+          "四段式**逐题**展开" in skill and "轮次分隔" in skill)
+    check("来源登记写明 pin 无强制路径与已知漂移",
+          "只是声明，没有强制路径" in upstream["note"]
+          and "95249b0" in upstream["note"])
+
+
 def main():
     root = tempfile.mkdtemp(prefix="aiwb-env-regression-")
     print("沙盒根目录：%s" % root)
@@ -1219,6 +1252,7 @@ def main():
     case_diagnostic_contract_gate()
     case_development_feedback_loops()
     case_feedback_cadence()
+    case_matt_pocock_source_pin()
     pilot = subprocess.run([sys.executable, os.path.join(HERE, "legacy_delegation_pilot.py")],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "legacy-delegation-pilot.log"), pilot.stdout)
