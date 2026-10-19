@@ -174,6 +174,7 @@
             "references/integration-setup.md": "skills/setup-aiwb/references/integration-setup.md",
             "references/error-observability.md": "skills/setup-aiwb/references/error-observability.md",
             "references/project-context.md": "skills/setup-aiwb/references/project-context.md",
+            "references/matt-project-baseline.md": "skills/setup-aiwb/references/matt-project-baseline.md",
             "references/botmux-startup.md": "skills/setup-aiwb/references/botmux-startup.md"
           }
         }
