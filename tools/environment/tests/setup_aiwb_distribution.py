@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 
 from regression import ENV_DIR, Sandbox, base_profile
@@ -146,8 +148,9 @@ def upstream_baseline_contract():
     require("<project-root>/.agents/skills/setup-matt-pocock-skills/SKILL.md" in dependency,
             "dependency contract names the only accepted project entry")
     require("Do not search user-global discovery directories" in dependency
-            and "do not establish the package identity" in dependency,
-            "global same-name copies and equal-content substitutions are rejected")
+            and "No workspace manager or activation registry is required" in dependency
+            and "a match to the pinned upstream Git tree does" in dependency,
+            "contract allows standalone verification without global fallback")
     for required in ("agents/openai.yaml", "domain.md", "issue-tracker-github.md",
                      "issue-tracker-gitlab.md", "issue-tracker-local.md", "triage-labels.md"):
         require(required in dependency, "dependency contract requires " + required)
@@ -162,6 +165,16 @@ def upstream_baseline_contract():
     require("`.agents/skills/setup-matt-pocock-skills/`" in upstream["note"]
             and "不回退用户全局同名副本" in upstream["note"],
             "source handoff preserves the project-only no-fallback contract")
+    from test_matt_baseline import verifier
+    require(verifier.SOURCE == {"repository": upstream["source"],
+                              "commit": upstream["revision"],
+                              "path": upstream["source_path"],
+                              "tree": upstream["tree_digest"]},
+            "bundled verifier pin matches the source registry")
+    require("scripts/verify_matt_baseline.py" in dependency
+            and "Prepare a missing package directly" in dependency
+            and "git archive" in dependency,
+            "standalone path includes a verifier and ordinary Git preparation")
     require(setup.get("depends_on") == ["setup-matt-pocock-skills"],
             "setup-aiwb declares the upstream setup dependency")
     for profile in ("work-mac", "work-linux", "home-mac"):
@@ -171,10 +184,15 @@ def upstream_baseline_contract():
         require(entry["clients"]["shared"]["files"].get("references/matt-project-baseline.md")
                 == "skills/setup-aiwb/references/matt-project-baseline.md",
                 profile + " distributes the project dependency contract")
+        require(entry["clients"]["shared"]["files"].get("scripts/verify_matt_baseline.py")
+                == "skills/setup-aiwb/scripts/verify_matt_baseline.py",
+                profile + " distributes the standalone verifier")
 
 
 def main():
     upstream_baseline_contract()
+    subprocess.run([sys.executable, str(Path(__file__).with_name("test_matt_baseline.py"))],
+                   check=True)
     with tempfile.TemporaryDirectory(prefix="aiwb-setup-distribution-") as directory:
         root = Path(directory)
         for profile in ("work-mac", "work-linux", "home-mac"):

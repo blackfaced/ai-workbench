@@ -70,7 +70,7 @@
       "tree_digest": "ec07f82df54064d01aa1648670e81da41e2cbdc2",
       "verified": false,
       "clients": [],
-      "note": "setup-aiwb 的被动项目工程基线依赖；上游维护 tracker、triage 与 Domain Docs setup 正文和资源。workspace manager 必须在目标仓库 `.agents/skills/setup-matt-pocock-skills/` 激活固定包并提供身份记录；缺失或不匹配时阻断基线 setup，不回退用户全局同名副本。本仓不复制或安装。"
+      "note": "setup-aiwb 的被动项目工程基线依赖；上游维护 tracker、triage 与 Domain Docs setup 正文和资源。项目所有者可直接准备固定包或使用可选管理器，在目标仓库 `.agents/skills/setup-matt-pocock-skills/` 用随 Skill 分发的只读脚本核对固定 Git tree，无需管理器登记。缺失或不匹配时阻断基线 setup，不回退用户全局同名副本。AIWB 不内置或维护上游正文。"
     },
     {
       "name": "deliver-spec",

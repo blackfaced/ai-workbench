@@ -32,7 +32,7 @@ This repository maintains personal development environments. The primary entry p
 - Keep restore guarded and configuration-block aware. Do not promise package downgrade or restoration of external installer side effects.
 - Register installation channels only after verification; missing channels must remain visible failures.
 - Preserve one source of truth for Skills and external rules. Client discovery failures must fail checks, never pass as an empty inventory.
-- For Skill adoption or installation advice, follow `skills/README.md#installation-policy`: fixed source versions, downstream-owned project activation. Legacy Profile targets are not the recommended activation scope; preserve existing installs unless migration is authorized.
+- For Skill adoption or installation advice, follow `skills/README.md#installation-policy`: fixed source versions and project-owned activation, with no required external manager. Legacy Profile targets are not the recommended activation scope; preserve existing installs unless migration is authorized.
 - Validate changes with `python3 tools/environment/tests/regression.py`. Keep tests isolated from real machine configuration.
 - Report maintenance, fresh installation, and inaccessible-machine coverage separately.
 
