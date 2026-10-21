@@ -7,7 +7,7 @@
 
 ## Skill installation scope
 
-新 Skill 默认按[项目激活策略](../../skills/README.md#installation-policy)接入：AIWB 维护可复用正文、资源和固定来源版本；工作区管理方选择项目与客户端，负责激活、更新和回滚。本工具不新增项目激活管理器。
+新 Skill 默认按[项目激活策略](../../skills/README.md#installation-policy)接入：AIWB 维护可复用正文、资源和固定来源版本；项目所有者可以直接准备项目包，也可以使用已有工作区管理器，后者不是前置依赖。`setup-aiwb` 的[独立准备与只读校验](../../skills/setup-aiwb/references/matt-project-baseline.md)不依赖管理器登记。本工具不新增项目激活管理器。
 
 **当前实现未迁移**：现有 Profile 仍声明用户全局目录，未过滤的 `bootstrap.sh --apply` 会安装其中的 Skill；不要把它当成项目安装命令。只维护工具或配置时，用 `env.py plan/apply/check --only ID` 明确选择相应组件。现有全局安装、安装记录、备份和 guarded restore 保持兼容；移除旧入口是另行授权的迁移动作，不由新建议自动触发。下文描述这些既有机制，不代表新安装推荐范围。
 

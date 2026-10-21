@@ -16,7 +16,7 @@ For transfer, say `使用 handoff-to-dev skill 把当前任务交到 <host> 的 
 
 One lesson format and one handoff/result format support each pair. They live with their producing Skill's references; install both members of a pair when using the complete flow. Concrete incidents, secrets, project deployment commands and working patches never become AIWB's knowledge base. No assistant-global memory writes are performed by these Skills.
 
-Activate these Skills through the target project's workspace manager, following the [project-scoped activation policy](../skills/README.md#installation-policy). Select `reflect-bug`, `review-lessons`, `handoff-to-dev`, `collect-from-dev` and `deliver-spec` from one fixed AIWB revision, including their frontmatter, relative references and resources. Verify discovery in a new target-project session and worktree; registration or files on disk alone do not establish activation.
+Activate these Skills directly for the target project or through its optional workspace manager, following the [project-scoped activation policy](../skills/README.md#installation-policy). Select `reflect-bug`, `review-lessons`, `handoff-to-dev`, `collect-from-dev` and `deliver-spec` from one fixed AIWB revision, including their frontmatter, relative references and resources. Verify discovery in a new target-project session and worktree; registration or files on disk alone do not establish activation.
 
 The environment Profile remains available only for separately authorized legacy maintenance. When maintaining an existing Profile-managed installation, preview the exact components before applying them:
 
