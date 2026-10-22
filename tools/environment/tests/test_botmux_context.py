@@ -111,6 +111,28 @@ class Startup(unittest.TestCase):
         self.assertEqual(set(module.verify(legacy)['files']),names)
     def test_unknown_launch_contract_blocks_shell(self):
         r=self.run_gate('--shell','/bin/bash','--','-c','touch SHOULD_NOT_EXIST');self.assertEqual(r.returncode,78)
+    def switch_client(self,name,body):
+        native=self.root/name;native.write_text('#!'+sys.executable+'\n'+body);native.chmod(0o755)
+        data=json.loads(self.registry.read_text());data['clients']={'codex':str(native),'trae':str(native)};self.registry.write_text(json.dumps(data))
+        return native
+    def test_team_guidance_truncated_warns_without_blocking(self):
+        # Oversized AGENTS.md can be truncated by the client during prompt
+        # assembly; a missing full-text team match warns instead of blocking.
+        self.switch_client('native-trunc','from pathlib import Path\nimport json,tomllib\np=Path.cwd();d=tomllib.loads((p/".codex/config.toml").read_text())["developer_instructions"]\nprint(json.dumps([{"role":"developer","content":d},{"role":"user","content":(p/"AGENTS.md").read_text()[:20]}]))\n')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
+        result=json.loads(r.stdout);self.assertEqual(result['status'],'PASS')
+        self.assertFalse(result['checks']['codex']['team_guidance'])
+        self.assertTrue(result['checks']['codex']['project_instructions'])
+        self.assertTrue(result['checks']['codex']['rule_pin'])
+        self.assertIn('team guidance not fully loaded: codex',result['warnings'])
+    def test_core_context_missing_still_blocks(self):
+        # Project instructions are core context; their absence must keep
+        # blocking even though team guidance is now best-effort. Provisioning
+        # runs before native load verification, so the config file may already
+        # exist; startup must still be refused.
+        self.switch_client('native-noproj','from pathlib import Path\nimport json\np=Path.cwd()\nprint(json.dumps([{"role":"developer","content":"no project context"},{"role":"user","content":(p/"AGENTS.md").read_text()}]))\n')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78,r.stderr)
+        self.assertIn('project_instructions',r.stderr)
 
 
 if __name__=='__main__':unittest.main()
