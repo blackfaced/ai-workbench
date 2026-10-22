@@ -105,6 +105,7 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
     installer = Path(registry['installer']['path'])
     # Outer lock covers validation + apply + native loading across starts of
     # the same repo. Renderer locks independently protect shared trust files.
+    warnings = []
     with context_io.locks([str(source / '.ai-workbench/botmux-startup')]):
         pinned(registry_path, registry_hash)
         pinned(installer, registry['installer']['sha256'])
@@ -191,14 +192,21 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                 'rule_pin': entry['pin'] in developer,
                 'team_guidance': json.dumps(team, ensure_ascii=False)[1:-1] in user,
             }
-            if not all(checks[client].values()):
-                raise RuntimeError('native context loading failed: ' + client + ' (' + ', '.join(k for k,v in checks[client].items() if not v) + ')')
+            # Project instructions and rule pin are core context: their
+            # absence blocks startup. Team guidance (AGENTS.md) is best-effort:
+            # clients may truncate oversized AGENTS.md during prompt assembly,
+            # so a missing full-text match warns instead of blocking.
+            hard = [k for k, v in checks[client].items() if not v and k != 'team_guidance']
+            if hard:
+                raise RuntimeError('native context loading failed: ' + client + ' (' + ', '.join(hard) + ')')
+            if not checks[client]['team_guidance']:
+                warnings.append('team guidance not fully loaded: ' + client)
         receipt = {'status':'PASS', 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
                    'cwd':str(target), 'source':str(source), 'common_dir':common,
                    'target_head':analysis['target_revision'], 'pin':entry['pin'],
                    'analysis':analysis, 'team_guidance':{'sha256':team_hash, 'differs_from_registration':team_hash != entry['team_sha256']},
                    'registry_sha256':digest(registry_path), 'declaration_sha256':digest(declaration),
-                   'checks':checks, 'native_companions': {str(dest.relative_to(target)): {'sha256':digest(dest), 'source':str(src), 'created':current is None} for src,dest,current in copies}}
+                   'checks':checks, 'warnings':warnings, 'native_companions': {str(dest.relative_to(target)): {'sha256':digest(dest), 'source':str(src), 'created':current is None} for src,dest,current in copies}}
         if receipt_name not in ['botmux-startup.json', 'cli-startup.json', 'native-worktree-startup.json']:
             raise RuntimeError('unsupported receipt name')
         receipt['native_cwd'] = str(native_cwd or target)
