@@ -1075,7 +1075,8 @@ def check_skill_duplicates(ctx, report):
         if found is None:
             continue
         if spec.get("require_profile_skills"):
-            expected = {c["name"] for c in ctx.profile["components"] if c["type"] == "skill"}
+            expected = {c["name"] for c in ctx.profile["components"]
+                        if c["type"] == "skill" and c["id"] in ctx.planned_ids}
             missing = sorted(expected - set(found))
             if missing:
                 errors += 1
