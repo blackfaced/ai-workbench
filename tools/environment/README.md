@@ -7,6 +7,8 @@
 
 ## Skill installation scope
 
+For client loading and worktree verification, use the [Kimi and MiniMax validation procedure](harness-validation.md). Active follow-up status lives in [issue #153](https://github.com/blackfaced/ai-workbench/issues/153).
+
 新 Skill 默认按[项目激活策略](../../skills/README.md#installation-policy)接入：AIWB 维护可复用正文、资源和固定来源版本；项目所有者可以直接准备项目包，也可以使用已有工作区管理器，后者不是前置依赖。`setup-aiwb` 的[独立准备与只读校验](../../skills/setup-aiwb/references/matt-project-baseline.md)不依赖管理器登记。本工具不新增项目激活管理器。
 
 **当前实现未迁移**：现有 Profile 仍声明用户全局目录，未过滤的 `bootstrap.sh --apply` 会安装其中的 Skill；不要把它当成项目安装命令。只维护工具或配置时，用 `env.py plan/apply/check --only ID` 明确选择相应组件。现有全局安装、安装记录、备份和 guarded restore 保持兼容；移除旧入口是另行授权的迁移动作，不由新建议自动触发。下文描述这些既有机制，不代表新安装推荐范围。
@@ -193,7 +195,7 @@ Normal fixture checks allow 5 seconds; deliberate timeout cases retain 0.8 secon
 and must show fresh initialization/session requests plus process cleanup.
 This does not change the production default deadline or add retries.
 
-Required names come from all Skill components in the profile, including when --only filters installation checks; discovery remains profile-wide. Missing names, configuration/protocol errors, incomplete output and timeout fail without scan fallback or automatic retry. Diagnostics identify the failure stage without raw client errors. The protocol deadline defaults to 45 seconds; AIWB_DISCOVERY_TIMEOUT accepts (0,120] seconds, plus up to about 2 seconds for cleanup. Output is bounded to 4 MiB and the owned process group is reaped.
+Required names come from the selected Skill components, including recursively selected `install_with` companions. Without `--only`, all profile Skills remain required. Native discovery still reads the client's complete catalog, so duplicate detection and protocol failures remain visible even during selective maintenance. Missing required names, configuration/protocol errors, incomplete output and timeout fail without scan fallback or automatic retry. Diagnostics identify the failure stage without raw client errors. The protocol deadline defaults to 45 seconds; AIWB_DISCOVERY_TIMEOUT accepts (0,120] seconds, plus up to about 2 seconds for cleanup. Output is bounded to 4 MiB and the owned process group is reaped.
 
 ACP advertises commands, not source file paths or on-disk uniqueness. Policy: retain and explicitly report third-party skill:README as an allowed extra command, outside first-party Skill acceptance. Directory hygiene still treats the root README as a non-Skill file. These are different observations; do not delete or rewrite upstream content to make the counts equal.
 
