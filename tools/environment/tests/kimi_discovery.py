@@ -152,6 +152,35 @@ class KimiDiscoveryTest(unittest.TestCase):
                 self.assertEqual(p.returncode, code, p.stderr)
                 self.assertEqual(p.stdout, "")
 
+    def test_only_requires_selected_skills_but_keeps_full_discovery(self):
+        from regression import Sandbox, DEMO_SKILL, base_profile
+        box = Sandbox(str(self.root / "scoped-repo"))
+        client = self.fixture("after")
+        spec = {"discovery_cmd": shlex.join([sys.executable, "kimi_skills_discovery.py",
+                                             "--", sys.executable, str(client)]),
+                "discovery_format": "commands", "require_profile_skills": True}
+        extra = dict(DEMO_SKILL, id="extra-skill", name="extra-skill",
+                     clients={"shared": {"dir": "~/.agents/skills",
+                                         "frontmatter": "skills/demo-skill/clients/extra.md"}})
+        Path(box.repo, "skills/demo-skill/clients/extra.md").write_text(
+            "---\nname: extra-skill\ndescription: isolated companion fixture\n---\n")
+        profile = base_profile([DEMO_SKILL, extra],
+                               {"kimi": spec, "shared": {"skills_dir": "~/.agents/skills"}})
+        box.profile(profile)
+        self.assertEqual(box.run("apply", "--profile", "harness", "--only", "demo-skill")[0], 0)
+        code, output = box.run("check", "--profile", "harness", "--only", "demo-skill")
+        self.assertEqual(code, 0, output)
+        self.assertIn("额外原生命令 skill:README", output)
+        code, output = box.run("check", "--profile", "harness")
+        self.assertEqual(code, 1, output)
+        self.assertIn("缺少 Profile Skill ✗ extra-skill", output)
+        profile["components"][0] = dict(DEMO_SKILL, install_with=["extra-skill"])
+        box.profile(profile)
+        self.assertEqual(box.run("apply", "--profile", "harness", "--only", "demo-skill")[0], 0)
+        code, output = box.run("check", "--profile", "harness", "--only", "demo-skill")
+        self.assertEqual(code, 1, output)
+        self.assertIn("缺少 Profile Skill ✗ extra-skill", output)
+
     def test_profile_check_requires_selected_skills_and_preserves_readme(self):
         from regression import Sandbox, DEMO_SKILL, base_profile
         box = Sandbox(str(self.root / "repo-test"))

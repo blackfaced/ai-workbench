@@ -13,7 +13,7 @@
       "discovery_cmd": "python3 skills_discovery.py codex"
     },
     "codex-desktop": {
-      "discovery_cmd": "python3 skills_discovery.py /Applications/ChatGPT.app/Contents/Resources/codex"
+      "discovery_cmd": "python3 skills_discovery.py /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex"
     },
     "shared": {
       "skills_dir": "~/.agents/skills"
@@ -31,7 +31,7 @@
   ],
   "skill_notes": [
     "Codex CLI 与桌面内置运行时分别验证原生 skills/list。共享目录中的第一方 Skill 安装验证不代表已通过模型行为验收。",
-    "Kimi ACP 仅 initialize/session/new，核对 Profile 全部第一方 Skill 命令；不发模型 prompt。skill:README 是允许保留的第三方额外命令，不计作第一方 Skill，不删除上游文件。"
+    "Kimi ACP 仅 initialize/session/new，核对本次选定的第一方 Skill 命令（无 --only 时为完整 Profile）；不发模型 prompt。skill:README 是允许保留的第三方额外命令，不计作第一方 Skill，不删除上游文件。"
   ],
   "components": [
     {
@@ -48,13 +48,13 @@
     {
       "id": "codex-desktop",
       "type": "tool",
-      "bin": "/Applications/ChatGPT.app/Contents/Resources/codex",
+      "bin": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
       "owner": "app-bundled:com.openai.codex",
       "required": true,
-      "version_cmd": "/Applications/ChatGPT.app/Contents/Resources/codex --version",
+      "version_cmd": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex --version",
       "version_re": "([0-9]+\\.[0-9]+\\.[0-9]+)",
       "identity_re": "^codex-cli ",
-      "note": "桌面应用资源内置 0.153.4，与 PATH 上的 CLI 分开检查，随应用自身更新。"
+      "note": "2026-10-24 核实桌面入口位于 Resources/codex-cli/bin/codex；与 PATH 上的 CLI 分开检查，随应用自身更新。"
     },
     {
       "id": "kimi",
