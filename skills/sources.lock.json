@@ -226,12 +226,12 @@
       "name": "memorynexus-task-memory",
       "source": "https://github.com/blackfaced/MemoryNexus",
       "source_path": "integrations/task-memory/memorynexus-task-memory",
-      "revision": "unpinned",
+      "revision": "71f2d7e04a639fef728adb9ecbd2335179d66065",
       "verified": false,
       "clients": [],
       "license": "MIT",
       "evidence_date": "2026-10-29",
-      "note": "项目按需启用的上游日常任务记忆 Skill；当前仅核对 #343 本地未提交候选，尚无交付完整 source SHA，不纳入 Profile apply。MemoryNexus 拥有 canonical 正文、CLI/helper 与版本安装器；AIWB 不复制实现。固定源包、package/binary 独立摘要及项目客户端验收按 skills/memorynexus.md 交付；现有全局安装不迁移。"
+      "note": "项目按需启用的上游日常任务记忆 Skill；固定到 #343 已发布的 draft PR #348 分支提交，尚非已合入或验收通过的 release。联合客户端行为仍待验收，保持 verified=false 且不纳入 Profile apply。MemoryNexus 拥有 canonical 正文、CLI/helper 与版本安装器；AIWB 不复制实现。package/binary 独立摘要及项目客户端验收按 skills/memorynexus.md 交付；现有全局安装不迁移。"
     }
   ]
 }

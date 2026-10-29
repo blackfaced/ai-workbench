@@ -5,12 +5,13 @@
 - Source: [blackfaced/MemoryNexus](https://github.com/blackfaced/MemoryNexus)
 - Canonical path: `integrations/task-memory/memorynexus-task-memory/`
 - License: MIT (`LICENSE` in the selected source)
-- Status: opt-in source handoff; fixed revision and joint client acceptance pending
+- Source revision: `71f2d7e04a639fef728adb9ecbd2335179d66065` (published draft PR branch)
+- Status: opt-in pinned candidate; joint client acceptance pending
 - Use when: a project owner wants Codex/Traex to read, remember, correct and close out an **existing** task through one explicit binding and a short intent.
 
 ## Source and ownership
 
-Follow the [project activation policy](README.md#installation-policy). Ordinary projects do not enable this entry by default. [Source records](sources.lock.json) deliberately keep `revision: unpinned`, `verified: false` and no verified clients: the inspected #343 implementation is an uncommitted candidate, not a fixed source delivery. Its base commit does not contain the new package. Do not activate that candidate as its base SHA or present a local test snapshot as an upstream release.
+Follow the [project activation policy](README.md#installation-policy). Ordinary projects do not enable this entry by default. [Source records](sources.lock.json) pin the published #343 candidate at [`71f2d7e04a639fef728adb9ecbd2335179d66065`](https://github.com/blackfaced/MemoryNexus/commit/71f2d7e04a639fef728adb9ecbd2335179d66065), delivered through [draft PR #348](https://github.com/blackfaced/MemoryNexus/pull/348). It is not a merged or accepted release. Keep `verified: false` and no verified clients until the separate project/client gates are observed. The CLI build source remains `9ceb4608fcf896bcf789e3fb26272965bbe73bbd`, as recorded in the upstream acceptance handoff; it is distinct from the script/Skill source revision above.
 
 | Owner | Files and responsibility |
 | --- | --- |
@@ -20,7 +21,7 @@ Follow the [project activation policy](README.md#installation-policy). Ordinary 
 
 Before activation, record the full delivered source SHA and canonical path, MIT attribution, exhaustive resource inventory, installed package digest, binary build source SHA and binary digest separately. Retain the exact Python path/identity required by the upstream preflight. Record installed client versions with each observation, not a blanket “supported” label. A source-script digest is not the installed-package digest; obtain the latter from the upstream installation manifest.
 
-The upstream `integrations/task-memory/install.py` selects the complete `scripts/` package and preserves document paths below `VERSION/package`. Keep canonical `references/`, shared `PROTOCOL.md`, bootstrap/repository-review companions, Codex/MiniMax entries, onboarding/current-knowledge contracts and `LICENSE` from the same source. Follow the selected source's resource manifest and verify relative references in the **installed** tree; copying or linking `SKILL.md` alone is insufficient. The upstream `references/daily-interface.md` owns exact helper invocation and `references/acceptance.md` owns its implementation evidence. An upstream test report is not project discovery or behavior evidence.
+The upstream `integrations/task-memory/install.py` selects the complete `scripts/` package and preserves document paths below `VERSION/package`. Keep canonical `references/`, shared `PROTOCOL.md`, bootstrap/repository-review companions, Codex/MiniMax entries, onboarding/current-knowledge contracts and `LICENSE` from the same source. Follow the selected source's resource manifest and verify required relative references in the **installed** tree; copying or linking `SKILL.md` alone is insufficient. The selected `daily-interface.md` defines a bounded installed closure with 13 exact source-only navigation/evidence exceptions and a conditional source handoff for repository sample discovery. Honor those exact edges and stop that discovery if its handoff is unavailable; do not claim all transitive repository links are packaged or use exceptions for missing daily runtime resources. The upstream `references/daily-interface.md` owns exact helper invocation and `references/acceptance.md` owns its implementation evidence. An upstream test report is not project discovery or behavior evidence.
 
 ## Project entry and daily use
 
