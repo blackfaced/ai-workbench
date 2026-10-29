@@ -221,6 +221,17 @@
       ],
       "evidence_date": "2026-10-15",
       "note": "手动复制到 DoubaoWork .user_skills/anatomy（12M，含 kit/examples/references）；Node v22.23.2 满足 20.10+。SKILL.md frontmatter 完整；豆包工作客户端原生发现与手动勾选启用未验证。上游拥有正文，本仓不纳管升级。"
+    },
+    {
+      "name": "memorynexus-task-memory",
+      "source": "https://github.com/blackfaced/MemoryNexus",
+      "source_path": "integrations/task-memory/memorynexus-task-memory",
+      "revision": "unpinned",
+      "verified": false,
+      "clients": [],
+      "license": "MIT",
+      "evidence_date": "2026-10-29",
+      "note": "项目按需启用的上游日常任务记忆 Skill；当前仅核对 #343 本地未提交候选，尚无交付完整 source SHA，不纳入 Profile apply。MemoryNexus 拥有 canonical 正文、CLI/helper 与版本安装器；AIWB 不复制实现。固定源包、package/binary 独立摘要及项目客户端验收按 skills/memorynexus.md 交付；现有全局安装不迁移。"
     }
   ]
 }
