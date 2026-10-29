@@ -38,6 +38,7 @@ Existing user-global installations stay unchanged until a separately authorized 
 - [steelman-grill](steelman-grill/SKILL.md) — managed first-party Skill; requires upstream `grilling`.
 - [viral-clip-doctrine](viral-clip-doctrine/SKILL.md) — 抖音投流爆款剪辑的方案层管线（钩子—气口—指派—收敛—包装—合规），不预设执行工具。
 - [Source records](sources.lock.json) — includes explicitly unverified upstream entries; not a complete dependency lock.
+- [MemoryNexus task memory](memorynexus.md) — optional upstream daily task entry; fixed source delivery and project/client acceptance remain required.
 - [Archify](archify.md) — upstream-owned typed, explorable diagrams; existing local installation.
 - [Diagram Design](diagram-design.md) — opt-in trial for additional diagram types and document figures.
 - [Anthropic Skills](anthropic-skills.md)
