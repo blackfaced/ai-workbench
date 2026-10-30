@@ -205,11 +205,13 @@
       "name": "diagram-design",
       "source": "https://github.com/cathrynlavery/diagram-design",
       "revision": "0a8ea20ae69b33a5edce6018eedd3a9d26e90c1c",
-      "verified": false,
-      "clients": [],
+      "verified": true,
+      "clients": [
+        "trae"
+      ],
       "observed_version": "2.6",
-      "evidence_date": "2026-10-13",
-      "note": "固定 commit 的隔离源码试用；未常驻安装，未验证客户端安装渠道和原生发现。上游拥有正文，本仓仅登记可选使用入口，不纳入 profile apply。"
+      "evidence_date": "2026-10-30",
+      "note": "固定 commit 完整包经 TraeX system skill-installer 下载、逐文件核验后传至 dev32c 常驻目录，由项目 owner 仅维护 .agents/skills 符号链接；TraeX 0.212.1 原生目录发现、入口读取、重复发现与无关项目隔离通过。verified 仅覆盖这一项目/机器/渠道；未启动新模型会话。开发机英文 schema 的 HTML 生成、离线/几何检查与官方 SVG 导出通过，Mac Chrome 视觉复核通过；开发机缺 libgbm.so.1 且无 Python Playwright，PNG 导出未验收。上游拥有正文，保留 opt-in，不纳入 profile apply。验收记录见 hancheng.hc/dev-tracker#414。"
     },
     {
       "name": "anatomy",
