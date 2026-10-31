@@ -1,3 +1,10 @@
+---
+name: steelman-grill
+description: 对关键决策运行显式触发的双向 steelman grilling：保留上游按 frontier 批量提问的轮次，为每个决定给出最强候选、最强替代、决定性变量、当前推荐和翻转条件。用于用户明确说 steelman grill、steel grillme、钢人 grill、双向钢人，或主动要求在冻结高影响方案前做反迎合压测；不用于普通问答。
+author: blackfaced
+disable-model-invocation: true
+---
+
 先跑一次 `grilling` 会话：设计树、frontier、按轮提问、等用户确认后才动手——这套骨架一字不改。
 
 本文在 grilling 的骨架上加五节。§1–§4 是 delta，用来堵 grilling 的谄媚缺口：它要求每题给一个推荐答案 `➡️`，而那个推荐天然会顺着用户已经说出口的偏好，于是整棵树可能建在一个从没被质疑过的方向上。**steelman** 是解药——先把一个立场补完整、推到最强，再判断它。§0 是运行前提：命名 skill 之间互相引用不保证真的加载，所以先自检再开跑。

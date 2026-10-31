@@ -60,6 +60,10 @@ def observe(root, fault):
     box.profile(base_profile(components))
 
     alias = Path(box.repo) / "skills/implement-batch/SKILL.md"
+    # Reconstruct the historical split fixture from today's canonical header.
+    header = alias.read_text(encoding="utf-8").split("---", 2)[1]
+    (alias.parent / "clients/shared.frontmatter.md").write_text(
+        "---" + header + "---\n", encoding="utf-8")
     alias.write_text("Compatibility entry for implement-batch. Read and follow "
                      "[deliver-spec](../deliver-spec/SKILL.md), the single maintained workflow.\n",
                      encoding="utf-8")
@@ -93,8 +97,7 @@ def observe(root, fault):
     target = (installed / links[0]).resolve() if links else None
     readable = target is not None and target.is_file()
     canonical = repo / "skills/deliver-spec"
-    expected = (read(str(canonical / "clients/shared.frontmatter.md")).rstrip("\n")
-                + "\n\n" + read(str(canonical / "SKILL.md")).lstrip("\n"))
+    expected = read(str(canonical / "SKILL.md"))
     actual = target.read_text(encoding="utf-8") if readable else ""
     resources = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", actual)
     local = [link for link in resources if not re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", link)]

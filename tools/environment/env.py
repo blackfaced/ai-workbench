@@ -578,10 +578,18 @@ def plan_tool(comp, ctx, plan):
 
 
 # --------------------------------------------------------------------------
-# 组件类型 3：skill（一份正文真源 + 每客户端 frontmatter）
+# 组件类型 3：skill（完整 SKILL.md 真源；兼容历史分离 frontmatter）
 # --------------------------------------------------------------------------
 
 def render_skill(frontmatter, body):
+    """Inline sources are copied verbatim; legacy split sources still compose."""
+    if frontmatter is None:
+        data, error = parse_frontmatter_text(body)
+        if error or not data.get("name") or not data.get("description"):
+            raise ValueError(error or "frontmatter 必须包含非空 name 和 description")
+        return body
+    if body.lstrip().startswith("---\n"):
+        raise ValueError("SKILL.md 已含 frontmatter，不能再叠加客户端 frontmatter")
     return frontmatter.rstrip("\n") + "\n\n" + body.lstrip("\n")
 
 
@@ -645,7 +653,12 @@ def plan_skill(comp, ctx, plan):
         spec = comp["clients"][client]
         skill_dir = os.path.join(expand(spec["dir"]), name)
         target = os.path.join(skill_dir, "SKILL.md")
-        desired = render_skill(read_text(os.path.join(REPO_ROOT, spec["frontmatter"])), body)
+        frontmatter = (read_text(os.path.join(REPO_ROOT, spec["frontmatter"]))
+                       if "frontmatter" in spec else None)
+        try:
+            desired = render_skill(frontmatter, body)
+        except ValueError as exc:
+            die("%s/%s: %s" % (cid, client, exc))
         desired_map[target] = desired
         plan_managed_file(ctx, plan, lines, client, "%s:%s" % (cid, client), target, desired,
                           comp.get("revision"),
@@ -973,7 +986,11 @@ def check_hooks(ctx, report):
 # --------------------------------------------------------------------------
 
 def parse_frontmatter(path):
-    lines = read_text(path).splitlines()
+    return parse_frontmatter_text(read_text(path))
+
+
+def parse_frontmatter_text(text):
+    lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return None, "缺少 frontmatter 起始 ---"
     data = {}

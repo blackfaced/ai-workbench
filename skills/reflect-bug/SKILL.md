@@ -1,3 +1,9 @@
+---
+name: reflect-bug
+description: 显式反思开发后未测出的 bug，区分代码根因与漏测原因，在所属项目记录证据、适用条件和最小预防措施。
+disable-model-invocation: true
+---
+
 Investigate a bug that escaped development checks and record a useful lesson in the owning project. Reflection is not authorization to repair code, deploy, or rewrite global rules. Keep project incidents and knowledge out of AIWB and assistant-global memory.
 
 ## Reconstruct the escape
