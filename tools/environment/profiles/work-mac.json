@@ -197,7 +197,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/steelman-grill/clients/shared.frontmatter.md",
           "link_from": "~/.claude/skills",
           "files": {
             "agents/openai.yaml": "skills/steelman-grill/clients/openai.yaml"
@@ -219,7 +218,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/setup-aiwb/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/setup-aiwb/clients/openai.yaml",
             "references/integration-guide.md": "skills/setup-aiwb/references/integration-guide.md",
@@ -247,7 +245,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/test-design/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/test-design/clients/openai.yaml",
             "assets/design-template.md": "skills/test-design/assets/design-template.md"
@@ -272,7 +269,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/writing-docs/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/writing-docs/clients/openai.yaml",
             "references/sources.md": "skills/writing-docs/references/sources.md"
@@ -293,7 +289,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/self-test-report/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/self-test-report/clients/openai.yaml",
             "assets/report-template.md": "skills/self-test-report/assets/report-template.md"
@@ -315,7 +310,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/deliver-spec/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/deliver-spec/clients/openai.yaml",
             "references/spec-acceptance.md": "skills/deliver-spec/references/spec-acceptance.md",
@@ -344,7 +338,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/reflect-bug/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/reflect-bug/clients/openai.yaml",
             "references/lesson.md": "skills/reflect-bug/references/lesson.md"
@@ -366,7 +359,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/review-lessons/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/review-lessons/clients/openai.yaml"
           }
@@ -387,7 +379,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/handoff-to-dev/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/handoff-to-dev/clients/openai.yaml",
             "references/handoff.md": "skills/handoff-to-dev/references/handoff.md"
@@ -409,7 +400,6 @@
       "clients": {
         "shared": {
           "dir": "~/.agents/skills",
-          "frontmatter": "skills/collect-from-dev/clients/shared.frontmatter.md",
           "files": {
             "agents/openai.yaml": "skills/collect-from-dev/clients/openai.yaml"
           }

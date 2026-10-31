@@ -714,8 +714,7 @@ def case_implement_batch_distribution(root):
         installed = box.path(".agents", "skills", "deliver-spec")
         canonical = os.path.join(installed, "SKILL.md")
         source = os.path.join(repo, "skills", "deliver-spec")
-        expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")
-                    + "\n\n" + read(os.path.join(source, "SKILL.md")).lstrip("\n"))
+        expected = read(os.path.join(source, "SKILL.md"))
         check(profile_name + " 规范正文完整匹配", os.path.isfile(canonical) and read(canonical) == expected)
         for companion in ("test-design", "self-test-report", "writing-docs"):
             check(profile_name + " 定向安装包含 " + companion,
@@ -864,8 +863,7 @@ def case_self_test_report_distribution(root):
               os.path.isfile(box.path(".agents", "skills", "writing-docs", "SKILL.md")))
         installed = box.path(".agents", "skills", "self-test-report")
         source = os.path.join(repo, "skills", "self-test-report")
-        expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")
-                    + "\n\n" + read(os.path.join(source, "SKILL.md")).lstrip("\n"))
+        expected = read(os.path.join(source, "SKILL.md"))
         check(profile_name + " 正文只有一个 frontmatter 且完整匹配",
               os.path.isfile(os.path.join(installed, "SKILL.md"))
               and read(os.path.join(installed, "SKILL.md")) == expected)
@@ -901,7 +899,7 @@ def case_self_test_report_v2_contract():
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
     report = read(os.path.join(repo, "skills", "self-test-report", "SKILL.md"))
     template = read(os.path.join(repo, "skills", "self-test-report", "assets", "report-template.md"))
-    frontmatter = read(os.path.join(repo, "skills", "self-test-report", "clients", "shared.frontmatter.md"))
+    frontmatter = report.split("---", 2)[1]
     openai = read(os.path.join(repo, "skills", "self-test-report", "clients", "openai.yaml"))
 
     check("报告提供 compose/update/audit 三种模式",
@@ -985,8 +983,7 @@ def case_test_design_distribution(root):
               and not os.path.exists(installed), out if rc else "")
         rc, out = box.run("apply", "--profile", "harness", "--only", "test-design")
         check(profile_name + " 无其它 Skill 依赖即可安装", rc == 0, out if rc else "")
-        expected = (read(os.path.join(source, "clients", "shared.frontmatter.md")).rstrip("\n")
-                    + "\n\n" + read(os.path.join(source, "SKILL.md")).lstrip("\n"))
+        expected = read(os.path.join(source, "SKILL.md"))
         body = os.path.join(installed, "SKILL.md")
         check(profile_name + " 正文和 frontmatter 完整匹配", os.path.isfile(body) and read(body) == expected)
         for rel, src in (("agents/openai.yaml", "clients/openai.yaml"),
@@ -1233,6 +1230,11 @@ def main():
     write(os.path.join(root, "setup-aiwb-distribution.log"), setup.stdout)
     check("setup-aiwb 项目接入与既有集成测试指引完整分发、升级和恢复",
           setup.returncode == 0, setup.stdout if setup.returncode else "")
+    inline = subprocess.run([sys.executable, os.path.join(HERE, "test_inline_skill_metadata.py")],
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    write(os.path.join(root, "inline-skill-metadata.log"), inline.stdout)
+    check("Skill 内联元数据、旧格式迁移、首装恢复与双头阻断", inline.returncode == 0,
+          inline.stdout if inline.returncode else "")
     print("\n通过 %d 项，失败 %d 项" % (len(PASSES), len(FAILS)))
     if FAILS:
         for name in FAILS:

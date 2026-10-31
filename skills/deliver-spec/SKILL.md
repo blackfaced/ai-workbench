@@ -1,3 +1,10 @@
+---
+name: deliver-spec
+description: 显式调用 deliver-spec 按规格交付；核对已有实现，确认依赖、实施与评审安排，设计验收用例，按需分批实施、串行集成并执行验收。
+author: blackfaced
+disable-model-invocation: true
+---
+
 Implement a spec-level parent Issue through dependency-ordered batches. The parent agent coordinates and accepts the spec; each implementation agent owns one child Issue in its own worktree; one integration agent per batch reviews and integrates candidates serially. Explicit Issue lists and an approved spec without a parent Issue are also valid inputs. This Skill uses native client capabilities and Git, not a background scheduler or an enforcement service.
 
 ## Inspect and propose — read-only

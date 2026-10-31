@@ -70,8 +70,7 @@ def fresh_install(root, profile):
     run(box, "plan")
     require(not installed.exists(), profile + " plan leaves HOME unchanged")
     run(box, "apply")
-    expected = ((SOURCE / "clients/shared.frontmatter.md").read_text().rstrip("\n")
-                + "\n\n" + (SOURCE / "SKILL.md").read_text().lstrip("\n"))
+    expected = (SOURCE / "SKILL.md").read_text()
     require((installed / "SKILL.md").read_text() == expected, profile + " rendered entry matches source")
     missing = missing_references(installed / "SKILL.md")
     require(not missing, profile + " installed reference graph is readable: " + str(sorted(map(str, missing))))
@@ -102,8 +101,12 @@ def upgrade(root):
     for relative in ("references/project-context.md", "references/integration-setup.md",
                      "references/error-observability.md"):
         old["clients"]["shared"]["files"].pop(relative)
+    # Keep the historical split format explicit in this upgrade fixture.
+    old["clients"]["shared"]["frontmatter"] = "skills/setup-aiwb/legacy.frontmatter.md"
     box, installed = fixture(root / "upgrade", old)
     body = Path(box.repo) / "skills/setup-aiwb/SKILL.md"
+    header = (SOURCE / "SKILL.md").read_text().split("---", 2)[1]
+    body.with_name("legacy.frontmatter.md").write_text("---" + header + "---\n")
     original = (SOURCE / "references/integration-setup.md").read_text().replace(
         "(integration-guide.md)", "(references/integration-guide.md)")
     body.write_text(original)
