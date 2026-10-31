@@ -53,14 +53,25 @@
     {
       "name": "matt-pocock-engineering-skills",
       "source": "上游仓库（~/.agents/vendor/mattpocock-skills 下的 checkout）",
-      "revision": "unpinned",
+      "source_path": "skills",
+      "revision": "5c89081d4bbeb3d039a42093653f90bb698d780e",
+      "tree_digest": "71b4bf5550ebeebb4accfb576914ca3e8e736034",
       "verified": false,
       "clients": [
         "trae",
         "claude",
         "shared(~/.agents/skills)"
       ],
-      "note": "grilling / grill-me / grill-with-docs / handoff / claude-handoff / implement / tdd 等。revision 未核实；grilling 是 steelman-grill 的依赖，但由上游自己安装，本仓不纳管、不复制正文。"
+      "depends_on": [
+        "grilling"
+      ],
+      "dependency_digests": {
+        "grilling": {
+          "source_path": "skills/productivity/grilling",
+          "tree_digest": "0d40d978f1a588971a11ea7ae85b208e78102dc3"
+        }
+      },
+      "note": "grilling / grill-me / grill-with-docs / handoff / claude-handoff / implement / tdd 等。revision 现固定在 5c89081（2026-08-19），与 setup-matt-pocock-skills 同一个 checkout；tree_digest 是该 commit 处 skills/ 目录的 git tree SHA，父 tree 传递覆盖全部子目录，dependency_digests 额外单列 grilling 便于直接定位硬依赖漂移。checkout 由上游自己安装、本仓不纳管不复制正文，因此该 pin 目前只是声明，没有强制路径：安装期缺依赖由环境工具检出并跳过（dev-b 即如此），运行期是否真的加载了 grilling 由 skills/steelman-grill/SKILL.md 的加载自检负责。已知漂移：上游 HEAD 49dd158（2026-10-09）的 skills/ tree 已不同，grilling 在 95249b0（2026-10-07，#706）改动——轮次模板由单题改为多题以 --- 分隔，并新增『把问题措辞成 yes 即接受推荐』。若把 checkout 升到该版本，需同步核对 steelman-grill §2 的轮次模板。"
     },
     {
       "name": "setup-matt-pocock-skills",
