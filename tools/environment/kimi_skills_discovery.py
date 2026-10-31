@@ -102,6 +102,31 @@ def discover(proc, cwd, deadline):
             return sorted(updates[session_id])
 
 
+def signal_owned_group(proc, sig):
+    """macOS may report EPERM for a departed group containing only zombies."""
+    try:
+        os.killpg(proc.pid, sig)
+    except ProcessLookupError:
+        pass
+    except PermissionError as exc:
+        # Do not turn a real denial into success. Inspect only group IDs/states;
+        # if the inspection fails or any member is live, retain the original error.
+        try:
+            states = subprocess.run(["ps", "-axo", "pgid=,stat="],
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                    universal_newlines=True, timeout=2)
+        except subprocess.TimeoutExpired:
+            raise exc from None
+        if states.returncode != 0:
+            raise
+        for line in states.stdout.splitlines():
+            fields = line.split()
+            if len(fields) != 2 or not fields[0].isdigit():
+                raise
+            if int(fields[0]) == proc.pid and not fields[1].startswith("Z"):
+                raise
+
+
 def main(argv):
     explicit_command = argv[:1] == ["--"]
     command = argv[1:] if explicit_command else (argv or ["kimi"])
@@ -123,14 +148,10 @@ def main(argv):
             finally:
                 # Own process group only; include descendants even if the leader exited.
                 try:
-                    os.killpg(proc.pid, signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                reap(proc)
-                try:
-                    os.killpg(proc.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+                    signal_owned_group(proc, signal.SIGTERM)
+                finally:
+                    reap(proc)
+                signal_owned_group(proc, signal.SIGKILL)
         for name in names:
             print("%s\tacp:skill:%s" % (name, name))
         return 0

@@ -10,13 +10,18 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 
 ENV_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ENV_DIR))
+import kimi_skills_discovery as discovery
 ARTIFACTS = Path(tempfile.mkdtemp(prefix="aiwb-kimi-fixtures-"))
 
 SERVER = r'''#!/usr/bin/env python3
 import json, os, signal, subprocess, sys, time
 from pathlib import Path
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
 root = Path(__file__).parent
 assert sys.argv[1:] == ["acp"]
 mode = root.joinpath("mode").read_text()
@@ -143,6 +148,56 @@ class KimiDiscoveryTest(unittest.TestCase):
         p = self.probe("child")
         self.assertEqual(p.returncode, 4, p.stderr)
         self.assertIn("timed out", p.stderr)
+
+    def test_cleanup_permission_error_only_ignored_for_departed_group(self):
+        for stage in (0, 1):
+            with self.subTest(stage=stage):
+                proc = mock.Mock(pid=12345)
+                error = PermissionError("group departed during signal")
+                effects = [error, None] if stage == 0 else [None, error]
+                with mock.patch.object(discovery, "discover", side_effect=TimeoutError), \
+                     mock.patch.object(discovery.subprocess, "Popen", return_value=proc), \
+                     mock.patch.object(discovery.os, "killpg", side_effect=effects), \
+                     mock.patch.object(discovery.subprocess, "run", return_value=subprocess.CompletedProcess(
+                         [], 0, stdout="12345 Z\n", stderr="")), \
+                     mock.patch.object(discovery, "reap") as reaper:
+                    self.assertEqual(discovery.main(["fixture"]), 4)
+                    reaper.assert_called_once_with(proc)
+
+    def test_cleanup_live_permission_denial_is_not_hidden(self):
+        for stage in (0, 1):
+            with self.subTest(stage=stage):
+                proc = mock.Mock(pid=12345)
+                error = PermissionError("still-live group")
+                effects = [error, None] if stage == 0 else [None, error]
+                with mock.patch.object(discovery, "discover", side_effect=TimeoutError), \
+                     mock.patch.object(discovery.subprocess, "Popen", return_value=proc), \
+                     mock.patch.object(discovery.os, "killpg", side_effect=effects), \
+                     mock.patch.object(discovery.subprocess, "run", return_value=subprocess.CompletedProcess(
+                         [], 0, stdout="12345 S\n", stderr="")), \
+                     mock.patch.object(discovery, "reap") as reaper:
+                    self.assertEqual(discovery.main(["fixture"]), 5)
+                    reaper.assert_called_once_with(proc)
+
+    def test_group_permission_fallback_fails_closed(self):
+        proc = mock.Mock(pid=12345)
+        for output, code, allowed in (("", 0, True), ("12345 Z\n", 0, True),
+                                      ("12345 Z\n12345 S\n", 0, False),
+                                      ("malformed\n", 0, False), ("", 1, False)):
+            with self.subTest(output=output, code=code), \
+                 mock.patch.object(discovery.os, "killpg", side_effect=PermissionError), \
+                 mock.patch.object(discovery.subprocess, "run", return_value=subprocess.CompletedProcess(
+                     [], code, stdout=output, stderr="")):
+                if allowed:
+                    discovery.signal_owned_group(proc, 15)
+                else:
+                    with self.assertRaises(PermissionError):
+                        discovery.signal_owned_group(proc, 15)
+
+        with mock.patch.object(discovery.os, "killpg", side_effect=PermissionError), \
+             mock.patch.object(discovery.subprocess, "run", side_effect=subprocess.TimeoutExpired("ps", 2)):
+            with self.assertRaises(PermissionError):
+                discovery.signal_owned_group(proc, 15)
 
     def test_command_usage_and_legacy_binary_errors(self):
         for args, code in [(["--"], 2), (["one", "two"], 2), (["/bin/false"], 5)]:

@@ -1,3 +1,9 @@
+---
+name: collect-from-dev
+description: 显式从开发机取回交接任务的候选提交、完整改动和验证证据，保留本地新工作并区分接收、集成与验收。
+disable-model-invocation: true
+---
+
 Collect the result of a known development-machine handoff. Locate its original record and destination identity; do not select whichever remote branch or directory looks newest. Read the shared handoff/result format from the installed `handoff-to-dev` Skill (source: `skills/handoff-to-dev/references/handoff.md`) when needed. Missing records require reconstructing and confirming the task/base boundary before importing changes.
 
 ## Establish the candidate

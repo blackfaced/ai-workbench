@@ -1,3 +1,10 @@
+---
+name: implement-batch
+description: 显式调用 implement-batch 的兼容入口，委托 deliver-spec 按规格交付；保留既有授权、计划、检查点与验收记录。
+author: blackfaced
+disable-model-invocation: true
+---
+
 Retired entry for `implement-batch`; retained only for saved documentation links, not installation or execution. Do not start or automatically delegate a run from this name. Use [deliver-spec](../deliver-spec/SKILL.md), the single maintained workflow, explicitly instead.
 
 When continuing through deliver-spec, preserve the existing spec, authorization, confirmed plan, selected models/review policy, checkpoint, candidate, acceptance document, run record and failure/retest history. Retirement grants no new commit, push, deployment, publication or external-effect authority, and does not reset or require re-approval of an unchanged authorized plan. Apply the canonical workflow's confirmation rules only to genuinely new or changed decisions.

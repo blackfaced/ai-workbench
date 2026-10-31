@@ -66,7 +66,7 @@ Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
 | --- | --- | --- |
 | `config_block` | 文本配置里 `# ai-workbench:<id> BEGIN/END` 之间的块 | 块外内容不读不改；块内被手工改过就停下报告；`insert_before_re` 命中不到时报错，绝不盲插 |
 | `tool` | 一个受管可执行文件的**归属与身份** | 缺失且 Profile 登记了已验证的 `install_cmd` → 装；版本低于 `min_version` 且登记了 `update_cmd` → 更新，装完/更新完**重新探测版本**再判定；`install_via` 表示它由本次计划里的某个 installer 兜底；三者都没有就报「无已验证渠道」，交给人。不做渠道迁移、不承诺降级 |
-| `skill` | 第一方 Skill 的一份正文 + 每客户端 frontmatter（可带 `files` 附带文件） | 渲染 = `clients/<client>.frontmatter.md` + `SKILL.md` 正文；`files` 用来带客户端专属的界面/策略描述（如 Codex 的 `agents/openai.yaml`）；依赖不满足就跳过并说明原因；`stale_copies` 见下 |
+| `skill` | 第一方 Skill 的完整 `SKILL.md` 真源（YAML 头 + 正文，可带 `files` 附带文件） | `body` 指向完整文件时原样分发、不配置 `frontmatter`；历史分离格式仍支持 `frontmatter` + 正文，双头配置明确报错；`files` 携带客户端专属界面/策略（如将 `clients/openai.yaml` 分发为 `agents/openai.yaml`）；依赖不满足就跳过并说明原因；`stale_copies` 见下 |
 | `installer` | 包住一个已存在的安装器 | v1 只有 macOS 的 `brew bundle`，`--no-upgrade`：只保证「装了」，不隐式升级 |
 
 ### 既有 Profile 的 Skill 单副本布局（非新项目推荐）

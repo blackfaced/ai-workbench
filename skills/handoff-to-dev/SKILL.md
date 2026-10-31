@@ -1,3 +1,9 @@
+---
+name: handoff-to-dev
+description: 显式将当前工作交接到开发机，核对仓库、提交及未提交改动，准备可追溯交接记录并区分准备与启动。
+disable-model-invocation: true
+---
+
 Transfer a bounded current task to a user-selected development host. Reuse Git, SSH, available native handoff facilities, and the existing project setup guide. This Skill creates no daemon or scheduler and assumes no host alias, repository path, client, or model. Keep handoff data in the project's approved artifact location, outside AIWB and outside assistant-global memory.
 
 ## Identify the transfer
