@@ -510,7 +510,10 @@ def case_update_rollback_keeps_record(root):
 
 
 FAKE_SERVER = r'''#!/usr/bin/env python3
-import json, sys, time
+import json, signal, sys, time
+# The fixture must respond to termination even if the invoking harness ignores it.
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
+signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
 mode = sys.argv[1]
 delay = float(sys.argv[2]) if len(sys.argv) > 2 else 0.0
 for raw in sys.stdin:
