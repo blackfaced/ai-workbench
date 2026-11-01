@@ -46,6 +46,50 @@ class Startup(unittest.TestCase):
     def test_missing_companion_blocks_writes(self):
         self.doc.unlink()
         r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78);self.assertFalse((self.wt/'.codex/config.toml').exists())
+    def managed_installer_upgrade(self):
+        self.installer.unlink()  # remove the fixture launcher, not a user entry
+        root=self.home/'.local/share/setup-aiwb-tools/releases'
+        r=subprocess.run([sys.executable,str(TOOLS/'install_project_context.py'),'install','--root',str(root),'--entry',str(self.installer),'--version','upgrade-fixture'],env=self.env,text=True,capture_output=True)
+        self.assertEqual(r.returncode,0,r.stderr)
+        return root/'upgrade-fixture'
+    def test_verified_installer_upgrade_records_advisory_and_keeps_native_checks(self):
+        self.managed_installer_upgrade();before=self.registry.read_bytes()
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
+        result=json.loads(r.stdout);self.assertEqual(result['status'],'PASS')
+        self.assertEqual(result['installer']['status'],'UPGRADED')
+        self.assertTrue(all(all(c.values()) for c in result['checks'].values()))
+        self.assertEqual(r.stderr,'')
+        self.assertTrue(result['warnings'])
+        self.assertEqual(before,self.registry.read_bytes())
+    def test_botmux_verified_upgrade_and_branch_change_execute_shell_quietly(self):
+        self.managed_installer_upgrade()
+        self.git(self.wt,'commit','--allow-empty','-qm','parallel branch')
+        r=self.run_gate('--shell','/bin/bash','--','-i','-c','printf started > "$1/started"','_',str(self.wt),'unused')
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertNotIn('AIWB_CONTEXT_',r.stderr)
+        self.assertEqual((self.wt/'started').read_text(),'started')
+        result=json.loads((self.wt/'.ai-workbench/project-context/botmux-startup.json').read_text())
+        self.assertEqual(result['installer']['status'],'UPGRADED')
+        self.assertEqual(result['analysis']['reason'],'different_revision')
+        self.assertTrue(all(all(c.values()) for c in result['checks'].values()))
+    def test_upgraded_installer_corrupt_payload_blocks_before_writes(self):
+        root=self.managed_installer_upgrade();(root/'project_context.py').write_text('corrupt payload')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78,r.stderr)
+        self.assertIn('installed payload drift',r.stderr)
+        self.assertFalse((self.wt/'.codex/config.toml').exists())
+    def test_unmanaged_installer_drift_is_not_executed(self):
+        marker=self.root/'SHOULD_NOT_EXIST'
+        self.installer.write_text('#!'+sys.executable+'\nfrom pathlib import Path\nPath('+repr(str(marker))+').touch()\n')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78,r.stderr)
+        self.assertFalse(marker.exists());self.assertFalse((self.wt/'.codex/config.toml').exists())
+    def test_missing_installer_still_blocks(self):
+        self.installer.unlink();r=self.run_gate('--check-cwd',str(self.wt))
+        self.assertEqual(r.returncode,78,r.stderr);self.assertIn('installer missing',r.stderr)
+    def test_verified_upgrade_does_not_bypass_core_loading(self):
+        self.managed_installer_upgrade()
+        self.switch_client('native-noproj','from pathlib import Path\nimport json\np=Path.cwd()\nprint(json.dumps([{"role":"developer","content":"no project context"},{"role":"user","content":(p/"AGENTS.md").read_text()}]))\n')
+        r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,78,r.stderr)
+        self.assertIn('project_instructions',r.stderr)
     def test_changed_working_tree_is_stale_without_blocking(self):
         (self.wt/'runtime.txt').write_text('changed')
         r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr)
@@ -68,7 +112,7 @@ class Startup(unittest.TestCase):
         result=json.loads(r.stdout);self.assertEqual(result['analysis']['status'],'UNVERIFIED')
         self.assertEqual(result['analysis']['reason'],'different_revision')
         self.assertEqual(result['analysis']['checked_files'],0)
-        self.assertIn('AIWB_CONTEXT_ANALYSIS_UNVERIFIED',r.stderr)
+        self.assertEqual(r.stderr,'')
         self.assertFalse((self.wt/'runtime.txt').exists())
         self.assertEqual(len(next(iter(json.loads(self.registry.read_text())['projects'].values()))['source_files']),2)
     def test_tracked_team_guidance_uses_current_worktree(self):

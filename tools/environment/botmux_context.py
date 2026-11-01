@@ -37,6 +37,34 @@ def pinned(path, sha):
         raise RuntimeError('registered source drift: ' + str(path))
 
 
+def installer_status(path, expected):
+    """A verified owner-managed upgrade is advisory, not source corruption."""
+    actual = digest(path)
+    if actual == expected and expected:
+        return {'status': 'CURRENT', 'expected': expected, 'actual': actual}
+    if not actual:
+        raise RuntimeError('registered installer missing: ' + str(path))
+    # The stable entry changes on install/rollback. Authenticate it against
+    # its installation ledger and immutable payload, never execute an unknown
+    # replacement merely to discover whether it is a valid installer.
+    import install_project_context as install
+    base = Path.home() / '.local/share/setup-aiwb-tools/releases'
+    ledger = read_json(base / 'installation.json')
+    version = ledger.get('active')
+    if (ledger.get('entry') != str(path) or actual != ledger.get('entry_sha256')
+            or not isinstance(version, str) or not version
+            or Path(version).name != version or version in ['.', '..']):
+        raise RuntimeError('registered installer is not a verified managed release: ' + str(path))
+    root = base / version
+    manifest = install.verify(root)
+    if manifest != ledger.get('versions', {}).get(version):
+        raise RuntimeError('installer release differs from installation ledger')
+    launcher = install.launch_text(root, manifest['python'], digest(root / 'release.json'))
+    if hashlib.sha256(launcher.encode()).hexdigest() != actual:
+        raise RuntimeError('registered installer launcher differs from managed release')
+    return {'status': 'UPGRADED', 'version': version, 'expected': expected, 'actual': actual}
+
+
 def run(command, cwd):
     r = subprocess.run(command, cwd=cwd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
     if r.returncode:
@@ -108,7 +136,9 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
     warnings = []
     with context_io.locks([str(source / '.ai-workbench/botmux-startup')]):
         pinned(registry_path, registry_hash)
-        pinned(installer, registry['installer']['sha256'])
+        installed = installer_status(installer, registry['installer']['sha256'])
+        if installed['status'] == 'UPGRADED':
+            warnings.append('verified installer version differs from startup registration: ' + installed['version'])
         pinned(declaration, entry['declaration_sha256'])
         for path, sha in entry['companions'].items():
             pinned(Path(path), sha)
@@ -206,14 +236,16 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                    'target_head':analysis['target_revision'], 'pin':entry['pin'],
                    'analysis':analysis, 'team_guidance':{'sha256':team_hash, 'differs_from_registration':team_hash != entry['team_sha256']},
                    'registry_sha256':digest(registry_path), 'declaration_sha256':digest(declaration),
-                   'checks':checks, 'warnings':warnings, 'native_companions': {str(dest.relative_to(target)): {'sha256':digest(dest), 'source':str(src), 'created':current is None} for src,dest,current in copies}}
+                   'installer':installed, 'checks':checks, 'warnings':warnings, 'native_companions': {str(dest.relative_to(target)): {'sha256':digest(dest), 'source':str(src), 'created':current is None} for src,dest,current in copies}}
         if receipt_name not in ['botmux-startup.json', 'cli-startup.json', 'native-worktree-startup.json']:
             raise RuntimeError('unsupported receipt name')
         receipt['native_cwd'] = str(native_cwd or target)
         receipt['private_guidance_created'] = team_copy
         output = target / '.ai-workbench/project-context' / receipt_name
         context_io.atomic_write(output, json.dumps(receipt, indent=2)+'\n')
-        if analysis['status'] != 'CURRENT':
+        # Verified upgrades and normal branch changes remain visible in the
+        # receipt; they do not require a terminal notice on every launch.
+        if analysis['status'] != 'CURRENT' and analysis['reason'] != 'different_revision':
             sys.stderr.write('AIWB_CONTEXT_ANALYSIS_' + analysis['status'] + ': ' + analysis['reason'] + '; startup continues; verify current checkout before using linked analysis. Evidence: ' + str(output) + '\n')
         return receipt
 
