@@ -22,6 +22,20 @@ class Direct(Startup):
         self.env['CLI_RECORD']=str(self.root/'native-record.json')
     def direct(self,*args,cwd=None,input=None):
         return subprocess.run([sys.executable,str(TOOLS/'cli_context.py'),'--registry',str(self.registry),'--client','codex','--',*args],cwd=cwd or self.wt,env=self.env,text=True,capture_output=True,input=input)
+    def test_trae_verified_upgrade_and_branch_change_execute_native_quietly(self):
+        self.managed_installer_upgrade()
+        self.git(self.wt,'commit','--allow-empty','-qm','parallel branch')
+        args=['exec','literal prompt']
+        for _ in range(2):
+            r=subprocess.run([sys.executable,str(TOOLS/'cli_context.py'),'--registry',str(self.registry),'--client','trae','--',*args],cwd=self.wt,env=self.env,text=True,capture_output=True)
+            self.assertEqual(r.returncode,23,r.stderr)
+            self.assertEqual(r.stderr,'')
+            self.assertEqual(json.loads((self.root/'native-record.json').read_text())['args'],args)
+            receipt=json.loads((self.wt/'.ai-workbench/project-context/cli-startup.json').read_text())
+            self.assertEqual(receipt['status'],'PASS')
+            self.assertEqual(receipt['installer']['status'],'UPGRADED')
+            self.assertEqual(receipt['analysis']['reason'],'different_revision')
+            self.assertTrue(all(all(c.values()) for c in receipt['checks'].values()))
     def test_direct_fresh_worktree_before_exec_and_original_arguments(self):
         args=['exec','--model','a model','literal --cd /other $ ` quote "']
         r=self.direct(*args);self.assertEqual(r.returncode,23,r.stderr)
