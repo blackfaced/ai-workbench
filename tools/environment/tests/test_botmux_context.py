@@ -39,6 +39,30 @@ class Startup(unittest.TestCase):
         result=json.loads(r.stdout);self.assertEqual(result['status'],'PASS');self.assertEqual(result['analysis']['status'],'CURRENT');self.assertTrue(all(all(x.values()) for x in result['checks'].values()))
         paths=[self.wt/'.codex/config.toml',self.wt/'.trae/traecli.toml',self.home/'.codex/config.toml',self.home/'.trae/traecli.toml'];before=[p.read_bytes() for p in paths]
         self.assertIn(str(self.wt),paths[2].read_text());r=self.run_gate('--check-cwd',str(self.wt));self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(before,[p.read_bytes() for p in paths])
+    def cli_prepare_module(self):
+        import importlib.util
+        sys.path.insert(0,str(TOOLS))
+        spec=importlib.util.spec_from_file_location('botmux_context_cli_reuse',TOOLS/'botmux_context.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        return module
+    def test_cli_launch_reuses_unchanged_checkout(self):
+        # A direct CLI launch repeats this preflight on every start; an unchanged
+        # checkout must be handed its prior receipt instead of re-verifying.
+        module=self.cli_prepare_module();receipt=self.wt/'.ai-workbench/project-context/cli-startup.json'
+        first=module.prepare(str(self.registry),str(self.wt),receipt_name='cli-startup.json',native_cwd=str(self.wt),reuse=True)
+        self.assertEqual(first['status'],'PASS');stamp=receipt.stat().st_mtime_ns
+        second=module.prepare(str(self.registry),str(self.wt),receipt_name='cli-startup.json',native_cwd=str(self.wt),reuse=True)
+        self.assertEqual(receipt.stat().st_mtime_ns,stamp,'unchanged checkout must not be re-verified')
+        self.assertEqual(second['verified_at'],first['verified_at'])
+    def test_cli_launch_reverifies_after_client_update(self):
+        # A client update can change what the client actually loads, so the
+        # reuse must be dropped rather than trusting the stale receipt.
+        module=self.cli_prepare_module();receipt=self.wt/'.ai-workbench/project-context/cli-startup.json'
+        module.prepare(str(self.registry),str(self.wt),receipt_name='cli-startup.json',native_cwd=str(self.wt),reuse=True)
+        stamp=receipt.stat().st_mtime_ns
+        client=Path(self.native).resolve();os.utime(client,(client.stat().st_atime,client.stat().st_mtime+2))
+        module.prepare(str(self.registry),str(self.wt),receipt_name='cli-startup.json',native_cwd=str(self.wt),reuse=True)
+        self.assertNotEqual(receipt.stat().st_mtime_ns,stamp,'a client update must force re-verification')
     def test_foreign_native_blocks_before_shell_exec(self):
         p=self.wt/'.codex/config.toml';p.parent.mkdir();p.write_text('developer_instructions="user edits"\n');before=p.read_bytes()
         r=self.run_gate('--shell','/bin/bash','--','-i','-c','touch "$1/SHOULD_NOT_EXIST"','_',str(self.wt),'unused')
@@ -153,8 +177,19 @@ class Startup(unittest.TestCase):
         for name in names:shutil.copy2(TOOLS/name,legacy/name)
         (legacy/'release.json').write_text(json.dumps({'files':{name:hashlib.sha256((legacy/name).read_bytes()).hexdigest() for name in names}}))
         self.assertEqual(set(module.verify(legacy)['files']),names)
-    def test_unknown_launch_contract_blocks_shell(self):
-        r=self.run_gate('--shell','/bin/bash','--','-c','touch SHOULD_NOT_EXIST');self.assertEqual(r.returncode,78)
+    def test_unknown_launch_contract_degrades_and_starts_shell(self):
+        # A launch shape this tool has not caught up with must not black out the
+        # pane: record the degradation, warn, then hand the same argv to the shell.
+        marker=self.root/'DEGRADED_STARTED'
+        before={p.name for p in (self.root/'failures').glob('*.json')}
+        r=self.run_gate('--shell','/bin/bash','--','-c','touch '+str(marker))
+        self.assertEqual(r.returncode,0,r.stderr);self.assertTrue(marker.exists())
+        self.assertIn('AIWB_CONTEXT_LAUNCH_DEGRADED',r.stderr)
+        new={p.name for p in (self.root/'failures').glob('*.json')}-before
+        self.assertEqual(len(new),1,'one degradation record per unrecognised launch')
+        record=json.loads((self.root/'failures'/new.pop()).read_text())
+        self.assertEqual(record['status'],'DEGRADED')
+        self.assertEqual(record['error_code'],'AIWB_CONTEXT_LAUNCH_DEGRADED')
     def pane_script(self,body):
         p=self.root/'pane-launch.sh';p.write_text(body);return p
     def pane_args(self,p):
@@ -167,9 +202,11 @@ class Startup(unittest.TestCase):
     def test_pane_script_contract_accepts_double_quoted_cwd(self):
         p=self.pane_script('set -- '+json.dumps(str(self.wt))+' "/bin/sh" "-c" "printf dq > dq; exit 0"\ncd -- "$1" && shift && exec /usr/bin/env "$@"\n')
         r=self.run_gate(*self.pane_args(p));self.assertEqual(r.returncode,0,r.stderr);self.assertTrue((self.wt/'dq').exists())
-    def test_pane_script_without_declared_cwd_blocks_shell(self):
+    def test_pane_script_without_declared_cwd_degrades_and_starts_shell(self):
         p=self.pane_script('echo not-a-pane-script\n')
-        r=self.run_gate(*self.pane_args(p));self.assertEqual(r.returncode,78,r.stderr)
+        r=self.run_gate(*self.pane_args(p))
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertIn('AIWB_CONTEXT_LAUNCH_DEGRADED',r.stderr)
     def test_pane_script_is_read_not_executed_before_preflight(self):
         # Discovering the cwd must never run shipped shell text; a refused cwd
         # has to leave the script's own side effects unexecuted.
