@@ -675,9 +675,19 @@ def case_implement_batch_distribution(root):
     for profile_name in ("work-mac", "work-linux", "home-mac"):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
         components = [c for c in profile["components"] if c["id"] in skill_names]
+        expected_ids = (set(skill_names) if profile_name == "home-mac"
+                        else set(skill_names) - {"deliver-spec"})
         check(profile_name + " 不登记旧名或隐式重装引用",
               "implement-batch" not in json.dumps(profile)
-              and len(components) == len(skill_names))
+              and {c["id"] for c in components} == expected_ids)
+        # work-* 已把 deliver-spec 交回 Dev Tracker 的按项目激活；本用例仍要验证
+        # deliver-spec 的共装闭包，故从 home-mac 取同一组件构造 harness Profile。
+        if profile_name != "home-mac":
+            home_components = json.loads(
+                read(os.path.join(ENV_DIR, "profiles", "home-mac.json")))["components"]
+            missing = [c for c in home_components
+                       if c["id"] == "deliver-spec" and c["id"] not in {x["id"] for x in components}]
+            components = components + missing
         box = Sandbox(os.path.join(root, profile_name, "canonical"))
         upstream = box.path(".agents", "skills", "implement-spec", "SKILL.md")
         os.makedirs(os.path.dirname(upstream))
@@ -850,7 +860,18 @@ def case_self_test_report_distribution(root):
         profile = json.loads(read(os.path.join(ENV_DIR, "profiles", profile_name + ".json")))
         skill_names = ("self-test-report", "deliver-spec", "test-design", "writing-docs")
         components = [c for c in profile["components"] if c["id"] in skill_names]
-        check(profile_name + " 登记报告、设计、写作与规范交付组件", len(components) == len(skill_names))
+        expected_ids = (set(skill_names) if profile_name == "home-mac"
+                        else set(skill_names) - {"deliver-spec"})
+        check(profile_name + " 登记报告、设计、写作与规范交付组件",
+              {c["id"] for c in components} == expected_ids)
+        if profile_name != "home-mac":
+            # work-* 已把 deliver-spec 交回 Dev Tracker 项目激活；本用例仍验证
+            # deliver-spec 的报告引用，故从 home-mac 取同一组件补齐 harness。
+            home_components = json.loads(
+                read(os.path.join(ENV_DIR, "profiles", "home-mac.json")))["components"]
+            components = components + [c for c in home_components
+                                       if c["id"] == "deliver-spec"
+                                       and c["id"] not in {x["id"] for x in components}]
         if len(components) != len(skill_names):
             continue
         box = Sandbox(os.path.join(root, profile_name))

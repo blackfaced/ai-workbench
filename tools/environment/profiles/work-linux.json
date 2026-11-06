@@ -16,33 +16,6 @@
   },
   "components": [
     {
-      "id": "setup-aiwb",
-      "type": "skill",
-      "name": "setup-aiwb",
-      "body": "skills/setup-aiwb/SKILL.md",
-      "source": "repo:skills/setup-aiwb",
-      "revision": "in-repo",
-      "clients": {
-        "shared": {
-          "dir": "~/.agents/skills",
-          "files": {
-            "agents/openai.yaml": "skills/setup-aiwb/clients/openai.yaml",
-            "references/integration-guide.md": "skills/setup-aiwb/references/integration-guide.md",
-            "references/integration-setup.md": "skills/setup-aiwb/references/integration-setup.md",
-            "references/error-observability.md": "skills/setup-aiwb/references/error-observability.md",
-            "references/project-context.md": "skills/setup-aiwb/references/project-context.md",
-            "references/matt-project-baseline.md": "skills/setup-aiwb/references/matt-project-baseline.md",
-            "scripts/verify_matt_baseline.py": "skills/setup-aiwb/scripts/verify_matt_baseline.py",
-            "references/botmux-startup.md": "skills/setup-aiwb/references/botmux-startup.md"
-          }
-        }
-      },
-      "stale_copies": [
-        "~/.codex/skills/setup-aiwb",
-        "~/.trae/skills/setup-aiwb"
-      ]
-    },
-    {
       "id": "test-design",
       "type": "skill",
       "name": "test-design",
@@ -105,34 +78,6 @@
       "stale_copies": [
         "~/.codex/skills/self-test-report",
         "~/.trae/skills/self-test-report"
-      ]
-    },
-    {
-      "id": "deliver-spec",
-      "type": "skill",
-      "name": "deliver-spec",
-      "body": "skills/deliver-spec/SKILL.md",
-      "source": "repo:skills/deliver-spec",
-      "revision": "in-repo",
-      "clients": {
-        "shared": {
-          "dir": "~/.agents/skills",
-          "files": {
-            "agents/openai.yaml": "skills/deliver-spec/clients/openai.yaml",
-            "references/spec-acceptance.md": "skills/deliver-spec/references/spec-acceptance.md",
-            "references/run-record.md": "skills/deliver-spec/references/run-record.md",
-            "references/staged-review.md": "skills/deliver-spec/references/staged-review.md",
-            "references/botmux.md": "skills/deliver-spec/references/botmux.md"
-          }
-        }
-      },
-      "stale_copies": [
-        "~/.codex/skills/deliver-spec",
-        "~/.trae/skills/deliver-spec"
-      ],
-      "install_with": [
-        "test-design",
-        "self-test-report"
       ]
     }
   ]

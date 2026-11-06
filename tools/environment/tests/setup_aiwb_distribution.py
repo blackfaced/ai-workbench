@@ -30,7 +30,13 @@ def require(ok, message):
 
 def component(profile):
     data = json.loads((Path(ENV_DIR) / "profiles" / (profile + ".json")).read_text())
-    return next(c for c in data["components"] if c["id"] == "setup-aiwb")
+    entry = next((c for c in data["components"] if c["id"] == "setup-aiwb"), None)
+    if entry is None:
+        # work-* 已把 setup-aiwb 交回 Dev Tracker 的按项目激活；分发契约、升级
+        # 与缺失资源控制仍用 home-mac 的同一组件验证。
+        data = json.loads((Path(ENV_DIR) / "profiles" / "home-mac.json").read_text())
+        entry = next(c for c in data["components"] if c["id"] == "setup-aiwb")
+    return entry
 
 
 def fixture(root, entry):
