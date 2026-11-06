@@ -39,6 +39,11 @@ def observe(root, fault):
     names = ("implement-batch", "deliver-spec", "test-design", "self-test-report", "writing-docs")
     profile = json.loads(read(os.path.join(ENV_DIR, "profiles", "work-mac.json")))
     components = [c for c in profile["components"] if c["id"] in names]
+    # work-* 已把 deliver-spec 交回 Dev Tracker 的按项目激活；本实验冻结的是
+    # implement-batch 的旧委托形态，仍从 home-mac 取同一组件补齐 install_with 依赖。
+    if "deliver-spec" not in {c["id"] for c in components}:
+        home = json.loads(read(os.path.join(ENV_DIR, "profiles", "home-mac.json")))
+        components.append(next(c for c in home["components"] if c["id"] == "deliver-spec"))
     # Frozen pre-retirement distribution contract, not current profile selection.
     components.append({
         "id": "implement-batch", "type": "skill", "name": "implement-batch",
