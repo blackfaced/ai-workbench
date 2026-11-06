@@ -39,14 +39,14 @@ This entry does not require `deliver-spec` or a full multi-agent workflow. Reuse
 
 ## 按名称使用“读/记”
 
-可选的 [AIWB 客户端入口](memorynexus-task-entry/SKILL.md) 提供 `读 任务名` 与 `记：原文`。
+可选的 [AIWB 客户端入口](memorynexus-task-entry/SKILL.md) 提供中文的列任务、列记录、读/接上、记、改、撤、看理解与记忆帮助；完整语法以入口命令表为准。
 AIWB 只拥有名称定位脚本及客户端意图接线，仍调用已绑定 MemoryNexus 的 `daily.py`，不复制其运行包或引入第二账本。
 同名先选，未登记或读取失败不自动建任务；含指代的保存请求先展示精确摘要取得确认。
 
 名称目录和 task/binding/ledger 均留在本机私有位置，不进入 AIWB Git。
 本入口不加入默认 Profile；owner 明确选择的个人 Codex 新会话可按 [配置说明](memorynexus-task-entry/references/setup.md) 将该单一入口作为全局例外。
 2026-11-06 的本机 Codex CLI 新会话已观察到按名读回，保存链路在隔离合成任务通过；这不扩展上文 #155 的 Desktop/Traex 证据。
-源内固化后的候选验证见 [接入记录](../docs/testing/memorynexus-task-entry.md)，其他机器或客户端尚未验证。
+后续已实测本机 Codex Desktop 全新聊天与 Traex 0.213.1 独立测试项目的自动发现和中文命令；真实任务只读，写入仅在隔离任务。客户端各自候选、失败历史、当前环境回归的三项既有失败及未验证范围见 [接入记录](../docs/testing/memorynexus-task-entry.md)。这些观察不扩展为其他项目/机器、真实任务写入或跨机接力验收。
 
 ## Version changes and recovery
 
