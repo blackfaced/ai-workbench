@@ -11,11 +11,13 @@ Use the [installation policy](../skills/README.md#installation-policy): select a
 
 Do not use the environment Profile's user-global `apply` as the default adoption path. Its existing install/recovery support remains available for separately authorized legacy maintenance; this guide changes the recommendation, not executable defaults or existing installs. Upstream `implement` is unchanged. Verify discovery in a new target-project session and new worktree; other clients and native subagent availability require independent verification.
 
-In the target repository's Traex conversation, explicitly request:
+After project activation, clients supporting implicit invocation may select `deliver-spec` for spec delivery that needs decomposition, dependency coordination and whole-spec acceptance, or continuation of that work. Simple standalone changes and read-only questions use the project's lightweight workflow. Automatic selection starts only read-only inspection and plan preparation; execution still requires the existing plan confirmation below. Actual selection behavior needs separate client verification.
+
+Explicit invocation remains available. For example, in the target repository's Traex conversation:
 
 > 使用 deliver-spec skill 实施 spec 父 Issue #100。已有实现先验证；先展示依赖图、批次、实施与集成 agent 的模型让我确认。允许临时分支本地提交和集成，先不推送、不合 main、不关闭 Issue。
 
-In Codex use `$deliver-spec`. Exact child models depend on the client's exposed capability: the plan must distinguish verified model selection from unknown/inherited defaults. No silent substitution. Slash-command completion is client-specific. If an existing session cannot find the updated Skill, start a new session and invoke it again.
+In Codex you can also use `$deliver-spec`. Exact child models depend on the client's exposed capability: the plan must distinguish verified model selection from unknown/inherited defaults. No silent substitution. Slash-command completion is client-specific. If an existing session cannot find the updated Skill, start a new session and invoke it again.
 
 Before confirmation the parent performs read-only investigation and presents the graph, proposed batches, existing implementations, model/concurrency choices, checks, and authority. After confirmation each implementation child gets its own worktree; one integrator per batch reviews arrivals and integrates serially. Existing implementations go directly to verification. The parent accepts each batch before launching the next from the accepted integration tip, and finally verifies the whole spec.
 
@@ -27,7 +29,7 @@ For a first trial use a small parent with one existing implementation, two indep
 
 This Skill controls instructions and handoffs. Repository tests and CI provide executable gates; client capabilities provide isolation. It creates no daemon, queue, or additional Issue authority. The original upstream `implement` remains unchanged.
 
-`deliver-spec`（按规格交付）is the maintained first-party entry. `implement-batch` is retired to avoid name confusion; this guide keeps its existing URL and the old source keeps documentation links only. To continue in-flight work, explicitly select deliver-spec and retain authorization, the confirmed plan, checkpoints, candidates and acceptance/failure history. Retirement grants no additional execution or publication authority. The independent upstream `implement-spec` is unchanged.
+`deliver-spec`（按规格交付）is the maintained first-party entry. `implement-batch` is retired to avoid name confusion; this guide keeps its existing URL and the old source keeps documentation links only. When continuing in-flight work with deliver-spec, retain authorization, the confirmed plan, checkpoints, candidates and acceptance/failure history. Retirement grants no additional execution or publication authority. The independent upstream `implement-spec` is unchanged.
 
 For legacy Profile maintenance, `--only deliver-spec` selects the canonical entry plus `test-design` and `self-test-report` through the profile's `install_with` setting. All three current profiles exclude implement-batch; old-name plan/apply/check requests, including mixed selections, fail as unknown IDs before writes rather than silently selecting a different workflow. Default installation does not reinstall the old name. Ordinary `depends_on` still only checks availability. Preview the new command with `plan`; missing declared companions are reported before writes and user edits continue to block overwrite. Existing old client files and managed records are preserved, not automatically deleted. Guarded `restore` still honors historical backups, which may deliberately restore an old entry; check restored content before use. Client/machine refresh and removal of existing copies are separate operations, not performed by this repository change.
 
