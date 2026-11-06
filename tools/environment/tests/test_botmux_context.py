@@ -155,6 +155,27 @@ class Startup(unittest.TestCase):
         self.assertEqual(set(module.verify(legacy)['files']),names)
     def test_unknown_launch_contract_blocks_shell(self):
         r=self.run_gate('--shell','/bin/bash','--','-c','touch SHOULD_NOT_EXIST');self.assertEqual(r.returncode,78)
+    def pane_script(self,body):
+        p=self.root/'pane-launch.sh';p.write_text(body);return p
+    def pane_args(self,p):
+        return ('--shell','/bin/bash','--','-i','-c','. "$1"','_',str(p))
+    def test_pane_script_contract_executes_shell_after_preflight(self):
+        # Botmux 3.57.2 replaced the cwd argument with one generated pane script
+        # that re-sets its own positional args; the gate must follow it.
+        p=self.pane_script("set -- '"+str(self.wt)+"' '/bin/sh' '-c' 'printf started > started; exit 0'\ncd -- \"$1\" && shift && exec /usr/bin/env \"$@\"\n")
+        r=self.run_gate(*self.pane_args(p));self.assertEqual(r.returncode,0,r.stderr);self.assertTrue((self.wt/'started').exists())
+    def test_pane_script_contract_accepts_double_quoted_cwd(self):
+        p=self.pane_script('set -- '+json.dumps(str(self.wt))+' "/bin/sh" "-c" "printf dq > dq; exit 0"\ncd -- "$1" && shift && exec /usr/bin/env "$@"\n')
+        r=self.run_gate(*self.pane_args(p));self.assertEqual(r.returncode,0,r.stderr);self.assertTrue((self.wt/'dq').exists())
+    def test_pane_script_without_declared_cwd_blocks_shell(self):
+        p=self.pane_script('echo not-a-pane-script\n')
+        r=self.run_gate(*self.pane_args(p));self.assertEqual(r.returncode,78,r.stderr)
+    def test_pane_script_is_read_not_executed_before_preflight(self):
+        # Discovering the cwd must never run shipped shell text; a refused cwd
+        # has to leave the script's own side effects unexecuted.
+        marker=self.root/'SCOUTED'
+        p=self.pane_script('touch '+str(marker)+"\nset -- '"+str(self.root/'missing-checkout')+"'\n")
+        r=self.run_gate(*self.pane_args(p));self.assertEqual(r.returncode,78,r.stderr);self.assertFalse(marker.exists())
     def switch_client(self,name,body):
         native=self.root/name;native.write_text('#!'+sys.executable+'\n'+body);native.chmod(0o755)
         data=json.loads(self.registry.read_text());data['clients']={'codex':str(native),'trae':str(native)};self.registry.write_text(json.dumps(data))
