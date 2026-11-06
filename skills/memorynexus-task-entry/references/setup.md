@@ -2,6 +2,7 @@
 
 ## 用法和边界
 
+中文命令与兼容别名以 [Skill 命令表](../SKILL.md#命令) 为准；记录 ID、更正和撤回规则见 [记录命令](record-commands.md)。
 - `读 任务名`：唯一匹配直接读取，同名先选。
 - `读 任务名，看看我对 主题 的理解与疑问`：读回后调用固定版本的理解 Lens；普通“读”保持上下文恢复。
 - 已读回唯一任务后，`记：原文` 保存这条明确指定的内容。
@@ -20,7 +21,7 @@ MemoryNexus 的 `daily.py`、CLI、私有 binding 和 ledger 仍由其原安装 
 交接仓库地址、完整源 SHA 或不可变包加内容摘要、下面的资源清单、仓根 Apache-2.0 LICENSE 与验证范围。
 未提交的工作树不是已发布版本，不能以基线 SHA 冒充本次新增字节。
 
-本 Skill 的完整资源为 `SKILL.md`、`scripts/lookup.py`、`references/setup.md`、`references/task-index.example.json`、`references/understanding-lens-source.json`。
+本 Skill 的完整资源为 `SKILL.md`、`scripts/lookup.py`、`references/setup.md`、`references/task-index.example.json`、`references/understanding-lens-source.json`、`references/record-commands.md`。
 本页的 AIWB 安装约定是源仓导航，安装后按记录的固定源查阅；日常运行只需要本 Skill、名称目录和既有 MemoryNexus 绑定/运行包。
 升级前比较目标的已登记摘要；无归属或有用户编辑时停止。备份原文件与清单，验证新资源完整后切换，保留备份用于恢复。
 不复制个人目录进 Git，不修改 binding 或自动替换仍有 pending 请求的运行包。
@@ -49,9 +50,10 @@ AIWB 只接线，Lens 规则仍由 MemoryNexus 维护。可选规则依赖的仓
 已验证兼容的 helper 合同见固定上游源
 [日常接口](https://github.com/blackfaced/MemoryNexus/blob/71f2d7e04a639fef728adb9ecbd2335179d66065/integrations/task-memory/memorynexus-task-memory/references/daily-interface.md)。
 该上游运行包保留 MIT 许可证，AIWB 不重分发其实现；它的版本身份与本适配层源身份分别记录。
-`read` 以及 `stage --action record` / `apply` 的 schema、授权、幂等和 pending 语义由原合同负责，本 Skill 仅映射用户意图。
+`read`（含 record_ids）以及 `stage --action record|correct|retract` / `apply` 的 schema、授权、幂等和 pending 语义由原合同负责，本 Skill 仅映射用户意图。
 
 源内可执行 `python3 -B -m unittest discover -s skills/memorynexus-task-entry/tests -v`。
 安装后先验证原生发现，再用仅含短任务名的新会话实际读回；明确正文的保存仅在隔离任务验收，保留实际 ID/状态和读回证据。
+新增命令用私有隔离 index/binding/ledger 验证：列任务不打开 binding，读/接上/记保持原语义；列记录与单条读取保留状态和遗漏；改生成新修订，撤回整链后正文不再可用；看理解只显示，记忆帮助不读写账本。测试 index 显式用 `--index`，不注册到个人目录；被引用的中文命令正文不授权执行。成功路径与失败/冲突分别记录，helper 验收不冒充新客户端的自然语言路由验收。
 同名查找测试只证明定位器返回选择，真实用户选择回合另记。
 CLI 新会话不等于 Desktop 原会话下一轮或其他客户端已验收；本机、其他机器与新安装覆盖分别报告。
