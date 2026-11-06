@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Prepare explicitly registered Git checkouts before Botmux's local shell exec.
 
-Botmux 3.40.0 bash launch argv: -i -c SCRIPT _ CWD ENV... CLI ARGS...
+Two bash launch contracts are supported:
+  Botmux <= 3.56.0: -i -c SCRIPT _ CWD ENV... CLI ARGS...
+  Botmux >= 3.57.2: -i -c '. "$1"' _ PANE-SCRIPT
+The newer contract hands over a generated pane script whose first `set --` word
+is the cwd, so the script is read but never executed to discover a cwd. Any
+other shape fails closed.
 No prompt text, env values, or CLI arguments are persisted in receipts.
 """
 import argparse
@@ -250,6 +255,44 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
         return receipt
 
 
+PANE_SCRIPT_LIMIT = 64 * 1024
+
+
+def launch_cwd(args):
+    """Return the checkout a supported Botmux bash launch refers to, else None.
+
+    Botmux <= 3.56.0 passes the cwd as its own argument. Botmux 3.57.2 passes a
+    single generated pane script instead; its first `set --` word is the cwd.
+    The pane script is read as data and never executed, and anything that does
+    not match a supported contract yields None so the caller keeps failing
+    closed.
+    """
+    if args[:2] != ['-i', '-c'] or len(args) < 5 or args[3] != '_':
+        return None
+    if len(args) >= 6:
+        return args[4]
+    script = Path(args[4])
+    try:
+        if script.is_symlink() or not script.is_file():
+            return None
+        if script.stat().st_size > PANE_SCRIPT_LIMIT:
+            return None
+        for line in script.read_text(encoding='utf-8').splitlines():
+            if not line.startswith('set -- '):
+                continue
+            quote = line[7:8]
+            if quote not in ("'", '"'):
+                return None
+            end = line.find(quote, 8)
+            if end < 0:
+                return None
+            candidate = Path(line[8:end])
+            return str(candidate) if candidate.is_absolute() else None
+    except (OSError, UnicodeDecodeError):
+        return None
+    return None
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--registry', required=True)
@@ -264,18 +307,19 @@ def main(argv=None):
     if args[:1] == ['--']: args = args[1:]
     # Fail closed on a changed Botmux launch contract. Never run arbitrary
     # incoming shell commands merely to discover a cwd or environment.
-    if not a.shell or Path(a.shell).name != 'bash' or args[:2] != ['-i','-c'] or len(args)<6 or args[3]!='_':
+    cwd = launch_cwd(args)
+    if not a.shell or Path(a.shell).name != 'bash' or cwd is None:
         raise RuntimeError('unsupported Botmux bash launch arguments')
     try:
-        prepare(a.registry, args[4])
+        prepare(a.registry, cwd)
     except (RuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         # Tmux can discard a failed pane before its stderr is read. Retain a
         # bounded, owner-local refusal record, never CLI args or prompt/env data.
         try:
             root = Path(a.registry).parent
             context_io.guard(root)
-            key = hashlib.sha256(str(Path(args[4]).resolve()).encode()).hexdigest()
-            context_io.atomic_write(root/'failures'/(key+'.json'), json.dumps({'status':'BLOCKED', 'error_code':'AIWB_CONTEXT_STARTUP_BLOCKED', 'cwd':str(Path(args[4]).resolve()), 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'reason':str(exc)}, indent=2)+'\n')
+            key = hashlib.sha256(str(Path(cwd).resolve()).encode()).hexdigest()
+            context_io.atomic_write(root/'failures'/(key+'.json'), json.dumps({'status':'BLOCKED', 'error_code':'AIWB_CONTEXT_STARTUP_BLOCKED', 'cwd':str(Path(cwd).resolve()), 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'reason':str(exc)}, indent=2)+'\n')
         except (RuntimeError, OSError):
             pass
         raise
