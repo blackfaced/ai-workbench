@@ -8,7 +8,7 @@
 
 短 ID 从本会话已实际读回并展示的同任务完整 UUID 生成，至少八位；有前缀冲突就延长。列表序号不是稳定身份。`#短ID` 只在已展示的同任务映射中精确解析；零个或多个匹配时先澄清，不自动挑选或扫描。用户提供完整 UUID 时可在当前任务直接查询，但更正/撤回仍须核对并展示实际目标。
 
-`读 #ID`：在绑定的 state_root 内独占创建 0600 请求文件，正文为 `{"record_ids":["实际完整UUID"]}`，以 argv 执行：
+`读 #ID`：在已授权的客户端私有临时目录（0700、位于任务仓库之外）独占创建 0600 请求文件，正文为 `{"record_ids":["实际完整UUID"]}`，以 argv 执行。只读任务不要求开放 state_root 或账本写权限；该 caller 请求仅描述 ID，不写入任务记忆：
 
 ```text
 PINNED_PYTHON -I -S -B PACKAGE/daily.py read --binding ABS_BINDING --request ABS_REQUEST
