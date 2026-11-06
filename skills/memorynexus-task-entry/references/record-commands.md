@@ -22,7 +22,7 @@ PINNED_PYTHON -I -S -B PACKAGE/daily.py read --binding ABS_BINDING --request ABS
 2. 对已经展示且未变的明确目标，用户本次 `改 #ID：精确新正文` 或 `撤 #ID` 就是对应内容/动作授权，不重复确认。若目标未展示、目标/正文含糊，先展示旧内容及拟更正/撤回的动作，再等明确确认。`删` 只表达撤回；用户要求彻底删除时说明不支持，不替做撤回。
 3. `撤` 作用于整条修订链，即使给的是旧修订 ID；先展示当前链的影响。此前未展示过这项影响或链已变化时，须确认该整链动作。成功明确说“已撤回，历史仍保留”，不说彻底删除。
 
-构造既有 envelope，字段映射如下；共同字段为新的 `idempotency_key`、`run_id` UUID 与 `client:"codex"`：
+构造既有 envelope，字段映射如下；共同字段为新的 `idempotency_key`、`run_id` UUID 与当前客户端专用的 `binding.client`，沿用 SKILL 的新写入/已有 pending 区分：
 
 | 动作 | action | 其余字段 |
 | --- | --- | --- |

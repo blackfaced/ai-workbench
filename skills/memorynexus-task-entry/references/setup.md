@@ -17,6 +17,7 @@ MemoryNexus 的 `daily.py`、CLI、私有 binding 和 ledger 仍由其原安装 
 按 [AIWB 安装约定](../../README.md#installation-policy) 选择固定版本和客户端范围。
 一般项目按项目启用；若 owner 明确要求在任意新 Codex 聊天按名称接续，可仅将本入口作为个人全局例外安装到 `~/.codex/skills/memorynexus-task-entry/`。
 此例外不改变其他 Skill 的项目激活默认值。
+Traex 按所选项目启用完整资源，例如 `<项目>/.trae/skills/memorynexus-task-entry/`，并用其原生 `skills/list` 与实际新会话分别验证。新写入需 owner 提供 `client:"traex"` 的独立私有 binding；它可指向同一已核验任务及 pinned 运行包，不能改写已有 Codex binding、运行包身份或个人默认索引来冒充接入。
 
 交接仓库地址、完整源 SHA 或不可变包加内容摘要、下面的资源清单、仓根 Apache-2.0 LICENSE 与验证范围。
 未提交的工作树不是已发布版本，不能以基线 SHA 冒充本次新增字节。
