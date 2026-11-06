@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "tasks": [
+    {
+      "task_id": "00000000-0000-4000-8000-000000000001",
+      "name": "主题研究任务",
+      "aliases": [
+        "主题研究"
+      ],
+      "description": "个人研究；示例字段，登记前替换",
+      "binding": "/absolute/private/task-bindings/example.json"
+    }
+  ]
+}
