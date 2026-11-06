@@ -248,6 +248,21 @@
       "license": "MIT",
       "evidence_date": "2026-10-29",
       "note": "项目按需启用的上游日常任务记忆 Skill；固定到 #343 已发布的 draft PR #348 分支提交，尚非已合入 release。verified 仅表示 2026-10-29 owner 选择的隔离合成项目已观察到 Codex/Traex 发现及实际往返；桌面发现来自 owner UI 观察，执行为 prompt-only。其他项目仍需独立验收，不纳入 Profile apply。MemoryNexus 拥有 canonical 正文、CLI/helper 与版本安装器；AIWB 不复制实现。客户端版本、package/binary 独立身份和证据限制见 skills/memorynexus.md；现有全局安装不迁移。"
+    },
+    {
+      "name": "memorynexus-task-entry",
+      "source": "repo:skills/memorynexus-task-entry",
+      "revision": "in-repo",
+      "verified": true,
+      "clients": [
+        "codex"
+      ],
+      "install_paths": {
+        "codex": "~/.codex/skills/memorynexus-task-entry"
+      },
+      "license": "Apache-2.0",
+      "evidence_date": "2026-11-06",
+      "note": "AIWB 第一方客户端适配层：读/记触发、私有名称目录定位；不包含 MemoryNexus 的 CLI/daily helper 或账本。只对 owner 明确选择的个人 Codex 使用，不加入默认 Profile。verified 限于本机 CLI 新会话按名读取与隔离合成任务写入；Desktop 下一用户回合、同名选择的实际交互和其他客户端/机器未验证。私有目录与任务资料不入 Git，资源与接入记录见 skills/memorynexus-task-entry/references/setup.md。"
     }
   ]
 }
