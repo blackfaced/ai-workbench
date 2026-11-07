@@ -136,8 +136,11 @@ def main(argv=None):
                     raise RuntimeError('custom native home requires separate setup: '+variable)
             # Real native paths in registry prevent the shared no-model checks
             # from reentering these wrappers. Native retains original argv/cwd.
+            # A direct CLI launch repeats this preflight on every start, so reuse
+            # a still-accurate receipt instead of re-running apply/check/loading.
             context.prepare(a.registry, target, receipt_name='cli-startup.json',
-                            native_cwd=selected, client_options={client: defaults.get(client, []) + (diagnostic if client == a.client else []) for client in registry['clients']})
+                            native_cwd=selected, reuse=True,
+                            client_options={client: defaults.get(client, []) + (diagnostic if client == a.client else []) for client in registry['clients']})
             if native_requests:
                 import native_worktree
                 native_worktree.arm(a.registry,target,entry,{client:defaults.get(client,[])+(diagnostic if client==a.client else []) for client in registry['clients']},a.client)

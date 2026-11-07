@@ -5,8 +5,14 @@ Two bash launch contracts are supported:
   Botmux <= 3.56.0: -i -c SCRIPT _ CWD ENV... CLI ARGS...
   Botmux >= 3.57.2: -i -c '. "$1"' _ PANE-SCRIPT
 The newer contract hands over a generated pane script whose first `set --` word
-is the cwd, so the script is read but never executed to discover a cwd. Any
-other shape fails closed.
+is the cwd, so the script is read but never executed to discover a cwd.
+
+A launch this tool cannot recognise is announced as
+AIWB_CONTEXT_LAUNCH_DEGRADED and the shell starts anyway: an unrecognised
+contract means this tool has not caught up with a launch change, which must not
+cost the owner a shell that has nothing wrong with its checkout. A cwd this tool
+did resolve and then fails to prepare keeps the pane blocked (exit 78), because
+that one does mean the checkout's context is not what the client loaded.
 No prompt text, env values, or CLI arguments are persisted in receipts.
 """
 import argparse
@@ -109,7 +115,46 @@ def analysis_status(entry, target):
     return result
 
 
-def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cwd=None, client_options=None):
+def launch_identity(path):
+    """Size and mtime of the resolved client; an update edits both."""
+    try:
+        resolved = Path(path).resolve(strict=True)
+        st = resolved.stat()
+    except OSError:
+        return None
+    return {'path': str(resolved), 'size': st.st_size, 'mtime_ns': st.st_mtime_ns}
+
+
+def verified_fingerprint(registry_path, declaration, target, head, team_hash, clients, companions, installer_sha):
+    """Everything a passing receipt depends on, cheap enough to re-read per launch."""
+    return {
+        'registry_sha256': digest(registry_path),
+        'declaration_sha256': digest(declaration),
+        'installer_sha256': installer_sha,
+        'target_head': head,
+        'team_sha256': team_hash,
+        'native_configs': {rel: digest(target / rel) for rel in ['.codex/config.toml', '.trae/traecli.toml']},
+        'clients': {name: launch_identity(path) for name, path in clients.items()},
+        'companions': {str(dest.relative_to(target)): digest(dest) for src, dest, current in companions},
+    }
+
+
+def reusable_receipt(path, fingerprint, native_cwd):
+    """Return a prior PASS receipt only while everything it verified still holds."""
+    try:
+        prior = read_json(path)
+    except (OSError, ValueError, RuntimeError):
+        return None
+    if prior.get('status') != 'PASS':
+        return None
+    if prior.get('launch_fingerprint') != fingerprint:
+        return None
+    if prior.get('native_cwd') != str(native_cwd):
+        return None
+    return prior
+
+
+def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cwd=None, client_options=None, reuse=False):
     registry_hash = digest(registry_path)
     registry = read_json(registry_path)
     if registry.get('version') != 1:
@@ -205,6 +250,19 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
         # Registry installation is explicit owner authorization for the exact
         # checkout selected by Botmux within this registered Git repository.
         command += ['--manage-trust']
+        if receipt_name not in ['botmux-startup.json', 'cli-startup.json', 'native-worktree-startup.json']:
+            raise RuntimeError('unsupported receipt name')
+        if reuse:
+            # A direct CLI launch repeats this preflight many times a day; rerun
+            # the expensive apply/check/native-loading path only when something
+            # it verified has actually changed.
+            prior_fingerprint = verified_fingerprint(registry_path, declaration, target,
+                                                     analysis['target_revision'], team_hash,
+                                                     registry['clients'], copies, installed['actual'])
+            prior = reusable_receipt(target / '.ai-workbench/project-context' / receipt_name,
+                                     prior_fingerprint, native_cwd or target)
+            if prior is not None:
+                return prior
         run(command + ['--apply'], source)
         run(command + ['--check'], source)
         if team_copy:
@@ -246,6 +304,11 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
             raise RuntimeError('unsupported receipt name')
         receipt['native_cwd'] = str(native_cwd or target)
         receipt['private_guidance_created'] = team_copy
+        # Re-read after the writes above: the next launch compares against what
+        # this pass actually left on disk, not what it was about to write.
+        receipt['launch_fingerprint'] = verified_fingerprint(registry_path, declaration, target,
+                                                             analysis['target_revision'], team_hash,
+                                                             registry['clients'], copies, installed['actual'])
         output = target / '.ai-workbench/project-context' / receipt_name
         context_io.atomic_write(output, json.dumps(receipt, indent=2)+'\n')
         # Verified upgrades and normal branch changes remain visible in the
@@ -293,6 +356,22 @@ def launch_cwd(args):
     return None
 
 
+def remember_degraded(registry, reason):
+    """Retain an owner-local record for a launch that could not be preflighted."""
+    try:
+        root = Path(registry).resolve().parent
+        context_io.guard(root)
+        stamp = datetime.datetime.now(datetime.timezone.utc)
+        key = hashlib.sha256(stamp.isoformat().encode()).hexdigest()
+        context_io.atomic_write(root/'failures'/(key+'.json'), json.dumps({
+            'status':'DEGRADED',
+            'error_code':'AIWB_CONTEXT_LAUNCH_DEGRADED',
+            'verified_at':stamp.isoformat(),
+            'reason':reason}, indent=2)+'\n')
+    except (RuntimeError, OSError):
+        pass
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--registry', required=True)
@@ -305,11 +384,16 @@ def main(argv=None):
         return 0
     args = a.shell_args
     if args[:1] == ['--']: args = args[1:]
-    # Fail closed on a changed Botmux launch contract. Never run arbitrary
-    # incoming shell commands merely to discover a cwd or environment.
+    # A launch this tool cannot recognise is its own compatibility gap, not
+    # evidence that the checkout's context is wrong: announce it, keep a receipt,
+    # and still hand the owner a usable shell. Only a cwd this tool did resolve
+    # and then fails to prepare keeps the pane blocked.
     cwd = launch_cwd(args)
     if not a.shell or Path(a.shell).name != 'bash' or cwd is None:
-        raise RuntimeError('unsupported Botmux bash launch arguments')
+        reason = 'unsupported Botmux bash launch arguments'
+        remember_degraded(a.registry, reason)
+        sys.stderr.write('AIWB_CONTEXT_LAUNCH_DEGRADED: '+reason+'; starting the shell without preflight\n')
+        os.execv(a.shell or '/bin/bash', [a.shell or '/bin/bash'] + args)
     try:
         prepare(a.registry, cwd)
     except (RuntimeError, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
