@@ -15,7 +15,7 @@ def normalized(value):
     return ' '.join(unicodedata.normalize('NFKC', value).casefold().split())
 
 
-def lookup(path, name):
+def lookup(path, name=None):
     if not path.is_absolute() or '..' in path.parts:
         raise ValueError('invalid_index')
     info = path.lstat()
@@ -29,7 +29,7 @@ def lookup(path, name):
     tasks = value.get('tasks')
     if not isinstance(tasks, list) or len(tasks) > 1000:
         raise ValueError('invalid_index')
-    target = normalized(name)
+    target = normalized(name) if name is not None else None
     matches, known, ids = [], [], set()
     for item in tasks:
         if not isinstance(item, dict):
@@ -50,9 +50,12 @@ def lookup(path, name):
         if not isinstance(detail, str) or len(detail) > 240:
             raise ValueError('invalid_index')
         known.append(title)
-        if target in keys:
+        if target is None or target in keys:
             matches.append({'task_id': task_id, 'name': title,
                             'description': detail, 'binding': str(binding)})
+    if target is None:
+        return {'schema_version': 1, 'status': 'listed',
+                'tasks': [{k: v for k, v in item.items() if k != 'binding'} for item in matches]}
     status = 'matched' if len(matches) == 1 else 'choose' if matches else 'not_found'
     return {'schema_version': 1, 'status': status, 'matches': matches,
             **({'registered_names': list(dict.fromkeys(known))} if not matches else {})}
@@ -60,7 +63,9 @@ def lookup(path, name):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--name', required=True)
+    action = parser.add_mutually_exclusive_group(required=True)
+    action.add_argument('--name')
+    action.add_argument('--list', action='store_true', help='List registered tasks without opening bindings')
     parser.add_argument('--index', type=Path, default=Path.home() / '.local/share/memorynexus/task-index.json')
     args = parser.parse_args()
     try:
