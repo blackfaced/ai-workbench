@@ -32,7 +32,7 @@ passed; Mac Chrome visual review passed. The development machine's browser could
 not start without `libgbm.so.1`, and Python Playwright was absent, so packaged PNG
 export was not run. This is not verification of all diagram types or fonts.
 Editable sources, exports and full evidence remain with the
-[owning project](https://code.byted.org/hancheng.hc/dev-tracker/issues/414).
+owning project's issue tracker.
 
 For adoption, follow the [project-scoped installation policy](README.md#installation-policy)
 with a fixed upstream version and one workspace activation owner, and verify
