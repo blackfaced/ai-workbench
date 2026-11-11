@@ -70,6 +70,34 @@ class TaskLookup(unittest.TestCase):
         self.assertEqual(self.run_lookup([task], name)[1]['status'], 'matched')
         self.assertFalse(marker.exists())
 
+    def list_tasks(self):
+        proc = subprocess.run([sys.executable, '-B', str(SCRIPT), '--index', str(self.index),
+                               '--list'], capture_output=True)
+        return proc.returncode, json.loads(proc.stdout)
+
+    def test_list_preserves_duplicate_names_without_opening_or_exposing_bindings(self):
+        second = dict(self.task, task_id=str(uuid.uuid4()))
+        self.run_lookup([self.task, second], self.task['name'])
+        code, value = self.list_tasks()
+        self.assertEqual((code, value['status']), (0, 'listed'))
+        self.assertEqual(value['tasks'], [
+            {k: item[k] for k in ('task_id', 'name', 'description')}
+            for item in (self.task, second)])
+
+    def test_list_empty_and_invalid_indexes_are_distinct(self):
+        self.run_lookup([], 'unused')
+        self.assertEqual(self.list_tasks(), (0, {'schema_version': 1, 'status': 'listed', 'tasks': []}))
+        os.chmod(self.index, 0o644)
+        code, value = self.list_tasks()
+        self.assertEqual((code, value['status']), (2, 'error'))
+        self.run_lookup([self.task, self.task], self.task['name'])
+        self.assertEqual(self.list_tasks()[0], 2)
+
+    def test_list_and_name_are_mutually_exclusive(self):
+        proc = subprocess.run([sys.executable, '-B', str(SCRIPT), '--list', '--name', 'name'],
+                              capture_output=True)
+        self.assertEqual(proc.returncode, 2)
+
 
 if __name__ == '__main__':
     unittest.main()
