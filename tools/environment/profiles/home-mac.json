@@ -263,7 +263,9 @@
             "references/spec-acceptance.md": "skills/deliver-spec/references/spec-acceptance.md",
             "references/run-record.md": "skills/deliver-spec/references/run-record.md",
             "references/staged-review.md": "skills/deliver-spec/references/staged-review.md",
-            "references/botmux.md": "skills/deliver-spec/references/botmux.md"
+            "references/botmux.md": "skills/deliver-spec/references/botmux.md",
+            "references/threads.md": "skills/deliver-spec/references/threads.md",
+            "references/thread-harnesses.md": "skills/deliver-spec/references/thread-harnesses.md"
           }
         }
       },

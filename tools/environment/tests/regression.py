@@ -739,11 +739,14 @@ def case_implement_batch_distribution(root):
               and os.path.isfile(os.path.join(report_dir, "../writing-docs/SKILL.md")))
         check(profile_name + " 写作来源随正文分发",
               os.path.isfile(box.path(".agents", "skills", "writing-docs", "references", "sources.md")))
-        for resource in ("botmux.md", "spec-acceptance.md", "run-record.md", "staged-review.md"):
+        for resource in ("botmux.md", "spec-acceptance.md", "run-record.md", "staged-review.md",
+                         "threads.md", "thread-harnesses.md"):
             target = os.path.join(installed, "references", resource)
             check(profile_name + " 保留完整资源 " + resource,
                   os.path.isfile(target) and read(target) == read(os.path.join(source, "references", resource)))
-        for document in (canonical, os.path.join(installed, "references", "spec-acceptance.md")):
+        for document in (canonical, os.path.join(installed, "references", "spec-acceptance.md"),
+                         os.path.join(installed, "references", "threads.md"),
+                         os.path.join(installed, "references", "thread-harnesses.md")):
             links = re.findall(r"\]\(([^)#]+)(?:#[^)]*)?\)", read(document))
             targets = [os.path.normpath(os.path.join(os.path.dirname(document), link))
                        for link in links if not re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", link)]
