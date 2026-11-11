@@ -42,7 +42,9 @@ jobs:
         include:
           - os: macos-latest
             python: "3.11"
-          - os: ubuntu-latest
+          # Pin the image for the 3.9 leg: ubuntu-latest moved to 24.04+ and
+          # setup-python has no 3.9 build there, which fails before any test runs.
+          - os: ubuntu-24.04
             python: "3.9"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
