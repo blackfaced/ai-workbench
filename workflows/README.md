@@ -10,6 +10,8 @@ Repeatable multi-step processes and domain workflows.
 
 - [Project learning and remote handoff](learning-and-remote-handoff.md) — escaped-bug lessons, consolidation, transfer and result collection.
 
+- [Repository thread coordination](repository-thread-coordination.md) — workspace-owned repository matrix, named native threads, scoped requests and evidence readback, including on one machine.
+
 - [Deliver Spec](implement-batch.md) — spec delivery with planning, implementation, review and evidence; implement-batch is retired (saved guide URL retained); [synthetic handoff and delivery scenarios](implement-batch-examples.md).
 
 - [Environment maintenance](../tools/environment/README.md) — preview, apply, check, and restore.
