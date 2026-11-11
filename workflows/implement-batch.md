@@ -39,6 +39,10 @@ For legacy Profile maintenance, `--only deliver-spec` selects the canonical entr
 
 The [botmux transport guide](../skills/deliver-spec/references/botmux.md) maps existing roles to independent harness sessions and uses native dispatch/report routing. Botmux installation does not select this mode or install/configure bots. The guide is part of the selected fixed-version package; existing profiles also retain legacy distribution support. Live delivery, directory isolation and recovery still require the documented pilot. The default native-subagent workflow is unchanged.
 
+## Optional native repository threads
+
+For a workspace with named repository keeper threads, use [repository thread coordination](repository-thread-coordination.md). The [transport guide](../skills/deliver-spec/references/threads.md) is included in the same fixed-version Skill package. The workspace owns its matrix; the client resolves and messages exact thread addresses. Keep the confirmed delivery plan, independent review and integration gates, and verify native routing separately from botmux.
+
 ## Repository setup and final integration acceptance
 
 Use `setup-aiwb` in a target repository to establish or refresh its integration-test guide. This is a Skill, not an `aiwb setup` shell command. It inspects existing scripts/deployment definitions, asks only for missing inputs, and records verified versus unverified setup paths. Typical guide locations follow the repository convention, otherwise `docs/testing/integration.md`.
