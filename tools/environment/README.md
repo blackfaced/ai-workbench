@@ -138,9 +138,17 @@ Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
 
 ## 回归测试
 
+从仓库根目录运行环境回归。需要在本地复现 CI 的项目上下文检查时，使用 Python 3.11 运行下列三条命令，逐条确认退出码为 0：
+
 ```sh
-python3 tools/environment/tests/regression.py
+python3.11 tools/environment/tests/regression.py
+python3.11 tools/environment/tests/test_project_context_render.py
+python3.11 tools/environment/tests/test_project_context_boundaries.py
 ```
+
+只运行环境回归可用 `python3 tools/environment/tests/regression.py`。Python 3.9 的 CI 在缺少 TOML 解析器的环境中验证缺失解析器分支；完整上下文用例由 Python 3.11 执行。各平台实际运行的命令见 [Environment Checks](../../.github/workflows/aiwb-harness.yml)。
+
+排查失败时记录候选提交、Python 版本、失败用例和退出码。复测单个套件时单列结果，在对应 Issue 中注明完整回归的状态。真实客户端加载与新 worktree 的验证步骤见[客户端验证指南](harness-validation.md)。
 
 全程在临时 HOME + 临时仓库副本里跑，**不碰真机配置**，只用标准库。六组用例分别钉住：
 ① 写入前的归属/摘要校验；② restore 的块级回滚、首装完整撤销、安装后改动保护；
