@@ -1221,29 +1221,32 @@ def case_feedback_cadence():
           and "cadence reason" in record)
 
 def case_issue_first_integration():
-    print("\n[用例 19] 集成测试说明与运行结果以项目 Issue 为入口")
+    print("\n[用例 19] 可复用指南留仓，每轮结果归项目 Issue")
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
     setup = read(os.path.join(repo, "skills/setup-aiwb/SKILL.md"))
     instructions = read(os.path.join(repo, "skills/setup-aiwb/references/integration-setup.md"))
     outline = read(os.path.join(repo, "skills/setup-aiwb/references/integration-guide.md"))
-    check("默认使用已有 Issue，不创建 docs/testing 文件",
-          "existing Issue tracker" in instructions
-          and "instead of creating `docs/testing` files" in instructions
-          and "Default to `docs/testing/integration.md`" not in instructions)
-    check("正文管当前说明，评论保留具名执行及首次失败历史",
+    check("保留已有指南约定及 docs/testing/integration.md 后备路径",
+          "repository's existing guide" in instructions
+          and "default to `docs/testing/integration.md` only when no convention exists" in instructions
+          and "existing repository guide" in outline)
+    check("Issue 正文管当前结论，评论保留具名执行及首次失败历史",
           "Issue description" in instructions
           and "first failures, retests" in instructions
           and "Issue comments" in outline)
-    check("保留仓内可复跑代码与受控原件，并支持显式导出",
-          "cases, fixtures and tools in the repository" in instructions
+    check("保留可复用指南和代码、受控原件与显式导出边界",
+          "guides, cases, fixtures and tools in the repository" in instructions
           and "raw receipts in controlled" in instructions
-          and "explicit document/export request" in instructions)
-    check("无 tracker/写权限时诚实保留草稿，不伪造交付",
-          "controlled draft" in instructions
+          and "explicit result/export request" in instructions)
+    check("缺写权限保留结果草稿，每轮不提交报告文件或报告专用 PR",
+          "controlled result draft" in instructions
+          and "report file or report-only PR for each run" in instructions
           and "write/readback status" in instructions)
-    check("Skill 入口与 outline 都路由到同一 Issue",
-          "Issue-based integration-test instructions" in setup
-          and "project's existing Issue" in outline)
+    check("入口及 outline 分清指南与可变运行记录",
+          "reusable integration-test guide" in setup
+          and "execution results in the existing Issue" in setup
+          and "rather than accumulating per-run reports here" in outline
+          and "Append this record in the Issue comments" in outline)
 
 
 def case_matt_pocock_source_pin():
