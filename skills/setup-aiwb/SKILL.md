@@ -3,7 +3,7 @@ name: setup-aiwb
 description: 基于 setup-matt-pocock-skills 建立的 tracker、triage 与 Domain Docs 基线，按项目配置和验证客户端上下文、私有规则及 worktree/Botmux 启动入口，分析并固化错误处理与可观测性约定，维护集成测试手册；项目接入、约定维护或 deliver-spec 缺少测试方法时使用。
 ---
 
-Set up or maintain the target project's agent context and Issue-based integration-test instructions. Use the project's actual rules, tools and entry points. This is a Skill, not the retired `aiwb setup` CLI; the selected client continues to own planning and execution.
+Set up or maintain the target project's agent context and reusable integration-test guide. Use the project's actual rules, tools and entry points; keep per-run results in its existing Issue. This is a Skill, not the retired `aiwb setup` CLI; the selected client continues to own planning and execution.
 
 ## Establish the engineering baseline
 
@@ -16,7 +16,7 @@ After the baseline is established, read [project context setup](references/proje
 ## Choose the requested setup
 
 - For project onboarding, private project rules, client loading, or worktree/Botmux context, read [project context setup](references/project-context.md). Establish the project boundary before configuring its workflow.
-- For integration-test instructions, including `deliver-spec` requests for missing test methods, read [integration setup](references/integration-setup.md) and use [the outline](references/integration-guide.md) in the project's existing Issue. This remains independently usable; an instructions-only request does not require changing client configuration.
+- For a reusable integration-test guide, including `deliver-spec` requests for missing test methods, read [integration setup](references/integration-setup.md) and use [the guide outline](references/integration-guide.md). Keep reusable instructions in the repository guide and execution results in the existing Issue. This remains independently usable; a guide-only request does not require changing client configuration.
 - For project error handling and observability conventions, read [error and observability setup](references/error-observability.md). Inspect current call paths and relevant recent fixes before recording project-owned reuse points and verification methods. Include this analysis in project onboarding/maintenance when runtime behavior is in scope; a configuration-only repair can reuse valid evidence or state why it is unaffected.
 - For full project setup, cover the applicable context, engineering conventions and integration guide. Reuse maintained project documents and link them from the effective context rather than copying their contents.
 
