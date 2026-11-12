@@ -3,14 +3,14 @@
 - Type: upstream skill
 - Domain: coding
 - Source: https://github.com/cathrynlavery/diagram-design
-- Status: opt-in; fixed-package installation and TraeX project discovery verified on one development machine
+- Status: opt-in. The retained local package is at 2.6.153. Project discovery was last verified on 2.6.91.
 - Use when: ER/schema and other additional diagram types, document-sized figures or a project style profile materially improve the explanation.
 
 ## Setup and evidence
 
-The accepted source remains Skill 2.6 at commit
-`0a8ea20ae69b33a5edce6018eedd3a9d26e90c1c`. The 2026-10-13 isolated
-sequence/schema trial is historical authoring evidence only.
+On 2026-11-12 the retained package was updated to `f2496acbde9f45ccb55c24d4f75210c8a1355df8` (plugin 2.6.153). The package preserves the upstream `skills/diagram-design/` tree plus the root license. Its architecture example passed the packaged self-check and exported to SVG with system fonts.
+
+The following installation and discovery results apply to the earlier commit `0a8ea20ae69b33a5edce6018eedd3a9d26e90c1c` (plugin 2.6.91).
 
 On 2026-10-30 the TraeX system `skill-installer` downloaded the fixed revision.
 All 283 upstream package files matched the source checkout; the upstream MIT
@@ -21,7 +21,7 @@ activates it. Upstream owns the content; the project owner maintains the link.
 
 TraeX 0.212.1 native `debug prompt-input` showed no entry before installation,
 one readable entry after installation and on repeat, and no entry in an
-unrelated project. `verified: true` and `clients: ["trae"]` cover this installation
+unrelated project. The earlier checks covered that installation
 channel and project discovery only. These were no-model probes; a new model
 session, other clients/machines, and activation in newly created worktrees were
 not tested. Restart the client or open a new session to refresh its skill list.

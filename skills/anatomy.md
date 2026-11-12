@@ -3,10 +3,12 @@
 - Type: skill
 - Domain: learning
 - Source: https://github.com/wheresryan22/anatomy
-- Status: installed to DoubaoWork `.user_skills/anatomy` (2026-10-15, 12M, Node v22.23.2); client native-discovery and manual enable pending.
+- Status: upgraded in the existing `.user_skills/anatomy` directory on 2026-11-12. Client UI discovery and activation remain unverified.
 - Use when: a mechanical, physical or computational principle needs an interactive 3D cutaway model or a narrated explainer, rather than another wall of text.
 
 ## Notes
+
+The old installation matched commit `bc943e40c59998be5da61f9d39c6a983b1116099`. The upgraded directory matches the complete Git tree `89299cdfce386a71723a7e57bb9fe219875582fc`. All 11 print-sheet tests passed from the installed package. [Installed commit 1482e8469b0a9e0d8cc18ea2740a01423d29ae80](https://github.com/wheresryan22/anatomy/commit/1482e8469b0a9e0d8cc18ea2740a01423d29ae80)
 
 Design thesis: "The object is the explanation" — instead of prose, the agent builds a working, explorable model: isometric line-frame parts that rotate, disassemble, and animate real kinematics, with WebGL shaders for flame, water and plasma.
 

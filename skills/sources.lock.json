@@ -42,20 +42,25 @@
     },
     {
       "name": "lark-*",
-      "source": "lark-cli installer",
-      "revision": "unpinned",
+      "source": "https://github.com/larksuite/cli",
+      "revision": "ac22a60a23d66c37d43a7ec6d9e99b99a4320356",
       "verified": false,
       "clients": [
         "shared(~/.agents/skills)"
       ],
-      "note": "工作 Mac 与 dev-a 的 ~/.agents/skills 下那批（dev-a 实测 27 项全为 lark-*）。安装器未暴露可固定的 revision，未核实，本轮不纳管。"
+      "note": "CLI 1.0.100 通过 npm 原渠道更新。嵌入清单有 25 项，可通过 skills read 读取。核对 25 个现有同名包，15 个有更新，保留 2 个本地资源差异和 3 个旧别名。未验证新客户端会话。",
+      "source_path": "skills",
+      "tree_digest": "452923c8f16bb5ede24ccbedc3935bd2985dba95",
+      "observed_version": "1.0.100",
+      "evidence_date": "2026-11-12",
+      "license": "MIT"
     },
     {
       "name": "matt-pocock-engineering-skills",
-      "source": "上游仓库（~/.agents/vendor/mattpocock-skills 下的 checkout）",
+      "source": "https://github.com/mattpocock/skills",
       "source_path": "skills",
-      "revision": "5c89081d4bbeb3d039a42093653f90bb698d780e",
-      "tree_digest": "71b4bf5550ebeebb4accfb576914ca3e8e736034",
+      "revision": "5863806dd4e15c63174bee4e7515a4256792ecfa",
+      "tree_digest": "76953a7e724d1df247c12f465319563bb022f2fe",
       "verified": false,
       "clients": [
         "trae",
@@ -68,10 +73,12 @@
       "dependency_digests": {
         "grilling": {
           "source_path": "skills/productivity/grilling",
-          "tree_digest": "0d40d978f1a588971a11ea7ae85b208e78102dc3"
+          "tree_digest": "f551b6e0d219fdda0b6abf277f8f915b3127d1e9"
         }
       },
-      "note": "grilling / grill-me / grill-with-docs / handoff / claude-handoff / implement / tdd 等。revision 现固定在 5c89081（2026-08-19），与 setup-matt-pocock-skills 同一个 checkout；tree_digest 是该 commit 处 skills/ 目录的 git tree SHA，父 tree 传递覆盖全部子目录，dependency_digests 额外单列 grilling 便于直接定位硬依赖漂移。checkout 由上游自己安装、本仓不纳管不复制正文，因此该 pin 目前只是声明，没有强制路径：安装期缺依赖由环境工具检出并跳过（dev-b 即如此），运行期是否真的加载了 grilling 由 skills/steelman-grill/SKILL.md 的加载自检负责。已知漂移：上游 HEAD 49dd158（2026-10-09）的 skills/ tree 已不同，grilling 在 95249b0（2026-10-07，#706）改动——轮次模板由单题改为多题以 --- 分隔，并新增『把问题措辞成 yes 即接受推荐』。若把 checkout 升到该版本，需同步核对 steelman-grill §2 的轮次模板。"
+      "note": "固定来源供项目按需选用，集合 pin 只是声明，没有强制路径。本次核对 grilling、to-tickets 和 code-review 的完整包；各客户端的生效范围取决于原有入口。grilling 在 95249b0 引入轮次分隔和 yes 接受推荐，当前版本要求事实调查使用独立上下文。setup-matt-pocock-skills 单独固定并由项目校验。",
+      "evidence_date": "2026-11-12",
+      "license": "MIT"
     },
     {
       "name": "setup-matt-pocock-skills",
@@ -202,52 +209,56 @@
     {
       "name": "archify",
       "source": "https://github.com/tt-a1i/archify",
-      "revision": "unpinned",
+      "revision": "208acba8d412335185b2056fedf54b3405df43fb",
       "verified": false,
       "clients": [
         "shared(~/.agents/skills)"
       ],
-      "observed_version": "2.16.0",
-      "evidence_date": "2026-10-13",
-      "skill_folder_hash": "051deaa87b3179757770d9ec3a07e340b4cb2cb1",
-      "note": "工作 Mac 现有 skills CLI 安装；doctor 通过。folder hash 来自安装器记录，不是 Git commit。上游拥有正文；本仓不安装、不复制、不自动升级。首装、其他机器及原生发现未在本次验证。"
+      "observed_version": "3.2.0",
+      "evidence_date": "2026-11-12",
+      "skill_folder_hash": "39069dd190f574064fe410aa3af1b6dfd98a522c",
+      "note": "原共享目录已升级到 v3.2.0 的固定 Git 子树。doctor 和紧凑时序图的 finalize 及浏览器检查通过。包内异步时序图示例在六种视口/主题组合下纵向溢出。",
+      "source_path": "archify",
+      "license": "MIT"
     },
     {
       "name": "diagram-design",
       "source": "https://github.com/cathrynlavery/diagram-design",
-      "revision": "0a8ea20ae69b33a5edce6018eedd3a9d26e90c1c",
-      "verified": true,
-      "clients": [
-        "trae"
-      ],
-      "observed_version": "2.6",
-      "evidence_date": "2026-10-30",
-      "note": "固定 commit 完整包经内部 skill 安装器下载、逐文件核验后传到常驻目录，由项目 owner 仅维护 .agents/skills 符号链接；内部安装器 0.212.1 原生目录发现、入口读取、重复发现与无关项目隔离通过。verified 仅覆盖这一项目/机器/渠道；未启动新模型会话。开发机英文 schema 的 HTML 生成、离线/几何检查与官方 SVG 导出通过，Mac Chrome 视觉复核通过；开发机缺 libgbm.so.1 且无 Python Playwright，PNG 导出未验收。上游拥有正文，保留 opt-in，不纳入 profile apply。"
+      "revision": "f2496acbde9f45ccb55c24d4f75210c8a1355df8",
+      "verified": false,
+      "clients": [],
+      "observed_version": "2.6.153",
+      "evidence_date": "2026-11-12",
+      "note": "本地保留的完整包已核对上游子树并附根 LICENSE，使用包内示例通过结构自检和 SVG 导出。2.6.91 的项目客户端发现属于历史结果，当前版本的项目激活及新会话尚未验证。",
+      "source_path": "skills/diagram-design",
+      "tree_digest": "7c64ced4ca34f0e77fd4f3c5f77421cf59de3762",
+      "license": "MIT"
     },
     {
       "name": "anatomy",
       "source": "https://github.com/wheresryan22/anatomy",
-      "revision": "unpinned",
+      "revision": "1482e8469b0a9e0d8cc18ea2740a01423d29ae80",
       "verified": false,
       "clients": [
         "DoubaoWork(.user_skills)"
       ],
-      "evidence_date": "2026-10-15",
-      "note": "手动复制到 DoubaoWork .user_skills/anatomy（12M，含 kit/examples/references）；Node v22.23.2 满足 20.10+。SKILL.md frontmatter 完整；豆包工作客户端原生发现与手动勾选启用未验证。上游拥有正文，本仓不纳管升级。"
+      "evidence_date": "2026-11-12",
+      "note": "现有手动安装已升级，升级前后均按完整 Git tree 核对。已安装包的 print-sheet 测试 11 项通过。客户端界面发现与启用尚未验证。",
+      "source_path": ".",
+      "tree_digest": "89299cdfce386a71723a7e57bb9fe219875582fc",
+      "license": "MIT"
     },
     {
       "name": "memorynexus-task-memory",
       "source": "https://github.com/blackfaced/MemoryNexus",
       "source_path": "integrations/task-memory/memorynexus-task-memory",
-      "revision": "71f2d7e04a639fef728adb9ecbd2335179d66065",
-      "verified": true,
-      "clients": [
-        "codex",
-        "traex"
-      ],
+      "revision": "e3a6e863ed650f42bf05c8af2b633bbaee9a8efa",
+      "verified": false,
+      "clients": [],
       "license": "MIT",
-      "evidence_date": "2026-10-29",
-      "note": "项目按需启用的上游日常任务记忆 Skill；固定到 #343 已发布的 draft PR #348 分支提交，尚非已合入 release。verified 仅表示 2026-10-29 owner 选择的隔离合成项目已观察到 Codex/Traex 发现及实际往返；桌面发现来自 owner UI 观察，执行为 prompt-only。其他项目仍需独立验收，不纳入 Profile apply。MemoryNexus 拥有 canonical 正文、CLI/helper 与版本安装器；AIWB 不复制实现。客户端版本、package/binary 独立身份和证据限制见 skills/memorynexus.md；现有全局安装不迁移。"
+      "evidence_date": "2026-11-12",
+      "note": "固定 main 上的 Skill 来源。用上游安装器在原包旁安装并验证新版，复用已核验的二进制，既有绑定仍按原版本运行。2026-10-29 的客户端往返对应旧包；当前包的客户端接入需按项目验证。",
+      "tree_digest": "efd89a73951e4382c1b82a14c2d4bcec711ff069"
     },
     {
       "name": "memorynexus-task-entry",
