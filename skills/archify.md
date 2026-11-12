@@ -9,10 +9,9 @@
 ## Setup and evidence
 
 For new adoption, follow the [project-scoped installation policy](README.md#installation-policy) with a fixed upstream version and a project setup record, optionally maintained by a workspace manager; AIWB does not copy or update its package.
-On 2026-10-13 the work Mac had 2.16.0 from the `skills` CLI, and `doctor` passed.
-The installer records a skill-folder hash, not a pinned Git commit; see
-[source records](sources.lock.json). This proves local package readiness, not
-fresh installation, other-machine availability or diagram quality.
+On 2026-11-12 the existing installation moved from 2.16.0 to v3.2.0 at commit `208acba8d412335185b2056fedf54b3405df43fb`. Its installed directory matched the upstream `archify/` Git tree and its `doctor` passed. The package identity is in the [source records](sources.lock.json).
+
+The standard `finalize sequence` command passed validation, delivery, artifact and browser checks on a two-participant example. The packaged `async-job-roundtrip.sequence.json` exceeded the available height in all six tested viewport/theme combinations.
 
 The local sequence trial needed one spacing repair after showcase validation
 passed but browser containment failed; the repaired diagram passed all four
@@ -20,9 +19,7 @@ desktop viewport checks. Version 2.16's HTML attempted a Google Fonts request
 and rendered with fallback fonts when blocked. Offline readability and zero
 network requests are separate checks.
 
-Read the installed Skill before running commands. The inspected upstream 3.0
-uses `finalize`; local 2.16 uses `validate` / `deliver` and separate visual checks.
-Keep upgrades separate from authoring and verify the version's own receipts.
+Read the installed Skill for the `finalize` command and verify the receipts for the requested output.
 
 ## Usage
 
