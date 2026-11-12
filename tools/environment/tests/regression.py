@@ -1260,6 +1260,20 @@ def case_issue_first_integration():
         check(name + "未恢复逐次验收文件或 runs 目录的默认路径",
               "docs/testing/spec-" not in doc and "docs/testing/runs/" not in doc)
 
+    spec = read(os.path.join(repo, "skills/deliver-spec/SKILL.md"))
+    probe = spec.partition("For cross-system changes,")[2].partition("\n\n")[0]
+    closeout = spec.partition("At completion or an early stop,")[2].partition("\n\n")[0]
+    check("deliver-spec 手册只留验证方法，本轮结果和证据链接进对应 Issue 的 attempt 评论",
+          "only the reusable verification method" in probe
+          and "result and evidence links" in probe
+          and "attempt comment on the corresponding Issue" in probe
+          and "Record results in the existing guide/case document" not in probe)
+    check("deliver-spec 完成或提前停止时返回已发布的 attempt 评论直链",
+          "return a direct link to the published attempt comment" in closeout
+          and "report the record path" not in closeout)
+    check("deliver-spec 无法发布评论时保留草稿并说明待发布",
+          "controlled draft" in closeout and "publication as pending" in closeout)
+
 
 def case_matt_pocock_source_pin():
     print("\n[用例 18] 上游 grilling 来源已固定，steelman-grill 声明运行期加载自检")
