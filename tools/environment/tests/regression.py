@@ -1300,7 +1300,7 @@ def case_matt_pocock_source_pin():
           and "停下来告诉用户 grilling 未加载" in skill)
     check("加载自检写明 grilling 未加载时的可观测症状",
           all(term in skill for term in
-              ("一次把整个 frontier 问完", "每题只有单行 `➡️`", "没有 🛡️/⚔️/🔑")))
+              ("依赖未决答案的问题", "每题只有单行 `➡️`", "没有 🛡️/⚔️/🔑")))
     check("四段式按题展开并跟随安装版本的轮次分隔",
           "四段式**逐题**展开" in skill and "轮次分隔" in skill)
     check("来源登记写明 pin 无强制路径与已知漂移",
