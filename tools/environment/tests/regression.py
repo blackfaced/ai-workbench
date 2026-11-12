@@ -1248,6 +1248,18 @@ def case_issue_first_integration():
           and "rather than accumulating per-run reports here" in outline
           and "Append this record in the Issue comments" in outline)
 
+    workflow = read(os.path.join(repo, "workflows/implement-batch.md"))
+    examples = read(os.path.join(repo, "workflows/implement-batch-examples.md"))
+    check("批次工作流将当前验收结论写入 Issue 正文，逐次执行写入评论",
+          "spec Issue description" in workflow and "Issue comments" in workflow
+          and "run ID" in workflow and "attempt ID" in workflow)
+    handoff = examples.partition("```text")[2].partition("```")[0]
+    check("交接示例将验收结论和执行记录交给父 agent，目标是本次 Issue",
+          all(term in handoff for term in ("parent", "Issue DEMO-20", "description", "comments")))
+    for name, doc in (("批次工作流", workflow), ("交接示例", examples)):
+        check(name + "未恢复逐次验收文件或 runs 目录的默认路径",
+              "docs/testing/spec-" not in doc and "docs/testing/runs/" not in doc)
+
 
 def case_matt_pocock_source_pin():
     print("\n[用例 18] 上游 grilling 来源已固定，steelman-grill 声明运行期加载自检")
