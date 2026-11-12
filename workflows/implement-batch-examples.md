@@ -30,7 +30,8 @@ Start at SelectionPanel's action caller; reuse selectionState and selection-roun
 Checks: guide's targeted case, then any affected required gates; mocked API boundary.
 Return candidate/complete patch, developer-self-test observations, command/time and
 UI assertion/capture references to the parent via P1's recorded native return route.
-Result writer: parent, docs/testing/spec-DEMO-20.md; attempt facts: existing run record.
+The parent drafts the update to Issue DEMO-20. Put the A1 verdict in its description
+and the W1 attempt and evidence links in its comments. P1 leaves publication pending.
 Stop affected work on source conflict, unknown ownership, or required real API access;
 ask only for the missing decision/access. No observed blocker at preparation time.
 ```
@@ -122,7 +123,7 @@ Current final-executor coverage: **2 PASS by justified reuse, 1 BLOCKED, 1 NOT_R
 
 ### Delivery and access
 
-Fixture delivery text: “本地自测报告已整理到项目约定的 acceptance document。选择往返与冻结重试的 Mock 用例通过；真实保存链路阻塞，人工体验未执行，尚未完成需求验收。报告及证据目前仅在执行机，目标读者访问未验证；发布权限尚未授予，待按已约定的项目制品入口发布。” The actual reply must include the concrete local report link and intended destination obtained from the plan.
+Fixture delivery text: “已整理好 Issue DEMO-30 的受控草稿。正文汇总当前结论，评论草稿按 D1、D2、Q1、F1 保留首次失败、复测及证据链接。选择往返与冻结重试的 Mock 用例通过，真实保存链路阻塞，人工体验未执行。草稿和证据目前仅在执行机，读者访问尚未验证，待获写权限后更新 DEMO-30。” In a live handoff, link the target Issue and the controlled draft while publication is pending.
 
 | Gap injected into fixture | Required handling |
 | --- | --- |
