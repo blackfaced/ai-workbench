@@ -1,6 +1,6 @@
 # Repository integration testing — outline
 
-Adapt this outline to the existing repository guide. Remove inapplicable sections; unresolved values are UNVERIFIED, not executable defaults.
+Adapt this outline to the project's existing Issue. Keep current instructions and unresolved prerequisites in the description; append identified verification attempts, failures, retests and cleanup in comments. Link maintained repository guides, scripts and controlled raw evidence instead of duplicating them. Remove inapplicable sections; unresolved values are UNVERIFIED, not executable defaults.
 
 ## Scope and sources
 
@@ -37,6 +37,8 @@ Adapt this outline to the existing repository guide. Remove inapplicable section
 - Resources intentionally retained and recovery steps after partial failure.
 
 ## Verification record
+
+Append this record in the Issue comments, linked to stable case/attempt IDs; preserve prior outcomes and controlled evidence references.
 
 | Date | Source/candidate | Environment | Operation | Result | Evidence / unresolved issue |
 | --- | --- | --- | --- | --- | --- |

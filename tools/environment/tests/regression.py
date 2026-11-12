@@ -1220,6 +1220,32 @@ def case_feedback_cadence():
           "requested → effective feedback cadence" in record
           and "cadence reason" in record)
 
+def case_issue_first_integration():
+    print("\n[用例 19] 集成测试说明与运行结果以项目 Issue 为入口")
+    repo = os.path.dirname(os.path.dirname(ENV_DIR))
+    setup = read(os.path.join(repo, "skills/setup-aiwb/SKILL.md"))
+    instructions = read(os.path.join(repo, "skills/setup-aiwb/references/integration-setup.md"))
+    outline = read(os.path.join(repo, "skills/setup-aiwb/references/integration-guide.md"))
+    check("默认使用已有 Issue，不创建 docs/testing 文件",
+          "existing Issue tracker" in instructions
+          and "instead of creating `docs/testing` files" in instructions
+          and "Default to `docs/testing/integration.md`" not in instructions)
+    check("正文管当前说明，评论保留具名执行及首次失败历史",
+          "Issue description" in instructions
+          and "first failures, retests" in instructions
+          and "Issue comments" in outline)
+    check("保留仓内可复跑代码与受控原件，并支持显式导出",
+          "cases, fixtures and tools in the repository" in instructions
+          and "raw receipts in controlled" in instructions
+          and "explicit document/export request" in instructions)
+    check("无 tracker/写权限时诚实保留草稿，不伪造交付",
+          "controlled draft" in instructions
+          and "write/readback status" in instructions)
+    check("Skill 入口与 outline 都路由到同一 Issue",
+          "Issue-based integration-test instructions" in setup
+          and "project's existing Issue" in outline)
+
+
 def case_matt_pocock_source_pin():
     print("\n[用例 18] 上游 grilling 来源已固定，steelman-grill 声明运行期加载自检")
     repo = os.path.dirname(os.path.dirname(ENV_DIR))
@@ -1276,6 +1302,7 @@ def main():
     case_diagnostic_contract_gate()
     case_development_feedback_loops()
     case_feedback_cadence()
+    case_issue_first_integration()
     case_matt_pocock_source_pin()
     pilot = subprocess.run([sys.executable, os.path.join(HERE, "legacy_delegation_pilot.py")],
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
