@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Approve narrowly recognized test discovery; defer all other decisions."""
+"""Approve recognized Python test commands; defer all other decisions."""
 import json
 import os
 import re
@@ -7,59 +7,61 @@ import shlex
 import sys
 
 
-def is_test_discovery(command):
-    if not isinstance(command, str) or re.search(r'[$`\n<>]', command):
-        return False
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|()')
-        lexer.whitespace_split = True
-        words = list(lexer)
-    except ValueError:
-        return False
-    groups = [[]]
-    for word in words:
-        if word == '&&':
-            groups.append([])
-        elif word in {';', '&', '|', '||', '|&', '(', ')'}:
-            return False
-        else:
-            groups[-1].append(word)
-    for args in groups:
-        if args and re.fullmatch(r'PYTHONPATH=[A-Za-z0-9_./:-]+', args[0]):
+def test_invocation(args):
+    if args and re.fullmatch(r'PYTHONPATH=[A-Za-z0-9_./:-]+', args[0]):
+        args = args[1:]
+    if args[:2] == ['uv', 'run']:
+        args = args[2:]
+        while args and args[0] in {'--offline', '--no-sync', '--frozen', '--no-env-file'}:
             args = args[1:]
-        if len(args) < 6 or not re.fullmatch(r'python(?:\d+(?:\.\d+)*)?', os.path.basename(args[0])):
+    if not args or not re.fullmatch(r'[A-Za-z0-9_./ -]+', args[0]):
+        return False
+    program = os.path.basename(args[0])
+    if program == 'pytest':
+        return True
+    if not re.fullmatch(r'python(?:\d+(?:\.\d+)*)?', program):
+        return False
+    operands = args[1:]
+    while operands and operands[0] in {'-B', '-u', '-I', '-O', '-OO'}:
+        operands = operands[1:]
+    if operands[:1] == ['-m']:
+        return len(operands) >= 2 and operands[1] in {'pytest', 'unittest'}
+    if operands[:1] == ['--']:
+        operands = operands[1:]
+    return (bool(operands) and not operands[0].startswith('-')
+            and re.fullmatch(r'test_[^/]*\.py', os.path.basename(operands[0])) is not None)
+
+
+# Consume only literals, quoted text, and &&. Keep quoted pytest expressions
+# together while deferring shell substitutions, redirections and other operators.
+SHELL_PART = re.compile(r"""'[^']*'|"[^"\\$`]*"|&&|[a-zA-Z0-9@%_+=:,./~*?\[\] \t-]+""")
+
+
+def is_test_command(command):
+    if not isinstance(command, str) or re.search(r'[\r\n\x00]', command):
+        return False
+    start = pos = 0
+    while pos < len(command):
+        part = SHELL_PART.match(command, pos)
+        if part is None:
             return False
-        if args[1:4] != ['-m', 'unittest', 'discover']:
-            return False
-        options = args[4:]
-        pattern = None
-        while options:
-            option = options.pop(0)
-            if option in {'-v', '--verbose', '-q', '--quiet'}:
-                continue
-            if option not in {'-s', '--start-directory', '-t', '--top-level-directory', '-p', '--pattern'} or not options:
+        if part.group() == '&&':
+            if not test_invocation(shlex.split(command[start:pos])):
                 return False
-            value = options.pop(0)
-            if option in {'-p', '--pattern'}:
-                if pattern is not None or not re.fullmatch(r'test_[A-Za-z0-9_.*?\-]*\.py', value):
-                    return False
-                pattern = value
-            elif not re.fullmatch(r'[A-Za-z0-9_./-]+', value):
-                return False
-        if pattern is None:
-            return False
-    return bool(groups)
+            start = part.end()
+        pos = part.end()
+    return test_invocation(shlex.split(command[start:]))
 
 
 def main():
     try:
         event = json.load(sys.stdin)
-        if event.get('tool_name') != 'Bash' or not is_test_discovery(event.get('tool_input', {}).get('command')):
+        if event.get('tool_name') != 'Bash' or not is_test_command(event.get('tool_input', {}).get('command')):
             return
     except (ValueError, TypeError, AttributeError):
         return
     json.dump({'hookSpecificOutput': {'hookEventName': 'PreToolUse',
-               'permissionDecision': 'allow', 'permissionDecisionReason': 'Recognized Python unittest discovery.'}}, sys.stdout)
+               'permissionDecision': 'allow', 'permissionDecisionReason': 'Recognized Python test command.'}}, sys.stdout)
     sys.stdout.write('\n')
 
 
