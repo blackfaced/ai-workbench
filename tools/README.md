@@ -5,6 +5,7 @@ The environment entry point is maintained here. Other entries are optional integ
 ## Index
 
 - [Environment maintenance](environment/README.md) — primary entry point for the work Mac and Linux profiles.
+- [Claude Code command confirmation](claude-confirm/README.md) — optional shell confirmation hook and offline tests.
 - [Chrome DevTools MCP](chrome-devtools-mcp.md)
 - [codebase-memory-mcp](codebase-memory-mcp.md)
 - [Context7](context7.md)

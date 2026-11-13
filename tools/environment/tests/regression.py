@@ -1352,6 +1352,16 @@ def main():
     write(os.path.join(root, "inline-skill-metadata.log"), inline.stdout)
     check("Skill 内联元数据、旧格式迁移、首装恢复与双头阻断", inline.returncode == 0,
           inline.stdout if inline.returncode else "")
+    confirm = subprocess.run([sys.executable, os.path.join(HERE, "test_claude_confirm.py")],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    write(os.path.join(root, "claude-confirm-lifecycle.log"), confirm.stdout)
+    check("Claude 确认 hook：隔离安装、检查和受管回滚", confirm.returncode == 0,
+          confirm.stdout if confirm.returncode else "")
+    confirm_hook = subprocess.run([sys.executable, os.path.join(ENV_DIR, '..', 'claude-confirm', 'test_confirm.py')],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    write(os.path.join(root, "claude-confirm-hook.log"), confirm_hook.stdout)
+    check("Claude 确认 hook：输入决策和调用协议", confirm_hook.returncode == 0,
+          confirm_hook.stdout if confirm_hook.returncode else "")
     print("\n通过 %d 项，失败 %d 项" % (len(PASSES), len(FAILS)))
     if FAILS:
         for name in FAILS:

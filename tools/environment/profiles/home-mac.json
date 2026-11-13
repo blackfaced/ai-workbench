@@ -35,6 +35,14 @@
   ],
   "components": [
     {
+      "id": "claude-confirm",
+      "type": "claude_confirm",
+      "opt_in": true,
+      "source": "tools/claude-confirm/confirm.py",
+      "path": "~/.local/share/ai-workbench/hooks/claude-confirm.py",
+      "settings": "~/.claude/settings.json"
+    },
+    {
       "id": "codex",
       "type": "tool",
       "bin": "codex",

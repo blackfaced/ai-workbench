@@ -26,6 +26,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROFILE_DIR = os.path.join(HERE, "profiles")
@@ -115,13 +116,14 @@ MANIFEST_VERSION = 2
 class Backup(object):
     """一次运行一个备份目录，第一次真正写文件时才创建。
 
-    manifest v2 记三类写入，少记一类 restore 就撤不干净：
+    manifest v2 记录受管写入，少记一类 restore 就撤不干净：
 
         file          普通文件：被替换（existed=true）、被新建（existed=false）
                       或被删除（existed=true 且写入后不存在）
         config_block  只动受管块的文件：额外记块的旧正文与插入方式，
                       restore 因此只回滚块本身，块外内容一个字都不碰
         symlink       符号链接：记链接指向而不是 copy2（copy2 会跟随链接）
+        json_hook     Claude JSON 中单条 hook 注册；只回滚受管条目
 
     每条在写入完成后由 mark_written() 回填「安装后应有的样子」，
     restore 靠它区分「原样未动」与「安装后又被人改过」。
@@ -140,7 +142,7 @@ class Backup(object):
                 candidate = "%s-%d" % (base, serial)
                 serial += 1
             self.dir = candidate
-            os.makedirs(self.dir)
+            os.makedirs(self.dir, mode=0o700)
         return self.dir
 
     def _flush(self):
@@ -857,7 +859,154 @@ def plan_installer(comp, ctx, plan):
     plan.change(cid, "运行安装器：%s" % comp["apply_cmd"], action)
 
 
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('duplicate JSON key: %s' % key)
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value):
+    raise ValueError('invalid JSON constant: %s' % value)
+
+
+def read_claude_settings(path):
+    if os.path.islink(path):
+        raise ValueError('settings path is a symlink')
+    if not os.path.exists(path):
+        return {}, None
+    if not os.path.isfile(path):
+        raise ValueError('settings path is not a file')
+    text = read_text(path)
+    data = json.loads(text, object_pairs_hook=_unique_json_object, parse_constant=_reject_json_constant)
+    if not isinstance(data, dict) or not isinstance(data.get('hooks', {}), dict):
+        raise ValueError('settings and hooks must be JSON objects')
+    groups = data.get('hooks', {}).get('PreToolUse', [])
+    if not isinstance(groups, list) or any(not isinstance(g, dict) or
+            not isinstance(g.get('hooks', []), list) or
+            any(not isinstance(h, dict) for h in g.get('hooks', [])) for g in groups):
+        raise ValueError('PreToolUse must be an array of hook groups')
+    return data, text
+
+
+def write_claude_settings(path, data, expected_raw):
+    parent = os.path.dirname(path)
+    os.makedirs(parent, mode=0o700, exist_ok=True)
+    mode = (os.stat(path).st_mode & 0o777) if os.path.isfile(path) else 0o600
+    fd, tmp = tempfile.mkstemp(prefix='.aiwb-settings-', dir=parent)
+    try:
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+            json.dump(data, handle, ensure_ascii=False, indent=2)
+            handle.write('\n')
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            _current, current_raw = read_claude_settings(path)
+        except (OSError, ValueError) as exc:
+            raise RuntimeError('cannot recheck settings: %s' % exc)
+        if current_raw != expected_raw:
+            raise RuntimeError('settings changed during write; rerun plan')
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def plan_claude_confirm(comp, ctx, plan):
+    cid = comp['id']
+    script = expand(comp['path'])
+    settings = expand(comp['settings'])
+    source = os.path.join(REPO_ROOT, comp['source'])
+    group = {'matcher': 'Bash|PowerShell', 'hooks': [{'type': 'command',
+             'command': 'python3 ' + shlex.quote(script), 'timeout': 5}]}
+    command = group['hooks'][0]['command']
+    registration = cid + ':registration'
+    script_id = cid + ':script'
+    lines = ['script: %s' % script, 'settings: %s' % settings]
+    if os.path.lexists(script) and not (os.path.isfile(script) or os.path.islink(script)):
+        plan.observe(cid, lines)
+        plan.block(cid, 'hook script target is not a file')
+        return
+    try:
+        desired = read_text(source)
+        data, raw = read_claude_settings(settings)
+    except (OSError, ValueError) as exc:
+        plan.observe(cid, lines)
+        plan.block(cid, 'cannot inspect source or settings: %s' % exc)
+        return
+    groups = data.get('hooks', {}).get('PreToolUse', [])
+    if groups:
+        plan.note(cid, 'existing PreToolUse hooks are preserved and may also request confirmation')
+    matches = [g for g in groups if any(h.get('command') == command for h in g.get('hooks', []))]
+    lines.append('registration: %s' % ('present' if matches else 'absent'))
+    recorded = ctx.state.get('components', {}).get(registration)
+    if len(matches) > 1 or (matches and matches[0] != group):
+        plan.observe(cid, lines)
+        plan.block(cid, 'ambiguous or modified hook registration; inspect manually')
+        return
+    if matches and not recorded:
+        plan.observe(cid, lines)
+        plan.block(cid, 'matching hook registration is not owned by AIWB')
+        return
+    if matches and (recorded.get('path') != settings or recorded.get('group') != group):
+        plan.observe(cid, lines)
+        plan.block(cid, 'hook registration ownership record does not match')
+        return
+    if not matches and recorded and not ctx.force:
+        plan.observe(cid, lines)
+        plan.block(cid, 'previously managed hook registration was removed; inspect or use --force')
+        return
+    subplan = Plan()
+    plan_managed_file(ctx, subplan, lines, 'hook script', script_id, script,
+                      desired, 'in-repo', 'install hook script')
+    plan.observe(cid, lines)
+    plan.notes.extend(subplan.notes)
+    if subplan.blocked:
+        plan.blocked.extend(subplan.blocked)
+        return
+    script_shape = current_shape(script)
+    for sub, summary, action in subplan.changes:
+        def guarded_script_write(action=action):
+            try:
+                _data, now = read_claude_settings(settings)
+            except (OSError, ValueError) as exc:
+                raise RuntimeError('cannot inspect settings: %s' % exc)
+            if now != raw or current_shape(script) != script_shape:
+                raise RuntimeError('hook target changed after planning; rerun plan')
+            action()
+        plan.change(sub, summary, guarded_script_write)
+    if not matches:
+        def register():
+            try:
+                current, current_raw = read_claude_settings(settings)
+            except (OSError, ValueError) as exc:
+                raise RuntimeError('cannot inspect settings: %s' % exc)
+            if current_raw != raw:
+                raise RuntimeError('settings changed after planning; rerun plan')
+            parent = os.path.dirname(settings)
+            created_dir = None if os.path.isdir(parent) else parent
+            entry = ctx.backup_save(settings, component=registration, kind='json_hook',
+                                    created_dir=created_dir)
+            entry['json_hook'] = {'group': group, 'created_hooks': 'hooks' not in current,
+                                  'created_event': 'PreToolUse' not in current.get('hooks', {}),
+                                  'applied': False}
+            ctx.backup._flush()
+            if entry.get('backup_file'):
+                os.chmod(os.path.join(ctx.backup.dir, entry['backup_file']), 0o600)
+            current.setdefault('hooks', {}).setdefault('PreToolUse', []).append(group)
+            write_claude_settings(settings, current, current_raw)
+            entry['json_hook']['applied'] = True
+            ctx.backup.mark_written(entry)
+            ctx.record(registration, {'path': settings, 'owner': 'ai-workbench-repo',
+                                      'group': group})
+        plan.change(registration, 'register one Claude PreToolUse hook', register)
+
+
 PLANNERS = {
+    "claude_confirm": plan_claude_confirm,
     "config_block": plan_config_block,
     "tool": plan_tool,
     "skill": plan_skill,
@@ -884,7 +1033,7 @@ def build_plan(ctx, only):
             include(companion, path + [cid])
         selected.add(cid)
 
-    for cid in sorted(only or by_id):
+    for cid in sorted(only or {key for key, value in by_id.items() if not value.get('opt_in')}):
         include(cid, [])
     components = [c for c in ctx.profile["components"] if c["id"] in selected]
     probe_tools(ctx, [c for c in components if c["type"] == "tool"])
@@ -1250,9 +1399,11 @@ def cmd_run(args, verb):
             report.flush()
             try:
                 action()
-            except RuntimeError as exc:
+            except (RuntimeError, OSError) as exc:
                 sys.stdout.write("  ✗ %s 中止：%s\n" % (cid, exc))
                 save_state(ctx.state)  # 保留已成功项的记录
+                if ctx.backup.dir:
+                    sys.stdout.write("  可用于检查和回滚的备份：%s\n" % ctx.backup.dir)
                 return 1
         if plan.changes:
             save_state(ctx.state)
@@ -1338,6 +1489,60 @@ def restore_config_block(entry, path, force, log):
     return True
 
 
+def claude_hook_restore_state(entry):
+    path = entry['original_path']
+    try:
+        data, raw = read_claude_settings(path)
+    except (OSError, ValueError) as exc:
+        return None, 'cannot inspect settings: %s' % exc
+    group = entry['json_hook']['group']
+    command = group['hooks'][0]['command']
+    groups = data.get('hooks', {}).get('PreToolUse', [])
+    matches = [g for g in groups if any(h.get('command') == command for h in g.get('hooks', []))]
+    if not entry['json_hook'].get('applied'):
+        if not matches:
+            return (data, raw, matches), None
+        return None, 'incomplete hook write requires manual inspection'
+    if len(matches) != 1 or matches[0] != group:
+        return None, 'managed hook is missing, modified, or duplicated'
+    return (data, raw, matches), None
+
+
+def restore_claude_hook(entry):
+    state, error = claude_hook_restore_state(entry)
+    if error:
+        print('    跳过：%s' % error)
+        return False
+    data, raw, matches = state
+    if not matches:
+        print('    注册未写入，无需变更设置')
+        return True
+    meta = entry['json_hook']
+    groups = data['hooks']['PreToolUse']
+    groups.remove(matches[0])
+    if not groups and meta['created_event']:
+        del data['hooks']['PreToolUse']
+    if not data['hooks'] and meta['created_hooks']:
+        del data['hooks']
+    path = entry['original_path']
+    try:
+        if not entry['existed'] and not data:
+            _current, current_raw = read_claude_settings(path)
+            if current_raw != raw:
+                raise RuntimeError('settings changed during restore')
+            os.unlink(path)
+            created = entry.get('created_dir')
+            if created and os.path.isdir(created) and not os.listdir(created):
+                os.rmdir(created)
+        else:
+            write_claude_settings(path, data, raw)
+    except (OSError, ValueError, RuntimeError) as exc:
+        print('    跳过：%s' % exc)
+        return False
+    print('    已移除受管 hook；保留其余设置')
+    return True
+
+
 def cmd_restore(args):
     path = os.path.join(BACKUP_ROOT, args.backup)
     manifest_path = os.path.join(path, "manifest.json")
@@ -1353,8 +1558,18 @@ def cmd_restore(args):
                                         "（--dry-run，只预览）" if args.dry_run else ""))
     state = load_state()
     done = skipped = 0
+    hook_restore_failed = False
+    hook_components = {e['component'].rsplit(':', 1)[0] for e in entries
+                       if e.get('kind') == 'json_hook' and e.get('component')}
+    blocked_hook_scripts = set()
     for entry in reversed(entries):  # 后写的先撤，顺序与 apply 相反
         target = entry["original_path"]
+        component = entry.get('component') or ''
+        if component in blocked_hook_scripts:
+            print('  [%s] 跳过：受管 hook 仍存在，保留其脚本' % component)
+            skipped += 1
+            hook_restore_failed = True
+            continue
         kind, value = current_shape(target)
         print("  [%s] %s" % (entry.get("component") or "?", target))
         print("    记录：kind=%s 安装前%s / 当前=%s"
@@ -1362,10 +1577,21 @@ def cmd_restore(args):
         # 受管块用块级判断：文件整体 sha 一变（用户在别处加了行）就跳过的话，
         # 「保留安装后新增内容」与「撤销受管块」这两件事会互相打架。
         block_scoped = entry["kind"] == "config_block" and entry["existed"]
-        reason = None if block_scoped else restore_guard(entry)
-        if reason and not args.force:
-            print("    跳过：%s；确认要覆盖再加 --force" % reason)
+        if entry['kind'] == 'json_hook':
+            _state, reason = claude_hook_restore_state(entry)
+        else:
+            reason = None if block_scoped else restore_guard(entry)
+        if reason and (not args.force or entry['kind'] == 'json_hook'):
+            if entry['kind'] == 'json_hook':
+                print('    跳过：%s；请人工核对（--force 不接管此条目）' % reason)
+            else:
+                print("    跳过：%s；确认要覆盖再加 --force" % reason)
             skipped += 1
+            if entry['kind'] == 'json_hook':
+                blocked_hook_scripts.add(component.rsplit(':', 1)[0] + ':script')
+                hook_restore_failed = True
+            elif component == 'claude-confirm:script' or (component.endswith(':script') and component.rsplit(':', 1)[0] in hook_components):
+                hook_restore_failed = True
             continue
         if args.dry_run:
             print("    将执行：%s" % restore_intent(entry))
@@ -1383,14 +1609,19 @@ def cmd_restore(args):
                 state.get("components", {}).pop(entry["component"], None)
         else:
             skipped += 1
+            if entry['kind'] == 'json_hook':
+                blocked_hook_scripts.add(component.rsplit(':', 1)[0] + ':script')
+                hook_restore_failed = True
     if not args.dry_run:
         save_state(state)
         print("已还原 %d 条，跳过 %d 条；安装记录同步回滚（首装的销号，更新的回到上一版）" % (done, skipped))
         print("提示：还原后再跑一次 plan，确认结论回到「未安装」而不是「被改过」")
-    return 0
+    return 1 if hook_restore_failed else 0
 
 
 def restore_intent(entry):
+    if entry['kind'] == 'json_hook':
+        return '只移除受管 hook 条目，保留其余 JSON 设置'
     if entry["kind"] == "config_block":
         return "只回滚受管块（块外内容不动）"
     if not entry["existed"]:
@@ -1406,6 +1637,8 @@ def apply_restore(entry, backup_dir, force):
     def log(text):
         print(text)
 
+    if entry['kind'] == 'json_hook':
+        return restore_claude_hook(entry)
     if entry["kind"] == "config_block":
         if entry["existed"]:
             return restore_config_block(entry, target, force, log)
