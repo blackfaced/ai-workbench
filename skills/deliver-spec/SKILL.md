@@ -4,9 +4,13 @@ description: 按需用于功能规格、spec 父 Issue 或关联 Issue 集的交
 author: blackfaced
 ---
 
-Implement a spec-level parent Issue through dependency-ordered batches. The parent agent coordinates and accepts the spec; each implementation agent owns one child Issue in its own worktree; one integration agent per batch reviews and integrates candidates serially. Explicit Issue lists and an approved spec without a parent Issue are also valid inputs. This Skill uses native client capabilities and Git, not a background scheduler or an enforcement service.
+Use this workflow for delivery or continuation that needs dependency coordination and whole-spec acceptance. Route standalone fixes, small text/config edits and read-only questions through the project's lightweight workflow. If inspection reveals a standalone task, switch to that workflow before creating batches or assigning roles.
 
-Select this workflow for delivery or continuation that needs decomposition, dependency coordination and whole-spec acceptance. A spec or Issue reference alone is insufficient. For a simple standalone fix, small text/configuration edit or read-only question, use the project's lightweight workflow. If inspection shows the task is a small independent change, leave this workflow before creating batches or execution roles. Automatic selection starts only read-only inspection and plan preparation; implementation still follows the existing [execution-plan confirmation](#confirm-the-execution-plan), including reuse of applicable prior approval.
+**First turn of a spec delivery:** Look for a user message explicitly confirming the concrete execution plan for this scope. If there is none, use read-only tools to inspect the work, present the [execution plan](#confirm-the-execution-plan) in your reply, ask for confirmation, and **end the turn there**. Even with edit access, leave all files untouched and defer checks and dispatch until the user replies. A request to deliver the spec, a skill invocation, or a small first edit does not confirm the plan.
+
+When the user confirms that plan, start the first approved step immediately. On resumption, use the same confirmation for the remaining approved steps.
+
+Implement a spec-level parent Issue through dependency-ordered batches. The parent agent coordinates and accepts the spec; each implementation agent owns one child Issue in its own worktree; one integration agent per batch reviews and integrates candidates serially. Explicit Issue lists and an approved spec without a parent Issue are also valid inputs. This Skill uses native client capabilities and Git, not a background scheduler or an enforcement service.
 
 ## Inspect and propose — read-only
 
