@@ -2,18 +2,23 @@
 
 Domain: coding, ops
 
-This optional `PreToolUse` hook allows recognized Python `unittest discover`
-commands that explicitly select `test_*.py` files, including chains joined by
-`&&`. It contains no repository-specific rules. Other commands produce no
-decision and continue through Claude Code's normal permissions and other hooks.
+The optional Bash hook in Claude Code approves the following test invocations,
+including virtual environment executables, `uv run`, a leading `PYTHONPATH` assignment,
+and chains joined by `&&` when every segment qualifies.
+
+- `python3 tests/test_example.py` (the filename can be in any directory)
+- `python3 -m unittest`, including named tests and discovery
+- `pytest` and `python3 -m pytest`, including options and node IDs
+
+Other shell operations continue through Claude Code's usual permissions.
 
 ## Scope and limits
 
 - Test code and Python import paths can execute arbitrary code. Enabling this
-  hook trusts the selected tests; it does not inspect their contents.
+  hook trusts the selected tests, runners, options, and plugins; it does not inspect their contents.
 - This is a convenience rule, not a security boundary. Keep explicit permission
   rules and use sandboxing or repository protections where needed.
-- Shell expansions, redirection, other chained operations, unrecognized flags,
+- Command substitutions, redirection, pipes, multiline commands,
   and PowerShell are not approved by this hook.
 - This hook does not ask before pushes or destructive operations; configure
   those separately in Claude Code permissions.

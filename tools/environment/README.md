@@ -83,7 +83,7 @@ python3 tools/environment/env.py restore --backup <apply 输出的备份名> --d
 python3 tools/environment/env.py restore --backup <apply 输出的备份名>
 ```
 
-`home-mac` 和 `work-linux` 也可显式选用。安装会在用户数据目录写入脚本，并向 Claude 用户设置追加一个 hook 组；已有 hook 不被移除。多个 hook 同时运行时，本组件的 `ask` 优先于其他 hook 的 `allow`，因此现有免确认例外可能开始提示。JSON 会重新排版，但其他字段的值保持不变。设置文件不是有效 JSON、存在重复键、目标为符号链接或已有冲突注册时，组件阻断并报告。备份目录权限为 0700，Claude 设置备份为 0600。
+`home-mac` 和 `work-linux` 也可显式选用。安装会在用户数据目录写入脚本，并向 Claude 用户设置追加一个 hook 组；已有 hook 不被移除。本组件只放行识别出的 Python 测试命令，其余调用交由 Claude 权限和其他 hook 判断。JSON 会重新排版，但其他字段的值保持不变。设置文件不是有效 JSON、存在重复键、目标为符号链接或已有冲突注册时，组件阻断并报告。备份目录权限为 0700，Claude 设置备份为 0600。
 
 回滚只移除本组件的 hook 组和受管脚本，保留之后新增的其他设置。受管组被修改或重复时，即使使用 `--force` 也不删除该组或脚本，并以非零退出；脚本被用户修改时默认不覆盖。真实客户端加载与交互效果需在新会话单独验证。
 
