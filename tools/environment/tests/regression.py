@@ -94,6 +94,9 @@ class Sandbox(object):
     def run(self, *argv):
         env = dict(os.environ)
         env["HOME"] = self.home
+        # macOS system Python may otherwise create stdlib bytecode in HOME,
+        # which obscures whether the environment manager itself wrote anything.
+        env["PYTHONDONTWRITEBYTECODE"] = "1"
         env["PATH"] = os.path.join(self.home, "bin") + os.pathsep + env["PATH"]
         proc = subprocess.Popen(
             [sys.executable, os.path.join(self.env_dir, "env.py")] + list(argv),
@@ -714,7 +717,8 @@ def case_implement_batch_distribution(root):
             before = snapshot(box.home)
             proc = subprocess.run(["sh", os.path.join(box.env_dir, "bootstrap.sh"),
                                    "--profile", "harness", "--only", "implement-batch"] + flag,
-                                  cwd=box.repo, env=dict(os.environ, HOME=box.home),
+                                  cwd=box.repo, env=dict(os.environ, HOME=box.home,
+                                                         PYTHONDONTWRITEBYTECODE="1"),
                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
             check(profile_name + " bootstrap " + str(flag) + " 旧名失败且零写入",
                   proc.returncode != 0 and "未知 id" in proc.stdout and snapshot(box.home) == before)

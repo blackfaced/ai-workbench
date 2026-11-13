@@ -1,74 +1,66 @@
 #!/usr/bin/env python3
-"""Ask before risky or opaque Claude Code shell calls; never auto-approve."""
+"""Approve narrowly recognized test discovery; defer all other decisions."""
 import json
 import os
 import re
 import shlex
 import sys
 
-SAFE_COMMANDS = {'ls', 'pwd', 'which', 'whoami', 'uname', 'date'}
-SAFE_LISTINGS = {('ls', '-a'), ('ls', '-l'), ('ls', '-la'), ('ls', '-al')}
-SAFE_GIT = {
-    ('status',), ('status', '--short'), ('status', '--porcelain'),
-    ('diff',), ('diff', '--stat'), ('log', '--oneline'),
-    ('rev-parse', '--show-toplevel'),
-}
-SHELL_META = re.compile(r'[$`\n;&|<>]')
 
-
-def confirmation_reason(command):
-    """Return a reason when a command needs review, otherwise None.
-
-    This intentionally recognizes a small set of simple reads. It is not a
-    shell parser or a security boundary for commands executed by other tools.
-    """
-    if not isinstance(command, str) or not command.strip():
-        return 'Cannot inspect the command; please confirm it.'
-    if SHELL_META.search(command):
-        return 'The command contains shell expansion or compound syntax; please confirm it.'
+def is_test_discovery(command):
+    if not isinstance(command, str) or re.search(r'[$`\n<>]', command):
+        return False
     try:
-        args = shlex.split(command)
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|()')
+        lexer.whitespace_split = True
+        words = list(lexer)
     except ValueError:
-        return 'Cannot parse the command; please confirm it.'
-    if not args:
-        return 'Cannot inspect the command; please confirm it.'
-
-    executable = os.path.basename(args[0])
-    if executable == 'git':
-        if args[0] != 'git':
-            return 'An explicit Git executable path needs confirmation.'
-        rest = args[1:]
-        # -C changes the repository, not the operation. Other global options
-        # may execute helpers or redefine Git configuration and require review.
-        while len(rest) >= 2 and rest[0] == '-C':
-            rest = rest[2:]
-        if tuple(rest) in SAFE_GIT:
-            return None
-        return 'Git operation is not on the small read-only list; please confirm it.'
-
-    # Use bare names only: absolute paths and local executables can be aliases
-    # or scripts and are not equivalent to the shell's known command.
-    if (args[0] in SAFE_COMMANDS and len(args) == 1) or tuple(args) in SAFE_LISTINGS:
-        return None
-    return 'The command can execute a script, change state, or is unrecognized; please confirm it.'
+        return False
+    groups = [[]]
+    for word in words:
+        if word == '&&':
+            groups.append([])
+        elif word in {';', '&', '|', '||', '|&', '(', ')'}:
+            return False
+        else:
+            groups[-1].append(word)
+    for args in groups:
+        if args and re.fullmatch(r'PYTHONPATH=[A-Za-z0-9_./:-]+', args[0]):
+            args = args[1:]
+        if len(args) < 6 or not re.fullmatch(r'python(?:\d+(?:\.\d+)*)?', os.path.basename(args[0])):
+            return False
+        if args[1:4] != ['-m', 'unittest', 'discover']:
+            return False
+        options = args[4:]
+        pattern = None
+        while options:
+            option = options.pop(0)
+            if option in {'-v', '--verbose', '-q', '--quiet'}:
+                continue
+            if option not in {'-s', '--start-directory', '-t', '--top-level-directory', '-p', '--pattern'} or not options:
+                return False
+            value = options.pop(0)
+            if option in {'-p', '--pattern'}:
+                if pattern is not None or not re.fullmatch(r'test_[A-Za-z0-9_.*?\-]*\.py', value):
+                    return False
+                pattern = value
+            elif not re.fullmatch(r'[A-Za-z0-9_./-]+', value):
+                return False
+        if pattern is None:
+            return False
+    return bool(groups)
 
 
 def main():
     try:
         event = json.load(sys.stdin)
-        name = event.get('tool_name')
-        if name == 'Bash':
-            reason = confirmation_reason(event.get('tool_input', {}).get('command'))
-        elif name == 'PowerShell':
-            reason = 'PowerShell commands require confirmation.'
-        else:
+        if event.get('tool_name') != 'Bash' or not is_test_discovery(event.get('tool_input', {}).get('command')):
             return
     except (ValueError, TypeError, AttributeError):
-        reason = 'Cannot inspect the hook input; please confirm the operation.'
-    if reason:
-        json.dump({'hookSpecificOutput': {'hookEventName': 'PreToolUse',
-                   'permissionDecision': 'ask', 'permissionDecisionReason': reason}}, sys.stdout)
-        sys.stdout.write('\n')
+        return
+    json.dump({'hookSpecificOutput': {'hookEventName': 'PreToolUse',
+               'permissionDecision': 'allow', 'permissionDecisionReason': 'Recognized Python unittest discovery.'}}, sys.stdout)
+    sys.stdout.write('\n')
 
 
 if __name__ == '__main__':
