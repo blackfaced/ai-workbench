@@ -2,29 +2,21 @@
 
 Domain: coding, ops
 
-This optional `PreToolUse` hook asks before shell commands that are not on a
-small list of simple reads. It catches common push, deletion, compound-command
-and script-runner forms without trying to interpret script contents. It never
-returns `allow`: a call that it does not flag still follows Claude Code's
-normal permission rules. PowerShell calls always ask.
+This optional `PreToolUse` hook allows recognized Python `unittest discover`
+commands that explicitly select `test_*.py` files, including chains joined by
+`&&`. It contains no repository-specific rules. Other commands produce no
+decision and continue through Claude Code's normal permissions and other hooks.
 
 ## Scope and limits
 
-- The hook covers Claude Code `Bash` and `PowerShell` tool calls. It does not
-  inspect MCP tools, hooks, file tools, or commands run outside Claude Code.
-- It is a conservative text check, not a complete shell parser or an OS
-  security boundary. Executable shadowing, indirect execution, runtime changes,
-  another tool or a failed hook can bypass its intended coverage. Keep explicit
-  ask/deny rules and use sandboxing or repository protections for stronger
-  boundaries.
-- Scripts and compound commands prompt, including tests and read-only probes.
-  Project-specific exceptions belong in the target environment and must be
-  reviewed separately. This repository ships no project-specific allowlist.
-- An `ask` from this hook takes precedence over another hook's `allow`, so an
-  existing script exception can start prompting if both hooks are enabled.
-  Review this behavior before installing alongside a different guard.
-- In non-interactive sessions, an `ask` may be denied instead of prompting.
-  Other hooks and explicit rules can also affect the final decision.
+- Test code and Python import paths can execute arbitrary code. Enabling this
+  hook trusts the selected tests; it does not inspect their contents.
+- This is a convenience rule, not a security boundary. Keep explicit permission
+  rules and use sandboxing or repository protections where needed.
+- Shell expansions, redirection, other chained operations, unrecognized flags,
+  and PowerShell are not approved by this hook.
+- This hook does not ask before pushes or destructive operations; configure
+  those separately in Claude Code permissions.
 
 ## Opt in
 
@@ -47,5 +39,5 @@ The component preserves other settings and hooks and records a backup for
 guarded rollback. Existing hooks can also prompt; the manager does not remove
 or adopt them. See [environment maintenance](../environment/README.md#claude-命令确认-hook)
 for conflict handling and rollback. Restart Claude Code or reload its hooks,
-inspect `/hooks`, and test one safe command and one harmless command that should
-prompt; installation checks do not prove interactive client behavior.
+inspect `/hooks`, and test a recognized test command and verify other commands use normal
+permissions; installation checks do not prove interactive client behavior.
