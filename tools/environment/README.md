@@ -34,6 +34,7 @@ python3 tools/environment/env.py restore --backup <UTC 时间戳> [--dry-run] [-
   现在同时有 `work-mac` 和 `home-mac`，未登记的 Mac 必须显式选择。Linux 继续按
   `work-linux.json` 的 `hosts` 匹配。判不出来直接报错退出，不猜。
 - `--only ID` 把观测与写入都限制在该组件上，用于单项更新。
+- `opt_in: true` 组件仅在 `--only` 或其他显式选中组件的 `install_with` 闭包中执行；普通全量操作不会启用。
 - `--force` 是**唯一的接管入口**：明知目标「不是本入口装的 / 安装后被改过 / 历史副本内容对不上」，
   仍然覆盖或删除。它不跳过备份，每个被动的文件照样进 manifest，`restore` 能原样撤回；
   `check` 故意**没有** `--force`——它的职责是如实报漂移，不是把漂移说成没事。
@@ -60,7 +61,7 @@ python3 tools/environment/env.py restore --backup <UTC 时间戳> [--dry-run] [-
 
 ## 受管边界
 
-Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
+Profile（`profiles/*.json`）声明以下组件：
 
 | 类型 | 管什么 | 边界 |
 | --- | --- | --- |
@@ -68,6 +69,23 @@ Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
 | `tool` | 一个受管可执行文件的**归属与身份** | 缺失且 Profile 登记了已验证的 `install_cmd` → 装；版本低于 `min_version` 且登记了 `update_cmd` → 更新，装完/更新完**重新探测版本**再判定；`install_via` 表示它由本次计划里的某个 installer 兜底；三者都没有就报「无已验证渠道」，交给人。不做渠道迁移、不承诺降级 |
 | `skill` | 第一方 Skill 的完整 `SKILL.md` 真源（YAML 头 + 正文，可带 `files` 附带文件） | `body` 指向完整文件时原样分发、不配置 `frontmatter`；历史分离格式仍支持 `frontmatter` + 正文，双头配置明确报错；`files` 携带客户端专属界面/策略（如将 `clients/openai.yaml` 分发为 `agents/openai.yaml`）；依赖不满足就跳过并说明原因；`stale_copies` 见下 |
 | `installer` | 包住一个已存在的安装器 | v1 只有 macOS 的 `brew bundle`，`--no-upgrade`：只保证「装了」，不隐式升级 |
+| `claude_confirm` | 一个受管确认脚本和 Claude 设置中的单条 `PreToolUse` hook | 显式选择才安装；保留其他 JSON 字段与 hook，拒绝无归属、重复或修改过的同名注册 |
+
+### Claude 命令确认 hook
+
+这是可选组件，不随全量环境维护自动启用。先审阅 [hook 说明](../claude-confirm/README.md)，再使用目标机器的 Profile：
+
+```sh
+python3 tools/environment/env.py plan --profile work-mac --only claude-confirm
+python3 tools/environment/env.py apply --profile work-mac --only claude-confirm
+python3 tools/environment/env.py check --profile work-mac --only claude-confirm
+python3 tools/environment/env.py restore --backup <apply 输出的备份名> --dry-run
+python3 tools/environment/env.py restore --backup <apply 输出的备份名>
+```
+
+`home-mac` 和 `work-linux` 也可显式选用。安装会在用户数据目录写入脚本，并向 Claude 用户设置追加一个 hook 组；已有 hook 不被移除。多个 hook 同时运行时，本组件的 `ask` 优先于其他 hook 的 `allow`，因此现有免确认例外可能开始提示。JSON 会重新排版，但其他字段的值保持不变。设置文件不是有效 JSON、存在重复键、目标为符号链接或已有冲突注册时，组件阻断并报告。备份目录权限为 0700，Claude 设置备份为 0600。
+
+回滚只移除本组件的 hook 组和受管脚本，保留之后新增的其他设置。受管组被修改或重复时，即使使用 `--force` 也不删除该组或脚本，并以非零退出；脚本被用户修改时默认不覆盖。真实客户端加载与交互效果需在新会话单独验证。
 
 ### 既有 Profile 的 Skill 单副本布局（非新项目推荐）
 
@@ -118,8 +136,8 @@ Profile（`profiles/*.json`）声明 4 种组件，没有第 5 种：
 
 备份 manifest 是 **v2**：不再只记「文件的旧内容」，而是逐条记录一次 apply 做了什么。
 
-- 三种条目：`file`（含新建与删除）、`config_block`（记 `begin/end`、`previous_body`、
-  `applied_body`、是否为它插过空行）、`symlink`（记 `link_target`）。
+- 四种条目：`file`（含新建与删除）、`config_block`（记 `begin/end`、`previous_body`、
+  `applied_body`、是否为它插过空行）、`symlink`（记 `link_target`）、`json_hook`（只回滚受管 hook 组）。
 - 每条都记「安装前长什么样」与「安装后长什么样」，因此 `restore` 能分辨：
   - 安装前不存在 → 删掉它，连同本入口新建的目录一起收干净（首次安装可完整撤销）；
   - 安装前存在 → 还原旧内容，并打印 sha256 对照。
