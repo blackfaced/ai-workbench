@@ -3,6 +3,32 @@
   "_evidence_date": "2026-09-07",
   "skills": [
     {
+      "name": "science-explainer-video",
+      "source": "repo:skills/science-explainer-video",
+      "source_path": "skills/science-explainer-video",
+      "revision": "in-repo",
+      "verified": false,
+      "clients": [],
+      "origin": "owner-authored science-explainer-video.zip",
+      "archive_sha256": "13acb5f3f122ffb065c7a6f39ac31ea8c37ac0f9c59e47d70643787ee0c989c9",
+      "required_resources": [
+        "SKILL.md",
+        "assets/manim_house_style.py",
+        "references/code2video-pipeline.md",
+        "references/masters-styles.md",
+        "references/storyboard-format.md",
+        "scripts/assemble_video.py",
+        "scripts/preview_frames.py",
+        "scripts/check_environment.py",
+        "references/scientific-checks.md",
+        "assets/modular_power_example.py",
+        "tests/test_media.py"
+      ],
+      "license": "NOASSERTION",
+      "evidence_date": "2026-11-16",
+      "note": "基于作者 ZIP 的第一方修订包；archive_sha256 仅标识导入源，不是当前包摘要。已修复软字幕、混合规格拼接、特殊路径与字幕画幅问题，增加科学核验、短视频流程、依赖预检和真实 FFmpeg 回归。verified=false 保留客户端发现与完整 Manim 成片未验收的边界；不加入默认 Profile。按项目选择包含全部资源的固定提交，详情见 skills/science-explainer-video.md。"
+    },
+    {
       "name": "writing-docs",
       "source": "repo:skills/writing-docs",
       "revision": "in-repo",
