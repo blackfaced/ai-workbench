@@ -37,6 +37,7 @@ Existing user-global installations stay unchanged until a separately authorized 
 
 - [steelman-grill](steelman-grill/SKILL.md) — managed first-party Skill; requires upstream `grilling`.
 - [viral-clip-doctrine](viral-clip-doctrine/SKILL.md) — 抖音投流爆款剪辑的方案层管线（钩子—气口—指派—收敛—包装—合规），不预设执行工具。
+- [Science Explainer Video](science-explainer-video.md) — 个人原创科普视频技能包；含科学核验、短视频分镜、代码动画、FFmpeg 合成与依赖检查，按项目启用。
 - [Source records](sources.lock.json) — includes explicitly unverified upstream entries; not a complete dependency lock.
 - [MemoryNexus task memory](memorynexus.md) — optional upstream daily task entry; fixed source delivery and project/client acceptance remain required.
 - [MemoryNexus 读/记入口](memorynexus-task-entry/SKILL.md) — 按本机任务名称定位，复用上游绑定读写；同名先选，个人目录不入 Git。
