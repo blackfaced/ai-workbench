@@ -21,6 +21,67 @@ def decision(command, tool='Bash'):
     return json.loads(run.stdout)['hookSpecificOutput']['permissionDecision'] if run.stdout else None
 
 class HookTests(unittest.TestCase):
+    def test_fetch_with_repository_options_and_composition(self):
+        for command in [
+            'git fetch', 'git fetch origin feature/example',
+            'git -C /tmp/example fetch origin main',
+            'git -C /tmp -Cexample -c gc.auto=0 fetch origin main',
+            'git -cgc.auto=0 -C /tmp/example fetch --tags origin',
+            'git fetch --all --no-tags --verbose',
+            'git fetch --depth=1 --deepen 2 --jobs=2 origin main',
+            'git fetch --no-auto-maintenance --no-recurse-submodules origin',
+            'git -C /tmp/example fetch origin main 2>&1 | tail -20',
+            'cd /tmp/example && git fetch origin main && git status --short',
+            "for remote in origin upstream; do git fetch \"$remote\"; done",
+            "ssh devbox 'git -C /tmp/example -c gc.auto=0 fetch origin main'",
+        ]:
+            with self.subTest(command=command):
+                self.assertEqual(decision(command), 'allow')
+
+    def test_fetch_does_not_approve_overrides_or_unrecognized_chains(self):
+        for command in [
+            'git fetch --prune', 'git fetch -p', 'git fetch --prune-tags',
+            'git fetch --force origin main', 'git fetch -f origin main',
+            'git fetch origin +main:refs/heads/main', 'git fetch --update-head-ok',
+            'git fetch --upload-pack=/tmp/helper origin', 'git fetch --stdin',
+            'git fetch --depth', 'git fetch --depth=-1 origin',
+            'git -c core.sshCommand=/tmp/helper fetch origin main',
+            'git -c alias.download=fetch download origin main',
+            'git --exec-path=/tmp fetch origin main',
+            'git fetch origin main && rm -rf example',
+            'git fetch origin main && git worktree add /tmp/new HEAD',
+            'git fetch origin main | sh', 'git fetch origin main > /tmp/result',
+        ]:
+            with self.subTest(command=command):
+                self.assertIsNone(decision(command))
+
+    def test_fetch_approval_executes_against_local_remote(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, target = root / 'source', root / 'target'
+            env = dict(os.environ, HOME=directory, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+            def git(path, *args):
+                return subprocess.run(['git', '-C', str(path), *args], env=env,
+                                      capture_output=True, text=True, check=True)
+            for repo in (source, target):
+                repo.mkdir()
+                git(repo, 'init', '-q')
+                git(repo, 'config', 'core.hooksPath', os.devnull)
+                git(repo, 'config', 'commit.gpgSign', 'false')
+            git(source, 'config', 'user.name', 'Example User')
+            git(source, 'config', 'user.email', 'test@example.invalid')
+            git(source, 'commit', '--allow-empty', '-qm', 'Example')
+            git(source, 'branch', 'example')
+            git(target, 'remote', 'add', 'origin', str(source))
+            command = 'git -C ' + shlex.quote(str(target)) + ' -c gc.auto=0 fetch origin example'
+            result = invoke(HOOK, command)
+            self.assertEqual(result['permissionDecision'], 'allow')
+            executed = result.get('updatedInput', {}).get('command', command)
+            subprocess.run(executed, shell=True, executable='/bin/bash', env=env,
+                           capture_output=True, text=True, check=True)
+            self.assertEqual(git(target, 'rev-parse', 'FETCH_HEAD').stdout,
+                             git(source, 'rev-parse', 'example').stdout)
+
     def test_routine_push_scripts_ssh_and_sensitive_operations(self):
         allowed = ['git push', 'git -C /tmp/example push --force origin main',
                    'python3 script.py', 'bash script.sh', 'node script.js',
@@ -118,6 +179,7 @@ class QueryPermissionTests(unittest.TestCase):
         commands = [
             ('ls', 'allow'),
             ('git push', 'allow'),
+            ('git -C /tmp/example -c gc.auto=0 fetch origin main', 'allow'),
             ("python3 -c 'import yaml; print(yaml.__file__)'", None),
             ("python3 -c 'import yaml; print(yaml.__file__)' 2>&1; "
              "/usr/bin/python3 -c 'import yaml; print(yaml.__file__)' 2>&1", None),
