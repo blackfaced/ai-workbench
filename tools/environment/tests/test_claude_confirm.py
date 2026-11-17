@@ -41,6 +41,83 @@ class ClaudeConfirmLifecycle(unittest.TestCase):
         self.assertEqual(rc, 0, output)
         return self.box.latest_backup()
 
+    def configure_both_hooks(self):
+        source = Path(__file__).resolve().parents[2] / 'claude-confirm' / 'mcp_confirm.py'
+        shutil.copy2(source, Path(self.box.repo) / 'tools/claude-confirm/mcp_confirm.py')
+        profile = Path(__file__).resolve().parents[1] / 'profiles/claude-hooks.json'
+        self.box.profile(json.loads(profile.read_text()))
+        return Path(self.box.home) / '.local/share/ai-workbench/hooks/claude-mcp-confirm.py'
+
+    def test_both_hooks_install_check_and_restore_in_one_run(self):
+        mcp_script = self.configure_both_hooks()
+        selection = ('--only', 'claude-confirm', '--only', 'claude-mcp-confirm')
+        rc, out = self.run_env('plan', *selection)
+        self.assertEqual(rc, 0, out)
+        rc, out = self.run_env('apply', *selection)
+        self.assertEqual(rc, 0, out)
+        backup = self.box.latest_backup()
+        groups = json.loads(self.settings.read_text())['hooks']['PreToolUse']
+        self.assertEqual([g['matcher'] for g in groups], ['Bash|PowerShell', 'mcp__.*'])
+        self.assertTrue(self.script.is_file())
+        self.assertTrue(mcp_script.is_file())
+        rc, out = self.run_env('check', *selection)
+        self.assertEqual(rc, 0, out)
+        rc, out = self.run_env('apply', *selection)
+        self.assertEqual(rc, 0, out)
+        self.assertIn('无变更', out)
+        rc, out = self.box.run('restore', '--backup', backup)
+        self.assertEqual(rc, 0, out)
+        self.assertFalse(self.script.exists())
+        self.assertFalse(mcp_script.exists())
+        self.assertFalse(self.settings.exists())
+
+    def test_both_hooks_restore_existing_settings_and_unrelated_edits(self):
+        mcp_script = self.configure_both_hooks()
+        before = {'theme': 'light', 'hooks': {'PreToolUse': [
+            {'matcher': 'Read', 'hooks': [{'type': 'command', 'command': 'existing-hook'}]}]}}
+        self.settings.write_text(json.dumps(before))
+        selection = ('--only', 'claude-confirm', '--only', 'claude-mcp-confirm')
+        rc, out = self.run_env('apply', *selection)
+        self.assertEqual(rc, 0, out)
+        backup = self.box.latest_backup()
+        installed = json.loads(self.settings.read_text())
+        self.assertEqual(installed['hooks']['PreToolUse'][0], before['hooks']['PreToolUse'][0])
+        installed['theme'] = 'dark'
+        self.settings.write_text(json.dumps(installed))
+        rc, out = self.box.run('restore', '--backup', backup)
+        self.assertEqual(rc, 0, out)
+        before['theme'] = 'dark'
+        self.assertEqual(json.loads(self.settings.read_text()), before)
+        self.assertFalse(self.script.exists())
+        self.assertFalse(mcp_script.exists())
+
+    def test_both_hooks_reject_external_edit_between_registrations(self):
+        mcp_script = self.configure_both_hooks()
+        path = Path(self.box.env_dir) / 'env.py'
+        spec = importlib.util.spec_from_file_location('environment_shared_settings', path)
+        module = importlib.util.module_from_spec(spec)
+        with mock.patch.dict(os.environ, {'HOME': self.box.home}):
+            spec.loader.exec_module(module)
+            write = module.write_claude_settings
+
+            def external_edit(*args):
+                result = write(*args)
+                current = json.loads(self.settings.read_text())
+                current['theme'] = 'external edit'
+                self.settings.write_text(json.dumps(current))
+                return result
+
+            output = io.StringIO()
+            with mock.patch.object(module, 'write_claude_settings', side_effect=external_edit):
+                with contextlib.redirect_stdout(output):
+                    rc = module.main(['apply', '--profile', 'harness', '--only', 'claude-confirm',
+                                      '--only', 'claude-mcp-confirm'])
+        self.assertNotEqual(rc, 0)
+        self.assertIn('changed after planning', output.getvalue())
+        self.assertEqual(json.loads(self.settings.read_text())['theme'], 'external edit')
+        self.assertTrue(self.script.is_file())
+        self.assertFalse(mcp_script.exists())
+
     def test_opt_in_first_install_check_and_restore(self):
         rc, out = self.run_env('plan')
         self.assertEqual(rc, 0, out)
