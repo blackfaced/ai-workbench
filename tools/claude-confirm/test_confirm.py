@@ -412,6 +412,87 @@ class QueryPermissionTests(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'], 'ask')
 
 class GeneralInspectionTests(unittest.TestCase):
+    def test_literal_for_loop_checks_and_rewrites_each_iteration(self):
+        commands = [
+            'cd /tmp/example && for b in origin/v2 origin/v1; do echo "=== $b ==="; '
+            'git show "$b:path/to/config(file).yaml" 2>&1 | grep -nE "alpha|beta"; done',
+            'cd ~/example && for b in v2 v1; do git show "$b:README.md" | grep alpha; done',
+            r'for rev in v2 v1; do git show $rev:path/to/config\(file\).yaml 2>/dev/null | grep -n alpha; done',
+            "for ref in 'v2' \"v1\"; do echo \"${ref}\"; git show \"${ref}:README.md\" | head -3; done",
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                result = invoke(HOOK, command)
+                self.assertEqual(result['permissionDecision'], 'allow')
+                rewritten = result['updatedInput']['command']
+                self.assertEqual(result['updatedInput']['timeout'], 1000)
+                self.assertEqual(rewritten.count('--no-ext-diff --no-textconv'), 2)
+
+    def test_literal_for_loop_rejects_dangerous_and_opaque_forms(self):
+        commands = [
+            'for b in v1 v2; do rm -rf "$b"; done',
+            'for b in v1 v2; do git push origin ":$b"; done',
+            'for b in v1 v2; do gh pr merge "$b"; done',
+            'for b in v1 v2; do lark-cli im message +send --text "$b"; done',
+            'for b in v1 v2; do helm upgrade "$b" ./chart; done',
+            'for action in get delete; do kubectl "$action" pods; done',
+            'for arg in v1 --textconv; do git show "$arg"; done',
+            'for b in v1 v2; do echo "$b"; rm file; done',
+            'for b in v1 $(echo v2); do echo "$b"; done',
+            'for b in v1 *.txt; do echo "$b"; done',
+            'for b in v1 "$OTHER"; do echo "$b"; done',
+            'for b in v1 v2; do echo "$(rm file)"; done',
+            'for b in v1 v2; do echo "$OTHER"; done',
+            'for b in v1 v2; do echo "$b"; done; rm file',
+            'for PATH in /tmp; do git status; done',
+            'for b in v1 v2; do for c in a b; do echo "$c"; done; done',
+            'for b in v1 v2; do git show "$b:README.md" > /tmp/result; done',
+            'for b in v1 v2; do git show "$b:README.md" | sh; done',
+            'for b in v1 v2; do echo "$b";; done',
+            'for b in ' + ' '.join('v' + str(i) for i in range(33)) + '; do echo "$b"; done',
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(decide(command)[0], 'ask')
+
+    def test_literal_for_loop_applies_local_query_denials_per_value(self):
+        rules = [{'prefix': ['example-cli'], 'flags': [], 'value_options': [],
+                  'max_positionals': 0, 'arguments': '*',
+                  'deny_words': ['delete', 'remove', 'merge', 'send', 'notify']}]
+        for values, expected in [('list show', 'allow'), ('list delete', 'ask'),
+                                 ('list send', 'ask')]:
+            command = 'for verb in ' + values + '; do example-cli item "$verb"; done'
+            with self.subTest(values=values):
+                self.assertEqual(policy.decide(command, rules)[0], expected)
+
+    def test_literal_for_loop_rewrite_executes_equivalent_read_queries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            env = dict(os.environ, HOME=directory, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+            def git(*args):
+                return subprocess.run(['git', '-C', directory, *args], env=env,
+                                      capture_output=True, text=True, check=True)
+            git('init', '-q')
+            git('config', 'user.name', 'Example User')
+            git('config', 'user.email', 'test@example.invalid')
+            git('config', 'core.hooksPath', os.devnull)
+            git('config', 'commit.gpgSign', 'false')
+            (root / 'config(file).yaml').write_text('alpha: value\nbeta: value\n')
+            git('add', 'config(file).yaml')
+            git('commit', '-qm', 'Example')
+            git('branch', 'v1')
+            git('branch', 'v2')
+            command = ('cd ' + shlex.quote(directory) + ' && for b in v1 v2; do echo "=== $b ==="; '
+                       'git show "$b:config(file).yaml" 2>&1 | grep -nE "alpha|beta"; done')
+            result = invoke(HOOK, command)
+            self.assertEqual(result['permissionDecision'], 'allow')
+            original = subprocess.run(command, shell=True, executable='/bin/bash', env=env,
+                                      capture_output=True, text=True)
+            rewritten = subprocess.run(result['updatedInput']['command'], shell=True,
+                                       executable='/bin/bash', env=env, capture_output=True, text=True)
+            self.assertEqual((rewritten.returncode, rewritten.stdout, rewritten.stderr),
+                             (original.returncode, original.stdout, original.stderr))
+
     def test_composition_not_specific_paths(self):
         commands = [
             "cd /tmp/example-probe && echo '=== changed commits ==='; git log --oneline v1..v2 -- src/component/ 2>&1 | head -20; echo; echo '=== ancestor ==='; git merge-base --is-ancestor abc123 v2 && echo YES || echo NO",

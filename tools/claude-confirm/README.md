@@ -49,6 +49,15 @@ repositories; unprefixed globs are limited to commands whose options cannot exec
 programs or write output files. Unknown options, `sed` editing or execution, `rg --pre`, write
 redirection, background jobs and execution wrappers request confirmation.
 
+Finite `for` loops over up to 32 literal values are also supported, optionally
+after an approved `&&` prefix. Values may contain letters, digits, `_`, `.`,
+`/`, `:`, `+` and `-`, and may be quoted. The loop body may use `$name` or
+`${name}` for its lowercase loop variable. The hook checks every expanded body
+and preserves the usual Git inspection guards. Nested loops, dynamic lists,
+other variable expansions, comments in the body, and commands following the
+loop request confirmation. Each body remains subject to the existing command
+rules and their script-content limitations.
+
 ```sh
 cd /tmp/example && ls src 2>&1; sed -n '10,20p' tests/ExampleTest.java
 rg -n 'assertTrue' tests | head -n 20
@@ -57,6 +66,7 @@ git -C /tmp/example ls-files 'src/**/*.py'
 bash /tmp/example/tests/render-contract.sh && helm lint /tmp/example/chart && git -C /tmp/example diff --check
 helm template demo ./chart --include-crds | grep kind
 helm list --namespace demo -o json | jq .
+for ref in v1 v2; do git show "$ref:README.md" | grep example; done
 ```
 
 ## Git inspection
