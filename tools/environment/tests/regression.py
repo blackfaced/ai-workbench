@@ -1366,6 +1366,11 @@ def main():
     write(os.path.join(root, "claude-confirm-hook.log"), confirm_hook.stdout)
     check("Claude 确认 hook：输入决策和调用协议", confirm_hook.returncode == 0,
           confirm_hook.stdout if confirm_hook.returncode else "")
+    mcp_hook = subprocess.run([sys.executable, os.path.join(ENV_DIR, '..', 'claude-confirm', 'test_mcp_confirm.py')],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    write(os.path.join(root, "claude-mcp-confirm-hook.log"), mcp_hook.stdout)
+    check("Claude MCP 确认 hook：消息和提及决策", mcp_hook.returncode == 0,
+          mcp_hook.stdout if mcp_hook.returncode else "")
     print("\n通过 %d 项，失败 %d 项" % (len(PASSES), len(FAILS)))
     if FAILS:
         for name in FAILS:
