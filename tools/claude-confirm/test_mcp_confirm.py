@@ -15,7 +15,7 @@ def decide(tool, payload):
 
 
 class McpConfirmTests(unittest.TestCase):
-    def test_sending_messages_requests_confirmation(self):
+    def test_sending_messages_defers_to_client(self):
         for tool, payload in [
             ('mcp__lark__send_message', {'text': 'hello'}),
             ('mcp__feishu__im_v1_message_create', {'content': '{"text":"hello"}'}),
@@ -24,9 +24,9 @@ class McpConfirmTests(unittest.TestCase):
             ('mcp__other__sendMessage', {'text': 'hello'}),
         ]:
             with self.subTest(tool=tool):
-                self.assertEqual(decide(tool, payload), 'ask')
+                self.assertIsNone(decide(tool, payload))
 
-    def test_system_mentions_request_confirmation(self):
+    def test_system_mentions_defer_to_client(self):
         for tool, payload in [
             ('mcp__tracker__create_comment', {'body': 'Please review @someone'}),
             ('mcp__tracker__update_issue', {'description': '<at user_id="u1">Person</at>'}),
@@ -38,7 +38,7 @@ class McpConfirmTests(unittest.TestCase):
             ('mcp__tracker__update_issue', {'notify_user_ids': ['u1']}),
         ]:
             with self.subTest(tool=tool):
-                self.assertEqual(decide(tool, payload), 'ask')
+                self.assertIsNone(decide(tool, payload))
 
     def test_other_calls_keep_normal_permissions(self):
         for tool, payload in [
@@ -53,10 +53,10 @@ class McpConfirmTests(unittest.TestCase):
             with self.subTest(tool=tool):
                 self.assertIsNone(decide(tool, payload))
 
-    def test_malformed_event_asks(self):
+    def test_malformed_event_defers(self):
         result = subprocess.run([sys.executable, '-B', str(HOOK)], input='{', text=True,
                                 capture_output=True, check=True)
-        self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'], 'ask')
+        self.assertEqual(result.stdout, '')
 
 
 if __name__ == '__main__':

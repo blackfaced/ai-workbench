@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Approve trusted tests and configured read queries; ask before risky shell."""
+"""Approve trusted tests and configured read queries; defer all other calls."""
 import ast
 import fnmatch
 import hashlib
@@ -1070,8 +1070,88 @@ def ssh_command(command, rules, scripts):
         return None
 
 
-def decide(command, rules, scripts=(), allow_ssh=True):
+def literal_loop_body(body, variable, value):
+    """Replace only this loop variable outside single-quoted shell literals."""
+    out = []
+    quote = None
+    pos = 0
+    while pos < len(body):
+        char = body[pos]
+        if char == "'" and quote != '"':
+            quote = None if quote == "'" else "'"
+        elif char == '"' and quote != "'":
+            quote = None if quote == '"' else '"'
+        elif char == '\\' and quote != "'":
+            if pos + 1 == len(body):
+                raise ValueError('Incomplete escape')
+            out.append(body[pos:pos + 2])
+            pos += 2
+            continue
+        elif char == '#' and quote is None:
+            raise ValueError('Comments in loop bodies are unsupported')
+        elif char == '$' and quote != "'":
+            match = re.match(r'\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))', body[pos:])
+            if not match or (match.group(1) or match.group(2)) != variable:
+                raise ValueError('Unsupported variable expansion')
+            out.append(value)
+            pos += match.end()
+            continue
+        out.append(char)
+        pos += 1
+    if quote:
+        raise ValueError('Unclosed quote')
+    return ''.join(out)
+
+
+def literal_for_loop(command, rules, scripts):
+    """Rewrite bounded literal loops after checking every expanded iteration."""
+    if not isinstance(command, str) or len(command) > 32000 or '\x00' in command:
+        return None
+    match = re.fullmatch(
+        r'\s*(?:(?P<prefix>.*?)\s*&&\s*)?for[ \t]+(?P<var>[a-z][a-z0-9_]{0,31})'
+        r'[ \t]+in[ \t]+(?P<items>[^;\n]+?)[ \t]*;[ \t\n]*do[ \t\n]+'
+        r'(?P<body>.*?);[ \t\n]*done[ \t]*;?[ \t]*', command, re.S)
+    if not match:
+        return None
+    if match.group('body').rstrip().endswith(';'):
+        return 'ask', None
+    word = r'''(?:[A-Za-z0-9_./:+-]+|'[A-Za-z0-9_./:+-]+'|"[A-Za-z0-9_./:+-]+")'''
+    items = match.group('items')
+    if not re.fullmatch(word + r'(?:[ \t]+' + word + r')*', items.strip()):
+        return 'ask', None
+    values = shlex.split(items)
+    if not 1 <= len(values) <= 32:
+        return 'ask', None
+    prefix = match.group('prefix')
+    if prefix:
+        decision, updated = decide(prefix, rules, scripts, allow_loop=False)
+        if decision != 'allow':
+            return 'ask', None
+        prefix = (updated or prefix).strip() + ' && '
+    else:
+        prefix = ''
+    branches = []
+    try:
+        for value in values:
+            body = literal_loop_body(match.group('body'), match.group('var'), value)
+            decision, updated = decide(body, rules, scripts, allow_loop=False)
+            if decision != 'allow':
+                return 'ask', None
+            branches.append(shlex.quote(value) + ') ' + (updated or body).strip() + ' ;;')
+    except (ValueError, IndexError):
+        return 'ask', None
+    rewritten = (prefix + 'for ' + match.group('var') + ' in ' + items.strip()
+                 + '; do case "$' + match.group('var') + '" in '
+                 + ' '.join(branches) + ' esac; done')
+    return ('allow', rewritten) if len(rewritten) <= 32000 else ('ask', None)
+
+
+def decide(command, rules, scripts=(), allow_ssh=True, allow_loop=True):
     original = command
+    if allow_loop:
+        loop = literal_for_loop(command, rules, scripts)
+        if loop is not None:
+            return loop
     try:
         report = report_chain(command, scripts)
         if report is not None:
@@ -1130,14 +1210,14 @@ def main():
         if tool not in {'Bash', 'PowerShell'}:
             return 0
         rules = query_policy()
-        decision, updated = decide(event.get('tool_input', {}).get('command'), rules, script_policy()) if tool == 'Bash' else ('ask', None)
+        decision, updated = decide(event.get('tool_input', {}).get('command'), rules, script_policy()) if tool == 'Bash' else (None, None)
     except (OSError, ValueError, TypeError, AttributeError, RecursionError):
-        decision = 'ask'
-    if decision is None:
+        return 0
+    # The hook only grants known approvals; Claude handles all other decisions.
+    if decision != 'allow':
         return 0
     result = {'hookEventName': 'PreToolUse', 'permissionDecision': decision,
-              'permissionDecisionReason': 'Recognized test, read-only inspection, or configured query with filters.' if decision == 'allow'
-              else 'Risky, opaque, or unrecognized query syntax; please confirm.'}
+              'permissionDecisionReason': 'Recognized test, read-only inspection, or configured query with filters.'}
     if updated is not None:
         result['updatedInput'] = dict(event['tool_input'], command=updated)
     print(json.dumps({'hookSpecificOutput': result}, ensure_ascii=False))

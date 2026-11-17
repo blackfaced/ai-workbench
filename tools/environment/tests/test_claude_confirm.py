@@ -83,8 +83,8 @@ class ClaudeConfirmLifecycle(unittest.TestCase):
         self.assertEqual(groups[0], before['hooks']['PreToolUse'][0])
         self.assertEqual(groups[1]['matcher'], 'mcp__.*')
         self.assertTrue(target.is_file())
-        for tool, payload, expected in [('mcp__lark__send_message', {'text': 'hello'}, 'ask'),
-                                        ('mcp__tracker__comment_create', {'body': '@someone'}, 'ask'),
+        for tool, payload, expected in [('mcp__lark__send_message', {'text': 'hello'}, None),
+                                        ('mcp__tracker__comment_create', {'body': '@someone'}, None),
                                         ('mcp__tracker__search', {'query': 'hello'}, None)]:
             event = {'tool_name': tool, 'tool_input': payload}
             result = subprocess.run([sys.executable, str(target)], input=json.dumps(event),
@@ -247,7 +247,7 @@ class ClaudeConfirmLifecycle(unittest.TestCase):
         backup = self.install()
         for command, expected in [("example-cli items list --json | jq '.data'", 'allow'),
                                   ("example-cli items list --json --limit 30", 'allow'),
-                                  ("example-cli items list --output=/tmp/result", 'ask'),
+                                  ("example-cli items list --output=/tmp/result", None),
                                   ('python3 ' + shlex.quote(str(reviewed)) + ' plan', 'allow'),
                                   ('python3 ' + shlex.quote(str(reviewed)) + ' apply', 'allow'),
                                   ("cd /tmp/example && ls; sed -n '1,20p' README.md", 'allow'),
@@ -255,9 +255,9 @@ class ClaudeConfirmLifecycle(unittest.TestCase):
                                   ("git -C /tmp/example status -sb && git -C /tmp/example diff --stat", 'allow'),
                                   ("git -C /tmp/example log -5 --oneline | head -n 2", 'allow'),
                                   ("git -C /tmp/example show HEAD:README.md | sed -n '1,20p'", 'allow'),
-                                  ("git -C /tmp/example diff --output=/tmp/output", 'ask'),
+                                  ("git -C /tmp/example diff --output=/tmp/output", None),
                                   ("find . -type f -name '*.py' 2>/dev/null | head -n 20", 'allow'),
-                                  ("find . -type f -delete", 'ask'),
+                                  ("find . -type f -delete", None),
                                   ("grep name README.md; git push", 'allow'),
                                   ('git push origin main', 'allow'),
                                   ('python3 test_example.py', 'allow')]:
@@ -267,7 +267,8 @@ class ClaudeConfirmLifecycle(unittest.TestCase):
                                         input=json.dumps({'tool_name': 'Bash',
                                                           'tool_input': {'command': command}}),
                                         capture_output=True, text=True, check=True)
-                self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'], expected)
+                decision = json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'] if result.stdout else None
+                self.assertEqual(decision, expected)
         rc, out = self.box.run('restore', '--backup', backup)
         self.assertEqual(rc, 0, out)
         self.assertEqual(policy.read_bytes(), before)
