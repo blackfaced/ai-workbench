@@ -920,7 +920,7 @@ def plan_claude_confirm(comp, ctx, plan):
     script = expand(comp['path'])
     settings = expand(comp['settings'])
     source = os.path.join(REPO_ROOT, comp['source'])
-    group = {'matcher': 'Bash|PowerShell', 'hooks': [{'type': 'command',
+    group = {'matcher': comp.get('matcher', 'Bash|PowerShell'), 'hooks': [{'type': 'command',
              'command': 'python3 ' + shlex.quote(script), 'timeout': 5}]}
     command = group['hooks'][0]['command']
     registration = cid + ':registration'

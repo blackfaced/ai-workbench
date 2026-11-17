@@ -6,6 +6,8 @@ import io
 import os
 from pathlib import Path
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -59,6 +61,43 @@ class ClaudeConfirmLifecycle(unittest.TestCase):
         self.assertFalse(self.script.exists())
         self.assertFalse(self.settings.exists())
         self.assertNotIn('claude-confirm:registration', self.box.state()['components'])
+
+    def test_mcp_component_install_check_and_restore_preserves_bash_hook(self):
+        self.install()
+        before = json.loads(self.settings.read_text())
+        source = Path(__file__).resolve().parents[2] / 'claude-confirm' / 'mcp_confirm.py'
+        copied = Path(self.box.repo) / 'tools/claude-confirm/mcp_confirm.py'
+        shutil.copy2(source, copied)
+        target = Path(self.box.home) / '.local/share/ai-workbench/hooks/claude-mcp-confirm.py'
+        profile_path = Path(__file__).resolve().parents[1] / 'profiles/claude-hooks.json'
+        portable = json.loads(profile_path.read_text())
+        self.assertEqual(portable['os'], 'Any')
+        self.assertEqual(portable['components'][0], self.component)
+        self.assertEqual(portable['components'][1]['matcher'], 'mcp__.*')
+        self.assertTrue(all(item['opt_in'] for item in portable['components']))
+        self.box.profile(portable)
+        rc, out = self.run_env('apply', '--only', 'claude-mcp-confirm')
+        self.assertEqual(rc, 0, out)
+        backup = self.box.latest_backup()
+        groups = json.loads(self.settings.read_text())['hooks']['PreToolUse']
+        self.assertEqual(groups[0], before['hooks']['PreToolUse'][0])
+        self.assertEqual(groups[1]['matcher'], 'mcp__.*')
+        self.assertTrue(target.is_file())
+        for tool, payload, expected in [('mcp__lark__send_message', {'text': 'hello'}, 'ask'),
+                                        ('mcp__tracker__comment_create', {'body': '@someone'}, 'ask'),
+                                        ('mcp__tracker__search', {'query': 'hello'}, None)]:
+            event = {'tool_name': tool, 'tool_input': payload}
+            result = subprocess.run([sys.executable, str(target)], input=json.dumps(event),
+                                    text=True, capture_output=True, check=True)
+            decision = json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'] if result.stdout else None
+            self.assertEqual(decision, expected)
+        rc, out = self.run_env('check', '--only', 'claude-mcp-confirm')
+        self.assertEqual(rc, 0, out)
+        rc, out = self.box.run('restore', '--backup', backup)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(json.loads(self.settings.read_text()), before)
+        self.assertFalse(target.exists())
+        self.assertTrue(self.script.exists())
 
     def test_supported_profiles_declare_the_same_opt_in_component(self):
         profiles = Path(__file__).resolve().parents[1] / 'profiles'
@@ -191,6 +230,48 @@ class ClaudeConfirmLifecycle(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         self.assertIn('install hook script', out)
         self.assertNotIn('需要人处理 1 项', out)
+
+    def test_installed_query_policy_survives_restore(self):
+        import hashlib
+        import shlex
+        policy = Path(self.box.home) / '.config/ai-workbench/claude-confirm.json'
+        policy.parent.mkdir(parents=True)
+        reviewed = Path(self.box.home) / 'planner.py'
+        reviewed.write_text('print("{}")')
+        policy.write_text(json.dumps({'version': 1, 'queries': [{
+            'prefix': ['example-cli', 'items', 'list'], 'flags': ['--json'],
+            'value_options': [], 'max_positionals': 0, 'arguments': '*'}],
+            'scripts': [{'path': str(reviewed), 'sha256': hashlib.sha256(reviewed.read_bytes()).hexdigest(),
+                         'actions': ['plan']}]}))
+        before = policy.read_bytes()
+        backup = self.install()
+        for command, expected in [("example-cli items list --json | jq '.data'", 'allow'),
+                                  ("example-cli items list --json --limit 30", 'allow'),
+                                  ("example-cli items list --output=/tmp/result", 'ask'),
+                                  ('python3 ' + shlex.quote(str(reviewed)) + ' plan', 'allow'),
+                                  ('python3 ' + shlex.quote(str(reviewed)) + ' apply', 'allow'),
+                                  ("cd /tmp/example && ls; sed -n '1,20p' README.md", 'allow'),
+                                  ("git -C /tmp/example ls-files '*.py' | grep test", 'allow'),
+                                  ("git -C /tmp/example status -sb && git -C /tmp/example diff --stat", 'allow'),
+                                  ("git -C /tmp/example log -5 --oneline | head -n 2", 'allow'),
+                                  ("git -C /tmp/example show HEAD:README.md | sed -n '1,20p'", 'allow'),
+                                  ("git -C /tmp/example diff --output=/tmp/output", 'ask'),
+                                  ("find . -type f -name '*.py' 2>/dev/null | head -n 20", 'allow'),
+                                  ("find . -type f -delete", 'ask'),
+                                  ("grep name README.md; git push", 'allow'),
+                                  ('git push origin main', 'allow'),
+                                  ('python3 test_example.py', 'allow')]:
+            with self.subTest(command=command):
+                result = subprocess.run([sys.executable, str(self.script)],
+                                        env=dict(os.environ, HOME=self.box.home),
+                                        input=json.dumps({'tool_name': 'Bash',
+                                                          'tool_input': {'command': command}}),
+                                        capture_output=True, text=True, check=True)
+                self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'], expected)
+        rc, out = self.box.run('restore', '--backup', backup)
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(policy.read_bytes(), before)
+        self.assertFalse(self.script.exists())
 
     def test_unowned_matching_hook_is_not_adopted(self):
         import shlex
