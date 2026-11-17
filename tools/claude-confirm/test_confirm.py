@@ -39,7 +39,7 @@ class HookTests(unittest.TestCase):
                 self.assertEqual(decision(command), 'allow')
         for command in blocked:
             with self.subTest(command=command):
-                self.assertEqual(decision(command), 'ask')
+                self.assertIsNone(decision(command))
 
     def test_discovery_and_chains(self):
         command = "PYTHONPATH=src:scripts .venv/bin/python -m unittest discover -s tests -p 'test_example.py' -v"
@@ -63,15 +63,15 @@ class HookTests(unittest.TestCase):
                         'pytest $(date)', 'pytest ; rm a',
                         'pytest &&', 'python -m pytest_extra', 'python3 -test_x.py']:
             with self.subTest(command=command):
-                self.assertEqual(decision(command), 'ask')
+                self.assertIsNone(decision(command))
 
     def test_defer_other_commands(self):
         base = "python3 -m unittest discover -s tests -p 'test_example.py'"
         for command in [base + '; rm -rf build',
                         'python3 -c "import os; os.system(\'git push\')"', base + ' $(echo x)']:
             with self.subTest(command=command):
-                self.assertEqual(decision(command), 'ask')
-        self.assertEqual(decision('dir', 'PowerShell'), 'ask')
+                self.assertIsNone(decision(command))
+        self.assertIsNone(decision('dir', 'PowerShell'))
         self.assertEqual(decision('ls'), 'allow')
         self.assertEqual(decision('echo pytest'), 'allow')
 
@@ -114,6 +114,28 @@ def invoke(script, command, mode='acceptEdits', tool='Bash'):
     return json.loads(result.stdout)['hookSpecificOutput'] if result.stdout else {}
 
 class QueryPermissionTests(unittest.TestCase):
+    def test_hook_protocol_only_returns_allow_or_defers_in_all_modes(self):
+        commands = [
+            ('ls', 'allow'),
+            ('git push', 'allow'),
+            ("python3 -c 'import yaml; print(yaml.__file__)'", None),
+            ("python3 -c 'import yaml; print(yaml.__file__)' 2>&1; "
+             "/usr/bin/python3 -c 'import yaml; print(yaml.__file__)' 2>&1", None),
+            ('rm -rf example', None),
+            ('gh pr merge 1', None),
+            ('lark-cli im message +send --text hello', None),
+            ('helm upgrade demo ./chart', None),
+            ('git -C /tmp/example worktree add -b fix/example /tmp/new HEAD', None),
+            ('for b in a b; do rm -rf "$b"; done', None),
+            ('unrecognized-command --option', None),
+        ]
+        for mode in ['default', 'acceptEdits', 'auto', 'bypassPermissions', 'dontAsk']:
+            for command, expected in commands:
+                with self.subTest(mode=mode, command=command):
+                    result = invoke(HOOK, command, mode)
+                    self.assertEqual(result.get('permissionDecision'), expected)
+                    self.assertNotIn(result.get('permissionDecision'), {'ask', 'deny'})
+
     def test_helm_template_and_release_inspection_without_deployment(self):
         for command in [
             'helm template demo ./chart --include-crds --values /tmp/values.yaml',
@@ -281,7 +303,8 @@ class QueryPermissionTests(unittest.TestCase):
             path.write_text('{broken')
             result = subprocess.run([sys.executable, str(HOOK)], capture_output=True, text=True,
                                     input=json.dumps({'tool_name': 'Bash', 'tool_input': {'command': QUERY}}))
-            self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'], 'ask')
+            self.assertEqual(result.stdout, '')
+            self.assertEqual(result.returncode, 0)
 
     def test_read_queries_and_pipelines(self):
         commands = [
@@ -376,14 +399,14 @@ class QueryPermissionTests(unittest.TestCase):
                                       ("cd /tmp && ls; sed -n '1,20p' README.md", 'allow'),
                                       ("git -C /tmp/example ls-files '*.py'", 'allow'),
                                       ("grep name README.md; git push", 'allow'),
-                                      ('env FOO=x git push', 'ask'), ('rm -rf /tmp/example', 'ask'),
+                                      ('env FOO=x git push', None), ('rm -rf /tmp/example', None),
                                       ('python3 tests/test_example.py', 'allow'),
                                       ('uv run --no-sync python -m pytest -q', 'allow'),
                                       ('PYTHONPATH=src python3 -m unittest discover -s tests', 'allow'),
                                       ('python3 test_x.py && git push', 'allow')]:
                 with self.subTest(mode=mode, command=command):
                     decisions = [invoke(p, command, mode).get('permissionDecision') for p in [HOOK]]
-                    effective = 'ask' if 'ask' in decisions else 'allow' if 'allow' in decisions else None
+                    effective = 'allow' if 'allow' in decisions else None
                     self.assertEqual(effective, expected)
 
     def test_python_rewrite_isolated_and_preserves_input(self):
@@ -404,12 +427,12 @@ class QueryPermissionTests(unittest.TestCase):
         self.assertEqual(filtered.stdout, 'alpha_one\nbeta_two\n')
 
     def test_powershell_malformed_and_unrelated_tools(self):
-        self.assertEqual(invoke(HOOK, 'Remove-Item example', tool='PowerShell')['permissionDecision'], 'ask')
+        self.assertEqual(invoke(HOOK, 'Remove-Item example', tool='PowerShell'), {})
         self.assertEqual(invoke(HOOK, 'anything', tool='Read'), {})
         for raw in ['{', 'null', '[]', '{"tool_name":"Bash","tool_input":null}']:
             result = subprocess.run([sys.executable, '-B', str(HOOK)], input=raw,
                                     text=True, capture_output=True, check=True)
-            self.assertEqual(json.loads(result.stdout)['hookSpecificOutput']['permissionDecision'], 'ask')
+            self.assertEqual(result.stdout, '')
 
 class GeneralInspectionTests(unittest.TestCase):
     def test_literal_for_loop_checks_and_rewrites_each_iteration(self):
@@ -667,7 +690,7 @@ class FindInspectionTests(unittest.TestCase):
             command = "find " + shlex.quote(directory) + " -type f -name '*.py'"
             for mode in ['acceptEdits', 'bypassPermissions']:
                 self.assertEqual(invoke(HOOK, command, mode)['permissionDecision'], 'allow')
-                self.assertEqual(invoke(HOOK, command + ' -delete', mode)['permissionDecision'], 'ask')
+                self.assertEqual(invoke(HOOK, command + ' -delete', mode), {})
             result = subprocess.run(shlex.split(command), capture_output=True, text=True, check=True)
             self.assertEqual(result.stdout.strip(), str(root / 'one.py'))
             self.assertEqual({p.name: p.read_bytes() for p in root.iterdir()}, before)
@@ -738,7 +761,7 @@ class GitInspectionTests(unittest.TestCase):
             rewritten = out['updatedInput']['command']
             self.assertIn("-C '/tmp/example repo' log --no-ext-diff --no-textconv --format='%h; %s' -5", rewritten)
             self.assertEqual(decide(rewritten), ('allow', None))
-            self.assertEqual(invoke(HOOK, command + '; git push; rm example', mode)['permissionDecision'], 'ask')
+            self.assertEqual(invoke(HOOK, command + '; git push; rm example', mode), {})
 
     def test_real_git_inspection_does_not_run_configured_helpers(self):
         with tempfile.TemporaryDirectory() as directory:

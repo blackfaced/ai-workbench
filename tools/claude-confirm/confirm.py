@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Approve trusted tests and configured read queries; ask before risky shell."""
+"""Approve trusted tests and configured read queries; defer all other calls."""
 import ast
 import fnmatch
 import hashlib
@@ -1210,14 +1210,14 @@ def main():
         if tool not in {'Bash', 'PowerShell'}:
             return 0
         rules = query_policy()
-        decision, updated = decide(event.get('tool_input', {}).get('command'), rules, script_policy()) if tool == 'Bash' else ('ask', None)
+        decision, updated = decide(event.get('tool_input', {}).get('command'), rules, script_policy()) if tool == 'Bash' else (None, None)
     except (OSError, ValueError, TypeError, AttributeError, RecursionError):
-        decision = 'ask'
-    if decision is None:
+        return 0
+    # The hook only grants known approvals; Claude handles all other decisions.
+    if decision != 'allow':
         return 0
     result = {'hookEventName': 'PreToolUse', 'permissionDecision': decision,
-              'permissionDecisionReason': 'Recognized test, read-only inspection, or configured query with filters.' if decision == 'allow'
-              else 'Risky, opaque, or unrecognized query syntax; please confirm.'}
+              'permissionDecisionReason': 'Recognized test, read-only inspection, or configured query with filters.'}
     if updated is not None:
         result['updatedInput'] = dict(event['tool_input'], command=updated)
     print(json.dumps({'hookSpecificOutput': result}, ensure_ascii=False))
