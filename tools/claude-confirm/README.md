@@ -11,13 +11,20 @@ and chains joined by `&&` when every segment qualifies.
 - `pytest` and `python3 -m pytest`, including options and node IDs
 
 It also approves common file inspections and explicitly configured read queries,
-including pipelines with text or stdin-only JSON filters. A Git push and direct
+including pipelines with text or stdin-only JSON filters. Ordinary Git fetches, Git pushes and direct
 invocation of Python, Node or shell script files are approved alone or in chains
 whose other stages also pass the hook. For all other inputs, including destructive
 operations, unsupported syntax, invalid policy data and PowerShell, the hook
 returns no permission decision. Claude Code's own mode, permission rules and
 other hooks determine whether those calls are allowed, prompted or denied. This
 hook never returns `ask` or `deny`.
+
+`git fetch` supports repository selectors such as repeated `-C`, the exact
+`-c gc.auto=0` setting, remote names and refspecs, and common tag, depth, verbosity
+and parallelism options. Approved chains, text pipelines, literal loops and direct
+SSH commands use the same rule. Force, pruning, execution overrides and unknown
+options receive no hook decision. Fetches use the user's configured remotes,
+transports and credential helpers; this approval does not inspect those settings.
 
 ## File inspection
 

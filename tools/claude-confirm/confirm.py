@@ -245,7 +245,7 @@ GIT_GUARDS = ['--no-pager', '--no-optional-locks', '-c', 'core.fsmonitor=false',
 GIT_PATCH_COMMANDS = {'diff', 'log', 'show', 'grep', 'blame', 'diff-tree'}
 
 
-def git_action(args):
+def git_action(args, allowed_config=()):
     """Locate the action without accepting aliases or arbitrary configuration."""
     i = 1
     while i < len(args):
@@ -259,8 +259,10 @@ def git_action(args):
         elif word in {'-P', '--no-pager', '--no-optional-locks', '--literal-pathspecs',
                       '--glob-pathspecs', '--noglob-pathspecs', '--icase-pathspecs', '--no-replace-objects'}:
             i += 1
-        elif word == '-c' and i + 1 < len(args) and args[i + 1] in {g for g in GIT_GUARDS if '=' in g}:
+        elif word == '-c' and i + 1 < len(args) and args[i + 1] in set(allowed_config) | {g for g in GIT_GUARDS if '=' in g}:
             i += 2
+        elif word.startswith('-c') and word[2:] in allowed_config:
+            i += 1
         else:
             return i
     return i
@@ -985,8 +987,22 @@ def read_query(args, rules):
     return False
 
 
+def git_fetch(args):
+    """Recognize ordinary fetches, leaving overrides to the client's permissions."""
+    index = git_action(args, {'gc.auto=0'})
+    if index >= len(args) or args[index] != 'fetch':
+        return False
+    positive = lambda value: bool(re.fullmatch(r'[1-9][0-9]*', value))
+    operands = read_options(args[index + 1:], 'vqant46', {
+        '--all', '--append', '--atomic', '--tags', '--no-tags', '--verbose', '--quiet',
+        '--progress', '--dry-run', '--ipv4', '--ipv6', '--unshallow',
+        '--no-recurse-submodules', '--no-auto-maintenance', '--no-auto-gc',
+    }, {'--depth': positive, '--deepen': positive, '--jobs': positive, '-j': positive})
+    return operands is not None and all(value and not value.startswith(('-', '+')) for value in operands)
+
+
 def routine_command(command):
-    """Approve a single push or direct script file invocation, not shell wrappers.
+    """Approve an ordinary fetch, push or direct script invocation, not shell wrappers.
 
     Script contents are not inspected. A script can perform any operation.
     """
@@ -1003,6 +1019,8 @@ def routine_command(command):
             return False
         name = program_name(args[0])
         if name == 'git':
+            if git_fetch(args):
+                return True
             i = git_action(args)
             if i >= len(args) or args[i] != 'push':
                 return False
