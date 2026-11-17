@@ -21,6 +21,83 @@ def decision(command, tool='Bash'):
     return json.loads(run.stdout)['hookSpecificOutput']['permissionDecision'] if run.stdout else None
 
 class HookTests(unittest.TestCase):
+    def test_branch_and_worktree_creation(self):
+        for command in [
+            'git branch feature/example', 'git branch feature/example origin/main',
+            'git branch --track feature/example origin/main',
+            'git -C /tmp -Cexample branch --no-track --create-reflog feature/example HEAD',
+            'git switch -c feature/example', 'git switch --create=feature/example origin/main',
+            'git switch -qcfeature/example --track=direct origin/main',
+            'git checkout -b feature/example', 'git checkout -qbfeature/example origin/main',
+            'git worktree add /tmp/new', 'git worktree add /tmp/new existing-branch',
+            'git worktree add -b feature/example /tmp/new origin/main',
+            'git worktree add -bfeature/example --track /tmp/new origin/main',
+            'git worktree add --detach --no-checkout /tmp/new HEAD',
+            'git worktree add --lock --reason "temporary checkout" /tmp/new HEAD',
+            'git -C /tmp/example -c gc.auto=0 fetch origin main && '
+            'git -C /tmp/example worktree add -b fix/example /tmp/new origin/main',
+            'git worktree add -b fix/example /tmp/new HEAD 2>&1 | tail -10',
+            'git branch fix/example && git branch --list',
+            'for name in feature/a feature/b; do git branch "$name"; done',
+            "ssh devbox 'git -C /tmp/example worktree add -b fix/example /tmp/new HEAD'",
+        ]:
+            with self.subTest(command=command):
+                self.assertEqual(decision(command), 'allow')
+
+    def test_branch_and_worktree_overrides_defer_without_hook_restrictions(self):
+        for command in [
+            'git branch --force existing HEAD', 'git branch -f existing HEAD',
+            'git branch -D existing', 'git branch -m old new', 'git branch -C old new',
+            'git switch -C existing HEAD', 'git switch --force-create existing',
+            'git switch -c new --discard-changes', 'git switch -c new --merge',
+            'git checkout -B existing HEAD', 'git checkout -b new -f',
+            'git checkout -b new --pathspec-from-file=/tmp/paths',
+            'git worktree add --force /tmp/new main', 'git worktree add -B existing /tmp/new HEAD',
+            'git worktree remove /tmp/new', 'git worktree prune', 'git worktree move /tmp/a /tmp/b',
+            'git worktree add -b one -b two /tmp/new', 'git worktree add -b',
+            'git worktree add', 'git switch -c', 'git switch -c one -c two',
+            'git branch one HEAD extra', 'git worktree add /tmp/new HEAD extra',
+            'git -c core.hooksPath=/tmp/hooks worktree add /tmp/new',
+            'git worktree add /tmp/new && rm -rf example',
+            'git worktree add /tmp/new | sh', 'git branch new > /tmp/result',
+        ]:
+            with self.subTest(command=command):
+                self.assertIsNone(decision(command))
+
+    def test_creation_approval_executes_in_temporary_repository(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo, tree = root / 'source', root / 'new worktree'
+            repo.mkdir()
+            env = dict(os.environ, HOME=directory, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+            def git(path, *args):
+                return subprocess.run(['git', '-C', str(path), *args], env=env,
+                                      capture_output=True, text=True, check=True)
+            git(repo, 'init', '-q')
+            git(repo, 'config', 'user.name', 'Example User')
+            git(repo, 'config', 'user.email', 'test@example.invalid')
+            git(repo, 'config', 'core.hooksPath', os.devnull)
+            git(repo, 'config', 'commit.gpgSign', 'false')
+            (repo / 'sample.txt').write_text('committed\n')
+            git(repo, 'add', 'sample.txt')
+            git(repo, 'commit', '-qm', 'Example')
+            commit = git(repo, 'rev-parse', 'HEAD').stdout
+            prefix = 'git -C ' + shlex.quote(str(repo)) + ' '
+            for suffix in ['branch created HEAD', 'switch -c switched HEAD',
+                           'checkout -b checked HEAD',
+                           'worktree add -b linked ' + shlex.quote(str(tree)) + ' HEAD']:
+                command = prefix + suffix
+                result = invoke(HOOK, command)
+                self.assertEqual(result.get('permissionDecision'), 'allow')
+                subprocess.run(result.get('updatedInput', {}).get('command', command),
+                               shell=True, executable='/bin/bash', env=env,
+                               capture_output=True, text=True, check=True)
+            for branch in ['created', 'switched', 'checked', 'linked']:
+                self.assertEqual(git(repo, 'rev-parse', branch).stdout, commit)
+            self.assertEqual(git(repo, 'branch', '--show-current').stdout.strip(), 'checked')
+            self.assertEqual(git(tree, 'branch', '--show-current').stdout.strip(), 'linked')
+            self.assertEqual((tree / 'sample.txt').read_text(), 'committed\n')
+
     def test_fetch_with_repository_options_and_composition(self):
         for command in [
             'git fetch', 'git fetch origin feature/example',
@@ -49,7 +126,7 @@ class HookTests(unittest.TestCase):
             'git -c alias.download=fetch download origin main',
             'git --exec-path=/tmp fetch origin main',
             'git fetch origin main && rm -rf example',
-            'git fetch origin main && git worktree add /tmp/new HEAD',
+            'git fetch origin main && git worktree remove /tmp/new',
             'git fetch origin main | sh', 'git fetch origin main > /tmp/result',
         ]:
             with self.subTest(command=command):
@@ -187,7 +264,10 @@ class QueryPermissionTests(unittest.TestCase):
             ('gh pr merge 1', None),
             ('lark-cli im message +send --text hello', None),
             ('helm upgrade demo ./chart', None),
-            ('git -C /tmp/example worktree add -b fix/example /tmp/new HEAD', None),
+            ('git -C /tmp/example worktree add -b fix/example /tmp/new HEAD', 'allow'),
+            ('git switch -c fix/example', 'allow'),
+            ('git branch fix/example', 'allow'),
+            ('git checkout -b fix/example', 'allow'),
             ('for b in a b; do rm -rf "$b"; done', None),
             ('unrecognized-command --option', None),
         ]
@@ -607,7 +687,7 @@ class GeneralInspectionTests(unittest.TestCase):
     def test_dangerous_compositions_and_option_injection(self):
         commands = [
             'ls &&\n# unfinished', "git status | # next\n sh",
-            'git branch new-branch', 'git branch -D old', 'git tag new-tag',
+            'git branch -f existing', 'git branch -D old', 'git tag new-tag',
             'git remote add origin https://example.invalid', 'git worktree remove /tmp/example',
             'git cat-file --filters HEAD:file', 'git grep --open-files-in-pager=script text',
             'sort -o /tmp/out /tmp/in', 'sort --compress-program=script /tmp/in',

@@ -11,7 +11,8 @@ and chains joined by `&&` when every segment qualifies.
 - `pytest` and `python3 -m pytest`, including options and node IDs
 
 It also approves common file inspections and explicitly configured read queries,
-including pipelines with text or stdin-only JSON filters. Ordinary Git fetches, Git pushes and direct
+including pipelines with text or stdin-only JSON filters. Ordinary Git fetches, Git pushes,
+branch/worktree creation and direct
 invocation of Python, Node or shell script files are approved alone or in chains
 whose other stages also pass the hook. For all other inputs, including destructive
 operations, unsupported syntax, invalid policy data and PowerShell, the hook
@@ -25,6 +26,17 @@ and parallelism options. Approved chains, text pipelines, literal loops and dire
 SSH commands use the same rule. Force, pruning, execution overrides and unknown
 options receive no hook decision. Fetches use the user's configured remotes,
 transports and credential helpers; this approval does not inspect those settings.
+
+Branch creation supports `git branch <name> [start-point]`, `git switch -c <name>`,
+and `git checkout -b <name>`. Worktree creation supports
+`git worktree add [-b <name>] <path> [start-point]`, including detached, locked and
+no-checkout worktrees. Common quiet/tracking options, repository selectors such as
+`-C`, and `-c gc.auto=0` are accepted. These operations also work in approved
+chains, text pipelines, literal loops and direct SSH commands, including a fetch
+followed by worktree creation. Force/replacement options, branch deletion or rename,
+worktree removal and unknown options receive no hook decision. Creation trusts
+the selected repository's configuration, hooks and checkout filters; their contents
+are not inspected.
 
 ## File inspection
 
@@ -82,7 +94,8 @@ for ref in v1 v2; do git show "$ref:README.md" | grep example; done
 One shared policy covers `status`, `diff`, `log`, `show`, `ls-files`, `ls-tree`,
 `rev-parse`, `rev-list`, `show-ref`, `merge-base`, `describe`, `shortlog`, `grep`,
 `diff-tree`, `blame`, and plain `cat-file` reads. It also supports branch/tag
-listing, remote URL inspection and `worktree list`; creating or changing those
+listing, remote URL inspection and `worktree list`. Ordinary branch and worktree
+creation is supported separately as described above; other changes to these
 objects are left to Claude's permissions.
 It accepts repeated or attached `-C` options, common revision and path arguments,
 formatting, search and history limits, and the read-only pipelines and chains above.
