@@ -1001,8 +1001,46 @@ def git_fetch(args):
     return operands is not None and all(value and not value.startswith(('-', '+')) for value in operands)
 
 
+def git_creation(args):
+    """Recognize branch/worktree creation without force or replacement options."""
+    index = git_action(args, {'gc.auto=0'})
+    if index >= len(args):
+        return False
+    action, rest = args[index], args[index + 1:]
+    literal = lambda value: bool(value) and not value.startswith('-')
+    flags = {'--quiet', '--track', '--no-track'}
+    values = {'--track': lambda value: value in {'direct', 'inherit'}}
+    branches = []
+
+    def branch(value):
+        branches.append(value)
+        return len(branches) == 1 and literal(value)
+
+    if action == 'branch':
+        operands = read_options(rest, 'qt', flags | {'--create-reflog'}, values)
+        minimum, maximum = 1, 2
+    elif action in {'switch', 'checkout'}:
+        values['-c' if action == 'switch' else '-b'] = branch
+        if action == 'switch':
+            values['--create'] = branch
+        operands = read_options(rest, 'qt' if action == 'switch' else 'qtl',
+                                flags | {'--no-guess', '--progress', '--no-progress'}, values)
+        if len(branches) != 1:
+            return False
+        minimum, maximum = 0, 1
+    elif action == 'worktree' and rest[:1] == ['add']:
+        operands = read_options(rest[1:], 'dq',
+            flags | {'--detach', '--checkout', '--no-checkout', '--lock', '--guess-remote'},
+            values | {'-b': branch, '--reason': literal})
+        minimum, maximum = 1, 2
+    else:
+        return False
+    return (operands is not None and minimum <= len(operands) <= maximum
+            and all(literal(value) for value in operands))
+
+
 def routine_command(command):
-    """Approve an ordinary fetch, push or direct script invocation, not shell wrappers.
+    """Approve ordinary Git development or direct script calls, not shell wrappers.
 
     Script contents are not inspected. A script can perform any operation.
     """
@@ -1019,7 +1057,7 @@ def routine_command(command):
             return False
         name = program_name(args[0])
         if name == 'git':
-            if git_fetch(args):
+            if git_fetch(args) or git_creation(args):
                 return True
             i = git_action(args)
             if i >= len(args) or args[i] != 'push':
