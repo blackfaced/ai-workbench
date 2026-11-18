@@ -260,6 +260,7 @@ class Context(object):
         self.versions = {}
         self.skill_names = None
         self.planned_ids = set()
+        self.claude_settings_expected = {}
         self.force = False  # --force：明知目标不是本入口装的，仍接管（覆盖前照常备份）
 
     def login(self, script, cwd=None):
@@ -895,12 +896,12 @@ def write_claude_settings(path, data, expected_raw):
     parent = os.path.dirname(path)
     os.makedirs(parent, mode=0o700, exist_ok=True)
     mode = (os.stat(path).st_mode & 0o777) if os.path.isfile(path) else 0o600
+    written_raw = json.dumps(data, ensure_ascii=False, indent=2) + '\n'
     fd, tmp = tempfile.mkstemp(prefix='.aiwb-settings-', dir=parent)
     try:
         os.fchmod(fd, mode)
         with os.fdopen(fd, 'w', encoding='utf-8') as handle:
-            json.dump(data, handle, ensure_ascii=False, indent=2)
-            handle.write('\n')
+            handle.write(written_raw)
             handle.flush()
             os.fsync(handle.fileno())
         try:
@@ -910,6 +911,7 @@ def write_claude_settings(path, data, expected_raw):
         if current_raw != expected_raw:
             raise RuntimeError('settings changed during write; rerun plan')
         os.replace(tmp, path)
+        return written_raw
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -967,6 +969,8 @@ def plan_claude_confirm(comp, ctx, plan):
     if subplan.blocked:
         plan.blocked.extend(subplan.blocked)
         return
+    # Components targeting the same settings file share only writes made by this apply.
+    ctx.claude_settings_expected.setdefault(settings, raw)
     script_shape = current_shape(script)
     for sub, summary, action in subplan.changes:
         def guarded_script_write(action=action):
@@ -974,7 +978,7 @@ def plan_claude_confirm(comp, ctx, plan):
                 _data, now = read_claude_settings(settings)
             except (OSError, ValueError) as exc:
                 raise RuntimeError('cannot inspect settings: %s' % exc)
-            if now != raw or current_shape(script) != script_shape:
+            if now != ctx.claude_settings_expected[settings] or current_shape(script) != script_shape:
                 raise RuntimeError('hook target changed after planning; rerun plan')
             action()
         plan.change(sub, summary, guarded_script_write)
@@ -984,7 +988,7 @@ def plan_claude_confirm(comp, ctx, plan):
                 current, current_raw = read_claude_settings(settings)
             except (OSError, ValueError) as exc:
                 raise RuntimeError('cannot inspect settings: %s' % exc)
-            if current_raw != raw:
+            if current_raw != ctx.claude_settings_expected[settings]:
                 raise RuntimeError('settings changed after planning; rerun plan')
             parent = os.path.dirname(settings)
             created_dir = None if os.path.isdir(parent) else parent
@@ -997,7 +1001,7 @@ def plan_claude_confirm(comp, ctx, plan):
             if entry.get('backup_file'):
                 os.chmod(os.path.join(ctx.backup.dir, entry['backup_file']), 0o600)
             current.setdefault('hooks', {}).setdefault('PreToolUse', []).append(group)
-            write_claude_settings(settings, current, current_raw)
+            ctx.claude_settings_expected[settings] = write_claude_settings(settings, current, current_raw)
             entry['json_hook']['applied'] = True
             ctx.backup.mark_written(entry)
             ctx.record(registration, {'path': settings, 'owner': 'ai-workbench-repo',
