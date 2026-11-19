@@ -20,6 +20,21 @@ Keep an owner-only version-1 JSON registry outside business source control. It c
 
 Optional `native_companions` maps relative `.trae/` or `.codex/` artifact paths to pinned `{source, sha256, worktrees_only?}` entries. `worktrees_only: true` limits provisioning to additional checkouts while retaining the source checkout's own native metadata. These are copied only when absent; matching existing files are retained, conflicts and tracked/unexcluded paths block startup. Native config files themselves remain owned by the renderer. Use this for verified project-local client startup metadata. On TraeX 0.209.1, choosing “Do not ask again for selected data” creates `.trae/.coco-resources-migrated` with `skipped_by_user=true\n`; explicitly provision that project-local skip decision when legacy resources would otherwise prompt. Preserve team `.coco` content and global migration preferences. Verify the installed client behavior before registering this compatibility artifact.
 
+For a private project Skill, add `private_skills` to the registered project and exclude its two discovery entries in the repository's local Git excludes. Keep the source directory at a stable canonical path. Pin each regular file, including referenced scripts and documents, by its SHA-256.
+
+```json
+{
+  "private_skills": {
+    "example-check": {
+      "source": "/absolute/path/to/example-check",
+      "files": {"SKILL.md": "<sha256>", "references/guide.md": "<sha256>"}
+    }
+  }
+}
+```
+
+Setup links `.agents/skills/example-check` and `.claude/skills/example-check` to that package and checks the enabled Codex inventory from the checkout. Desktop setup also checks its bundled client. A changed package or a conflicting entry blocks the launch. To retire a registration, remove the registry entry and unlink only the discovery entries still pointing to the registered package.
+
 Use the project's existing declaration and analysis record. Include referenced rules/observability documents in companions. Registration authorizes exact checkout trust provisioning when Botmux selects a real root of that registered Git repository; it never trusts a parent or matches repositories by remote URL/name. Keep private native paths in that Git common-dir's existing local excludes before registering. Existing explicit untrusted values, foreign native blocks, symlinks and pinned configuration/rule-source drift retain the renderer's refusal behavior.
 
 The registered installer digest records the setup version. If the stable installer changes through an owner-managed install or rollback, validate its entry against the installation ledger, exact generated launcher, release metadata and all payload hashes. A verified version change continues and is recorded in the startup receipt; it does not print a terminal warning. Missing or unverified replacements still block before provisioning. The registry is not silently re-pinned. This shared policy applies to direct CLI, local Botmux shell and native-worktree preparation.
@@ -68,4 +83,6 @@ Use the app's supported project `.codex/environments/environment.toml` with a sy
 
 Record Desktop's absolute bundled CLI separately as `desktop_client`. For complete guidance that needs a larger document budget, put `clientSettings` in the project declaration (only bounded `project_doc_max_bytes` per client is supported). The renderer manages this scalar inside its existing owned instruction block so Desktop loads it without terminal-only flags. A user-owned sufficient value is retained; a conflicting smaller value is refused. This declaration is the source of truth; retire equivalent direct-CLI `client_defaults` after provisioning and native checks pass.
 
-Verify Desktop-created worktrees independently from CLI-created worktrees. Check actual selected environment, setup receipt before first thread/input, full team/private guidance through the bundled binary, no other-project markers, and refusal behavior. Tool-created files or a manual invocation of the setup command do not establish app UI coverage. If desktop UI tools are unavailable, finish the configuration and CLI checks, report that exact boundary, and request the concrete app creation step for final verification. Never claim a successful Desktop click from source inspection alone.
+Verify Desktop startup in a fresh worktree with the Local Environment selected. Use distinct fixture markers for the project instructions, team guidance and Skill. Send a neutral first message. Match the Git root and receipt timestamp to the new session, then inspect its persisted input before the first assistant reply or tool call. Check the Skill name and path in the advertised inventory, the team marker in user input and the private marker in developer input. Report each result separately. A new worktree created without an environment provides a negative control.
+
+Desktop builds that send a request-level `developerInstructions` on chat creation can replace the project's TOML value. If the private marker is missing, compare the app's first input with the bundled CLI's `debug prompt-input` in the same checkout under the same user configuration. The setup receipt records the bundled probe, which runs before the app creates the chat. Preserve the team's `AGENTS.md` and keep project-private instructions scoped to their project.

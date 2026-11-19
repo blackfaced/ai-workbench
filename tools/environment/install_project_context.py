@@ -11,7 +11,7 @@ import sys
 import tempfile
 import context_io
 
-FILES=('project_context.py','env.py','context_io.py','context_declaration.py','context_restore.py','botmux_context.py','cli_context.py','native_worktree.py','install_project_context.py')
+FILES=('project_context.py','env.py','context_io.py','context_declaration.py','context_restore.py','botmux_context.py','cli_context.py','native_worktree.py','install_project_context.py','skills_discovery.py')
 HERE=Path(__file__).resolve().parent
 
 
@@ -24,7 +24,8 @@ def verify(root):
     m=json.loads((root/'release.json').read_text())
     # Retained pre-startup-gate releases have the original six-file payload.
     # Their registered manifest and every payload hash still remain mandatory.
-    if set(m['files']) not in (set(FILES), set(FILES)-{'native_worktree.py'}, set(FILES)-{'cli_context.py','native_worktree.py'}, set(FILES)-{'botmux_context.py','cli_context.py','native_worktree.py'}):
+    previous = set(FILES) - {'skills_discovery.py'}
+    if set(m['files']) not in (set(FILES), previous, previous-{'native_worktree.py'}, previous-{'cli_context.py','native_worktree.py'}, previous-{'botmux_context.py','cli_context.py','native_worktree.py'}):
         raise RuntimeError('release file set mismatch')
     for name,sha in m['files'].items():
         context_io.guard(root/name)

@@ -21,6 +21,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import context_io
@@ -46,6 +47,61 @@ def read_json(path):
 def pinned(path, sha):
     if not sha or digest(path) != sha:
         raise RuntimeError('registered source drift: ' + str(path))
+
+
+def private_skill_links(entry, target):
+    """Preflight every registered package and both discovery entries before writing."""
+    links = {}
+    packages = entry.get('private_skills', {})
+    if not isinstance(packages, dict):
+        raise RuntimeError('private_skills must map names to pinned packages')
+    for name, package in packages.items():
+        if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', name):
+            raise RuntimeError('invalid private skill name')
+        if not isinstance(package, dict) or not isinstance(package.get('source'), str):
+            raise RuntimeError('invalid private skill registration: ' + name)
+        source = Path(package['source'])
+        if not source.is_absolute() or source.resolve(strict=True) != source or not source.is_dir():
+            raise RuntimeError('private skill requires a canonical package directory: ' + name)
+        files = {}
+        for path in source.rglob('*'):
+            if path.is_symlink() or not (path.is_dir() or path.is_file()):
+                raise RuntimeError('unsupported private skill package entry: ' + name)
+            if path.is_file():
+                files[path.relative_to(source).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+        if 'SKILL.md' not in files or files != package.get('files'):
+            raise RuntimeError('private skill package differs from registration: ' + name)
+        for discovery in ('.agents/skills', '.claude/skills'):
+            rel = f'{discovery}/{name}'
+            dest = target / rel
+            context_io.guard(dest.parent)
+            if git(target, 'ls-files', '--', rel) or subprocess.run(
+                ['git', '-C', str(target), 'check-ignore', '-q', '--', rel]
+            ).returncode:
+                raise RuntimeError('private skill entry must be untracked and excluded: ' + rel)
+            if dest == source or (dest.is_symlink() and dest.resolve() == source):
+                continue
+            if dest.exists() or dest.is_symlink():
+                raise RuntimeError('private skill entry conflict: ' + rel)
+            links[dest] = source
+    return links
+
+
+def verify_private_skills(entry, target, binary):
+    packages = entry.get('private_skills', {})
+    if not packages:
+        return {}
+    probe = Path(__file__).with_name('skills_discovery.py')
+    result = subprocess.run([sys.executable, str(probe), str(binary), str(target)],
+                            cwd=target, capture_output=True, text=True, timeout=60)
+    if result.returncode:
+        raise RuntimeError('private skill discovery failed')
+    inventory = [row.split('\t', 1) for row in result.stdout.splitlines()]
+    for name, package in packages.items():
+        paths = {Path(path).resolve() for skill, path in inventory if skill == name}
+        if paths != {Path(package['source']) / 'SKILL.md'}:
+            raise RuntimeError('private skill absent or ambiguous in client discovery: ' + name)
+    return {name: True for name in packages}
 
 
 def installer_status(path, expected):
@@ -154,7 +210,7 @@ def reusable_receipt(path, fingerprint, native_cwd):
     return prior
 
 
-def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cwd=None, client_options=None, reuse=False):
+def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cwd=None, client_options=None, reuse=False, persist_receipt=True):
     registry_hash = digest(registry_path)
     registry = read_json(registry_path)
     if registry.get('version') != 1:
@@ -225,6 +281,7 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
         for rel in ['.codex/config.toml', '.trae/traecli.toml']:
             if subprocess.run(['git','-C',str(target),'check-ignore','-q',rel]).returncode:
                 raise RuntimeError('private native path is not locally excluded')
+        skill_links = private_skill_links(entry, target)
         copies = []
         for rel, artifact in entry.get('native_companions', {}).items():
             if artifact.get('worktrees_only') is True and target == source:
@@ -261,7 +318,11 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                                                      registry['clients'], copies, installed['actual'])
             prior = reusable_receipt(target / '.ai-workbench/project-context' / receipt_name,
                                      prior_fingerprint, native_cwd or target)
-            if prior is not None:
+            if (prior is not None and not skill_links and
+                    set(prior['checks']['codex'].get('private_skills', {})) == set(entry.get('private_skills', {}))):
+                # A user-level disable or name collision can change discovery
+                # without changing the checkout or its native configuration.
+                verify_private_skills(entry, target, registry['clients']['codex'])
                 return prior
         run(command + ['--apply'], source)
         run(command + ['--check'], source)
@@ -270,6 +331,10 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
         for src, dest, current in copies:
             if current is None:
                 context_io.atomic_write(dest, src.read_bytes(), expected=None)
+        for dest, package in skill_links.items():
+            context_io.guard(dest.parent)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.symlink_to(package, target_is_directory=True)
         decl = read_json(declaration)
         checks = {}
         for client, executable in registry['clients'].items():
@@ -294,6 +359,8 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                 raise RuntimeError('native context loading failed: ' + client + ' (' + ', '.join(hard) + ')')
             if not checks[client]['team_guidance']:
                 warnings.append('team guidance not fully loaded: ' + client)
+            if client == 'codex' and entry.get('private_skills'):
+                checks[client]['private_skills'] = verify_private_skills(entry, target, executable)
         receipt = {'status':'PASS', 'verified_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),
                    'cwd':str(target), 'source':str(source), 'common_dir':common,
                    'target_head':analysis['target_revision'], 'pin':entry['pin'],
@@ -310,7 +377,8 @@ def prepare(registry_path, cwd, *, receipt_name="botmux-startup.json", native_cw
                                                              analysis['target_revision'], team_hash,
                                                              registry['clients'], copies, installed['actual'])
         output = target / '.ai-workbench/project-context' / receipt_name
-        context_io.atomic_write(output, json.dumps(receipt, indent=2)+'\n')
+        if persist_receipt:
+            context_io.atomic_write(output, json.dumps(receipt, indent=2)+'\n')
         # Verified upgrades and normal branch changes remain visible in the
         # receipt; they do not require a terminal notice on every launch.
         if analysis['status'] != 'CURRENT' and analysis['reason'] != 'different_revision':
