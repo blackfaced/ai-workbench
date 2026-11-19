@@ -11,6 +11,7 @@ import shlex
 import stat
 import sys
 import tempfile
+import time
 
 
 def test_invocation(args):
@@ -1250,7 +1251,61 @@ def decide(command, rules, scripts=(), allow_ssh=True, allow_loop=True):
     return None, None
 
 
-def main():
+def open_timing_log():
+    try:
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK
+        owner = os.getuid()
+        state_dir = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
+        log_dir = state_dir / 'ai-workbench'
+        log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(log_dir / 'claude-confirm-timing.jsonl', flags, 0o600)
+    except (AttributeError, OSError, RuntimeError, ValueError):
+        return None
+
+    try:
+        info = os.fstat(fd)
+        if (stat.S_ISREG(info.st_mode) and info.st_uid == owner and info.st_nlink == 1
+                and not info.st_mode & 0o077):
+            return fd
+    except OSError:
+        pass
+    os.close(fd)
+    return None
+
+
+def run_hook():
+    if os.environ.get('AIWB_CLAUDE_CONFIRM_TIMING') != '1' or sys.argv[1:] == ['--check-policy']:
+        return main()
+
+    started_ns = time.monotonic_ns()
+    started_unix_ns = time.time_ns()
+    fd = open_timing_log()
+    if fd is None:
+        return main()
+
+    def record(stage, *, started=False):
+        now_ns = started_ns if started else time.monotonic_ns()
+        row = {
+            'pid': os.getpid(),
+            'ppid': os.getppid(),
+            'stage': stage,
+            'time_unix_ns': started_unix_ns if started else time.time_ns(),
+            'elapsed_ms': round((now_ns - started_ns) / 1_000_000, 3),
+        }
+        try:
+            os.write(fd, (json.dumps(row, separators=(',', ':')) + '\n').encode('ascii'))
+        except OSError:
+            pass
+
+    try:
+        record('process_start', started=True)
+        return main(record)
+    finally:
+        record('exit')
+        os.close(fd)
+
+
+def main(timing=None):
     if sys.argv[1:] == ['--check-policy']:
         try:
             query_policy()
@@ -1261,7 +1316,12 @@ def main():
         return 0
     updated = None
     try:
-        event = json.load(sys.stdin)
+        if timing is not None:
+            timing('stdin_wait')
+        raw_event = sys.stdin.read()
+        if timing is not None:
+            timing('stdin_read')
+        event = json.loads(raw_event)
         tool = event.get('tool_name')
         if tool not in {'Bash', 'PowerShell'}:
             return 0
@@ -1276,9 +1336,19 @@ def main():
               'permissionDecisionReason': 'Recognized test, read-only inspection, or configured query with filters.'}
     if updated is not None:
         result['updatedInput'] = dict(event['tool_input'], command=updated)
-    print(json.dumps({'hookSpecificOutput': result}, ensure_ascii=False))
+    output = json.dumps({'hookSpecificOutput': result}, ensure_ascii=False)
+    if timing is not None:
+        timing('result_write_start')
+    print(output)
+    if timing is not None:
+        try:
+            sys.stdout.flush()
+        except OSError:
+            pass
+        else:
+            timing('result_written')
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(run_hook())
