@@ -73,19 +73,26 @@ Profile（`profiles/*.json`）声明以下组件：
 
 ### Claude 命令确认 hook
 
-这是可选组件，不随全量环境维护自动启用。先审阅 [hook 说明](../claude-confirm/README.md)，再使用目标机器的 Profile：
+Claude hook 需要显式安装。先审阅 [hook 说明](../claude-confirm/README.md)，再用通用 `claude-hooks` Profile 安装或检查 Bash hook。
 
 ```sh
-python3 tools/environment/env.py plan --profile work-mac --only claude-confirm
-python3 tools/environment/env.py apply --profile work-mac --only claude-confirm
-python3 tools/environment/env.py check --profile work-mac --only claude-confirm
-python3 tools/environment/env.py restore --backup <apply 输出的备份名> --dry-run
-python3 tools/environment/env.py restore --backup <apply 输出的备份名>
+python3 tools/environment/env.py plan --profile claude-hooks --only claude-confirm
+python3 tools/environment/env.py apply --profile claude-hooks --only claude-confirm
+python3 tools/environment/env.py check --profile claude-hooks --only claude-confirm
 ```
 
-`home-mac` 和 `work-linux` 也可显式选用。安装会在用户数据目录写入脚本，并向 Claude 用户设置追加一个 hook 组；已有 hook 不被移除。本组件只放行识别出的 Python 测试命令，其余调用交由 Claude 权限和其他 hook 判断。JSON 会重新排版，但其他字段的值保持不变。设置文件不是有效 JSON、存在重复键、目标为符号链接或已有冲突注册时，组件阻断并报告。备份目录权限为 0700，Claude 设置备份为 0600。
+Bash hook 对识别出的 Python 测试、文件检查、配置的只读查询和直接脚本文件调用返回 `allow`。它也支持 Git 检查、常规 fetch 和 push、分支和工作树创建，以及 Helm 检查、本地模板渲染和查询。其他调用由 Claude Code 的权限模式、规则和其他 hook 决定。通用 Profile 也提供独立的 `claude-mcp-confirm` 组件。它保留既有 MCP hook 的注册兼容性，消息和提及仍由 Claude Code 处理。
 
-回滚只移除本组件的 hook 组和受管脚本，保留之后新增的其他设置。受管组被修改或重复时，即使使用 `--force` 也不删除该组或脚本，并以非零退出；脚本被用户修改时默认不覆盖。真实客户端加载与交互效果需在新会话单独验证。
+安装会在用户数据目录写入脚本，并向 Claude 用户设置追加受管 hook 组。JSON 会重新排版，其他字段和 hook 保持原值。设置文件无效、存在重复键、目标为符号链接或注册冲突时，安装会报错。备份目录权限为 `0700`，Claude 设置备份为 `0600`。记录 `apply` 输出的备份名，用于预览和执行回滚。
+
+```sh
+python3 tools/environment/env.py restore --backup BACKUP_NAME --dry-run
+python3 tools/environment/env.py restore --backup BACKUP_NAME
+```
+
+回滚会撤销本次对受管 hook 组和脚本的变更，并保留之后新增的其他设置。受管组被修改或重复时，回滚会以非零状态退出，即使用 `--force` 也会保留该组和脚本。用户修改过的脚本默认保留。真实客户端加载与交互效果需在新会话单独验证。
+
+排查 Bash hook 耗时时，用 `AIWB_CLAUDE_CONFIRM_TIMING=1 claude` 启动会话。计时默认关闭。开启后，hook 将进程号、阶段和时间追加到状态目录下的 `ai-workbench/claude-confirm-timing.jsonl`，日志内容限于计时元数据。状态目录由 `XDG_STATE_HOME` 指定，默认是 `~/.local/state`。日志不可写时，hook 继续按正常规则处理调用。
 
 ### 既有 Profile 的 Skill 单副本布局（非新项目推荐）
 

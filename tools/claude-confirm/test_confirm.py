@@ -213,6 +213,62 @@ class HookTests(unittest.TestCase):
         self.assertEqual(decision('ls'), 'allow')
         self.assertEqual(decision('echo pytest'), 'allow')
 
+
+@unittest.skipUnless(hasattr(os, 'O_NOFOLLOW') and hasattr(os, 'getuid'), 'requires POSIX file checks')
+class TimingTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        state = Path(directory.name) / 'state'
+        self.log = state / 'ai-workbench' / 'claude-confirm-timing.jsonl'
+        self.env = dict(os.environ, HOME=directory.name, XDG_STATE_HOME=str(state))
+        self.env.pop('AIWB_CLAUDE_CONFIRM_TIMING', None)
+
+    def invoke_hook(self, command, enabled=None, args=()):
+        env = self.env.copy()
+        if enabled is not None:
+            env['AIWB_CLAUDE_CONFIRM_TIMING'] = enabled
+        event = {'tool_name': 'Bash', 'tool_input': {'command': command}}
+        return subprocess.run([sys.executable, str(HOOK), *args], input=json.dumps(event),
+                              env=env, text=True, capture_output=True, timeout=5, check=True).stdout
+
+    def test_timing_requires_explicit_opt_in(self):
+        stdout = self.invoke_hook('git status --short')
+        self.assertEqual(json.loads(stdout)['hookSpecificOutput']['permissionDecision'], 'allow')
+        self.assertEqual(self.invoke_hook('git status --short', '0'), stdout)
+        self.assertFalse(self.log.parent.exists())
+
+    def test_timing_records_stages_and_preserves_decisions(self):
+        command = 'git status --short'
+        self.assertEqual(self.invoke_hook(command, '1'), self.invoke_hook(command))
+        self.assertEqual(self.invoke_hook('unrecognized-command', '1'), '')
+        rows = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual([row['stage'] for row in rows], [
+            'process_start', 'stdin_wait', 'stdin_read', 'result_write_start', 'result_written', 'exit',
+            'process_start', 'stdin_wait', 'stdin_read', 'exit',
+        ])
+        for call in (rows[:6], rows[6:]):
+            elapsed = [row['elapsed_ms'] for row in call]
+            self.assertEqual(elapsed[0], 0)
+            self.assertEqual(elapsed, sorted(elapsed))
+            self.assertEqual(len({row['pid'] for row in call}), 1)
+            for row in call:
+                self.assertEqual(set(row), {'pid', 'ppid', 'stage', 'time_unix_ns', 'elapsed_ms'})
+        self.assertEqual(self.log.stat().st_mode & 0o077, 0)
+
+    def test_unavailable_log_preserves_decision(self):
+        self.log.parent.mkdir(parents=True)
+        target = self.log.with_name('existing.jsonl')
+        target.write_text('keep this')
+        self.log.symlink_to(target)
+        self.assertEqual(self.invoke_hook('git status --short', '1'), self.invoke_hook('git status --short'))
+        self.assertEqual(target.read_text(), 'keep this')
+
+    def test_policy_check_does_not_start_timing(self):
+        self.assertIn('Read-query policy valid', self.invoke_hook('', '1', args=('--check-policy',)))
+        self.assertFalse(self.log.parent.exists())
+
+
 SPEC = importlib.util.spec_from_file_location('readonly_queries', HOOK)
 
 policy = importlib.util.module_from_spec(SPEC)
