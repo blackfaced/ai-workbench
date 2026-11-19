@@ -26,6 +26,7 @@ This repository is personal and public-facing. Nothing produced here may disclos
 - Work repositories, work machines, and work chat/document sources are not inputs for this repository. Do not copy their code, docs, configs, logs, or data here, and do not paste them into commits, issues, PRs, or artifacts derived from this repository.
 - Generalize instead of importing: a transferable lesson may be described by its mechanism (what failed, why, how it was verified) with all project identifiers, exact hostnames, and business specifics removed. If a lesson cannot be de-identified, keep it in the owning work environment rather than here.
 - When working in this repository, do not surface work context in replies, file contents, commit messages, or examples. Use neutral placeholders (`example-service`, `service-a`, `<internal-host>`) instead of real names.
+- Before confirming a squash merge, review the final commit title and body. Remove any `Co-authored-by` trailer containing a work email or other employer-identifying information. With `gh pr merge --squash`, pass the reviewed title with `--subject` and any reviewed body with `--body-file`.
 - This boundary overrides convenience: if a task cannot be completed without work material, stop and keep the work-side part in the work environment.
 
 ## Reusable knowledge boundary
