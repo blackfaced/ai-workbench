@@ -40,7 +40,7 @@ def arm(registry_path, target, entry, options, client):
 
 def prepare(registry_path, target, options=None, desktop=False):
     target=Path(target).resolve(strict=True)
-    receipt=context.prepare(registry_path,target,receipt_name='native-worktree-startup.json',native_cwd=target,client_options=options)
+    receipt=context.prepare(registry_path,target,receipt_name='native-worktree-startup.json',native_cwd=target,client_options=options,persist_receipt=False)
     if receipt['status']!='PASS':raise RuntimeError('native worktree repository is not registered')
     if desktop:
         registry=context.read_json(registry_path);entry=registry['projects'][receipt['common_dir']]
@@ -52,7 +52,10 @@ def prepare(registry_path, target, options=None, desktop=False):
         decl=context.read_json(entry['declaration']);team=(target/'AGENTS.md').read_text().strip()
         checks={'project_instructions':json.dumps(decl['instructions'],ensure_ascii=False)[1:-1] in developer,'rule_pin':entry['pin'] in developer,'team_guidance':json.dumps(team,ensure_ascii=False)[1:-1] in user}
         if not all(checks.values()):raise RuntimeError('Desktop native context loading failed: '+', '.join(k for k,v in checks.items() if not v))
+        if entry.get('private_skills'):
+            checks['private_skills'] = context.verify_private_skills(entry, target, binary)
         receipt['checks']['desktop']=checks
+        receipt['verified_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
     context_io.atomic_write(target/'.ai-workbench/project-context/native-worktree-startup.json',json.dumps(receipt,indent=2)+'\n')
     return receipt
 

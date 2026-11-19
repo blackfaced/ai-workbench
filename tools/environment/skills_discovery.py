@@ -72,10 +72,11 @@ def reap(proc):
 
 
 def main(argv):
-    if len(argv) != 1:
-        sys.stderr.write("用法：skills_discovery.py <codex|traecli>\n")
+    if len(argv) not in (1, 2):
+        sys.stderr.write("用法：skills_discovery.py <codex|traecli> [project-root]\n")
         return 2
     binary = argv[0]
+    project = os.path.realpath(argv[1]) if len(argv) == 2 else None
     try:
         proc = subprocess.Popen([binary, "app-server"],
                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -93,7 +94,8 @@ def main(argv):
                                        "title": "ai-workbench-env",
                                        "version": "1.0.0"}}},
             {"jsonrpc": "2.0", "method": "initialized", "params": {}},
-            {"jsonrpc": "2.0", "id": 2, "method": "skills/list", "params": {}},
+            {"jsonrpc": "2.0", "id": 2, "method": "skills/list",
+             "params": {"cwds": [project]} if project else {}},
         ):
             proc.stdin.write((json.dumps(payload) + "\n").encode("utf-8"))
         proc.stdin.flush()
@@ -112,13 +114,21 @@ def main(argv):
         return 5
 
     lines, failures = [], []
-    for group in answer["result"]["data"]:
+    groups = answer["result"]["data"]
+    if project:
+        groups = [g for g in groups if g.get("cwd") and os.path.realpath(g["cwd"]) == project]
+        if not groups:
+            sys.stderr.write("skills/list 未返回目标工作区的清单\n")
+            return 6
+    for group in groups:
         # errors 与 skills 是并列的：响应成功不代表这份清单是全的。
         # 有 Skill 解析失败却照常输出剩下的，等于把「少了几项」伪装成「就这几项」。
         for problem in group.get("errors") or []:
             failures.append("%s：%s" % (group.get("cwd", "?"), json.dumps(problem, ensure_ascii=False)
                                         if not isinstance(problem, str) else problem))
         for skill in group.get("skills", []):
+            if project and not skill.get("enabled", True):
+                continue
             lines.append("%s\t%s\n" % (skill["name"], skill["path"]))
     if failures:
         sys.stderr.write("%s skills/list 报告 %d 项解析失败，这份清单不完整：\n  %s\n"
