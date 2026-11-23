@@ -22,7 +22,7 @@ Verify the destination repo matches the task and the base is available; create a
 
 ## Continue and report
 
-For a Botmux handoff through an ordinary Feishu group, follow [prepare, continue, and return in one topic](references/handoff.md#botmux-topic).
+For a Botmux handoff through Feishu, follow [prepare, continue, and return in one topic](references/handoff.md#botmux-topic).
 
 For prepare-only, leave the verified worktree and compact prompt ready and report the exact resume instruction. If remote execution is explicitly authorized, use a supported native client command with the confirmed model/permissions, verify launch and record its session/job ID. When launching is unsupported, report prepared but not started rather than guessing commands or claiming remote execution. Tell the remote worker how to return the result fields in the handoff record and the test/effect boundary.
 
