@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy to config.json (git-ignored) and fill in your own values. Never commit real credentials.",
+  "providers": {
+    "default": {
+      "base_url": "https://gateway.example/api",
+      "auth_token_env": "CC_DISPATCH_AUTH_TOKEN",
+      "model": "model-id-placeholder"
+    }
+  }
+}

@@ -3,3 +3,6 @@
 
 # Regenerate the local code graph from the current checkout.
 .codebase-memory/
+
+# Local cc-dispatch provider config (contains credentials / machine-specific addresses).
+tools/cc-dispatch/config.json
