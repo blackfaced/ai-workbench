@@ -133,7 +133,7 @@ def main(argv=None):
         print(json.dumps({'status':'unverified','reason':'profile_unavailable_or_invalid',
                           'question_sources':[], 'side_effects':[]}))
         return 2
-    print(json.dumps(report,ensure_ascii=False,sort_keys=True))
+    print(json.dumps(report,ensure_ascii=True,sort_keys=True))
     return 0 if report['status']=='present' and all(r['action']=='not_needed' for r in report['sources']) else 2
 
 

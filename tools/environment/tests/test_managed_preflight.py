@@ -133,5 +133,11 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual((code,result['status']),(2,'unverified'))
         self.assertEqual(result['question_sources'],[])
 
+    def test_unicode_keys_are_safe_on_ascii_stdout(self):
+        self.source.write_text(json.dumps({'café':SECRET}))
+        self.profile['sources'][0]['fields']=[{'name':'token','keys':['café'],'secret':True}]
+        code,result=self.run_cli(env=dict(os.environ,PYTHONIOENCODING='ascii'))
+        self.assertEqual((code,result['status']),(0,'present'))
+
 
 if __name__ == '__main__': unittest.main()
