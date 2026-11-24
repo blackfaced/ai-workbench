@@ -1351,6 +1351,11 @@ def main():
     write(os.path.join(root, "setup-aiwb-distribution.log"), setup.stdout)
     check("setup-aiwb 项目接入与既有集成测试指引完整分发、升级和恢复",
           setup.returncode == 0, setup.stdout if setup.returncode else "")
+    preflight = subprocess.run([sys.executable, '-B', os.path.join(HERE, 'test_managed_preflight.py')],
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+    write(os.path.join(root, 'managed-preflight.log'), preflight.stdout)
+    check('Managed preflight: presence, redaction and question decisions', preflight.returncode == 0,
+          preflight.stdout if preflight.returncode else '')
     inline = subprocess.run([sys.executable, os.path.join(HERE, "test_inline_skill_metadata.py")],
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
     write(os.path.join(root, "inline-skill-metadata.log"), inline.stdout)
