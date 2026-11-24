@@ -165,10 +165,11 @@ def upstream_baseline_contract():
         require(required in dependency, "dependency contract requires " + required)
     require("Continue only independent requests such as a guide-only update" in body,
             "a missing project dependency blocks only dependent setup")
-    require("docs/agents/issue-tracker.md" in context and "docs/agents/domain.md" in context,
-            "project context reuses tracker and Domain Docs outputs")
-    require(upstream["revision"] == "5c89081d4bbeb3d039a42093653f90bb698d780e"
-            and upstream["tree_digest"] == "ec07f82df54064d01aa1648670e81da41e2cbdc2"
+    require("docs/agents/issue-tracker.md" in context and "docs/agents/domain.md" in context
+            and "`GLOSSARY.md` or `GLOSSARY-MAP.md`" in context,
+            "project context reuses tracker and upstream glossary outputs")
+    require(upstream["revision"] == "abeeaf95660ba9e8b7c753eb38f441ca707a8823"
+            and upstream["tree_digest"] == "b644b684781fd5baae57f6be000a180a4d4448d7"
             and upstream["source_path"] == "skills/engineering/setup-matt-pocock-skills",
             "upstream setup source is pinned with its complete path and tree digest")
     require("`.agents/skills/setup-matt-pocock-skills/`" in upstream["note"]

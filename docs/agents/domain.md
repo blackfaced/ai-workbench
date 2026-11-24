@@ -1,10 +1,10 @@
 # Domain docs
 
-The root context describes personal environment maintenance. Historical orchestrator ADRs are marked retired; they are not current implementation guidance.
+The root glossary describes personal environment maintenance. Historical orchestrator ADRs are marked retired; they are not current implementation guidance.
 
 ## Before exploring
 
-- Read root `CONTEXT.md` for the project glossary and domain language.
+- Read root `GLOSSARY.md` for the project glossary and domain language.
 - Read relevant decisions under `decisions/` before proposing or changing architecture.
 - Read `AGENTS.md` for repository-wide collaboration rules.
 

@@ -29,7 +29,7 @@ See the [environment guide](tools/environment/README.md) for component ownership
 - [tools/](tools/README.md): environment tooling and optional integration references.
 - [workflows/](workflows/README.md): usage guides and optional workflow references.
 - [decisions/](decisions/README.md): current scope and historical architecture decisions.
-- [CONTEXT.md](CONTEXT.md): environment terminology.
+- [GLOSSARY.md](GLOSSARY.md): environment terminology.
 
 Active work belongs in the [issue tracker](docs/agents/issue-tracker.md). The [old evaluation notes](todo/README.md) are historical, not an active task queue.
 

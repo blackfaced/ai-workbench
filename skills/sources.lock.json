@@ -44,7 +44,7 @@
       "depends_on": [
         "writing-for-agents"
       ],
-      "note": "第一方通用技术文档编辑 Skill；正文与 clients/ 元数据为真源。上游 writing-for-agents 自行安装，本仓仅引用。STE 默认借鉴原则，不宣称完整合规；安装检查与模型行为验证分别报告。"
+      "note": "第一方通用技术文档编辑 Skill；正文与 clients/ 元数据为真源。上游 writing-for-agents 按项目启用，固定来源单独登记。STE 默认借鉴原则，不宣称完整合规；安装检查与模型行为验证分别报告。"
     },
     {
       "name": "steelman-grill",
@@ -107,14 +107,41 @@
       "license": "MIT"
     },
     {
+      "name": "retro",
+      "source": "https://github.com/mattpocock/skills",
+      "source_path": "skills/engineering/retro",
+      "revision": "5863806dd4e15c63174bee4e7515a4256792ecfa",
+      "tree_digest": "335c1862a43da9d629abafdb79ca0c0de118be08",
+      "verified": true,
+      "clients": ["claude", "codex"],
+      "depends_on": ["writing-for-agents"],
+      "required_resources": ["SKILL.md", "agents/openai.yaml"],
+      "license": "MIT",
+      "evidence_date": "2026-11-24",
+      "note": "上游显式调用 Skill。AIWB 当前检出目录新建 .claude/skills/retro，Codex 复用已有共享入口。两份完整 Git tree 均匹配固定来源，Claude Code 原生命令清单及终端和桌面版 Codex 的原生 Skill 清单均通过。撤回时只移除本次新建且仍匹配该 tree 的项目副本和本地 Git exclude 条目。实际会话复盘未运行。"
+    },
+    {
+      "name": "writing-for-agents",
+      "source": "https://github.com/mattpocock/skills",
+      "source_path": "skills/productivity/writing-for-agents",
+      "revision": "5863806dd4e15c63174bee4e7515a4256792ecfa",
+      "tree_digest": "ad2925850efb8973a72d2e666f7a975f9a2d4a9b",
+      "verified": true,
+      "clients": ["claude", "codex"],
+      "required_resources": ["SKILL.md", "SKILL-MECHANICS.md", "agents/openai.yaml"],
+      "license": "MIT",
+      "evidence_date": "2026-11-24",
+      "note": "AIWB 当前检出目录新建 .agents/skills/writing-for-agents，终端和桌面版 Codex 均发现该项目入口。Claude Code 使用已有个人入口，原生命令清单已核验。两份完整 Git tree 均匹配固定来源。撤回时只移除本次新建且仍匹配该 tree 的项目副本和本地 Git exclude 条目。模型调用和其他工作树未验证。"
+    },
+    {
       "name": "setup-matt-pocock-skills",
       "source": "https://github.com/mattpocock/skills",
       "source_path": "skills/engineering/setup-matt-pocock-skills",
-      "revision": "5c89081d4bbeb3d039a42093653f90bb698d780e",
-      "tree_digest": "ec07f82df54064d01aa1648670e81da41e2cbdc2",
+      "revision": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
+      "tree_digest": "b644b684781fd5baae57f6be000a180a4d4448d7",
       "verified": false,
       "clients": [],
-      "note": "setup-aiwb 的被动项目工程基线依赖；上游维护 tracker、triage 与 Domain Docs setup 正文和资源。项目所有者可直接准备固定包或使用可选管理器，在目标仓库 `.agents/skills/setup-matt-pocock-skills/` 用随 Skill 分发的只读脚本核对固定 Git tree，无需管理器登记。缺失或不匹配时阻断基线 setup，不回退用户全局同名副本。AIWB 不内置或维护上游正文。"
+      "note": "setup-aiwb 的被动项目工程基线依赖；上游维护 tracker、triage 与采用 GLOSSARY.md 的 Domain Docs setup 正文和资源。项目所有者可直接准备固定包或使用可选管理器，在目标仓库 `.agents/skills/setup-matt-pocock-skills/` 用随 Skill 分发的只读脚本核对固定 Git tree，无需管理器登记。缺失或不匹配时阻断基线 setup，不回退用户全局同名副本。AIWB 不内置或维护上游正文。"
     },
     {
       "name": "deliver-spec",
@@ -235,29 +262,29 @@
     {
       "name": "archify",
       "source": "https://github.com/tt-a1i/archify",
-      "revision": "208acba8d412335185b2056fedf54b3405df43fb",
+      "revision": "af3aaf3c36762f2afb62a4a09533f6c7273b07e5",
       "verified": false,
       "clients": [
         "shared(~/.agents/skills)"
       ],
-      "observed_version": "3.2.0",
-      "evidence_date": "2026-11-12",
-      "skill_folder_hash": "39069dd190f574064fe410aa3af1b6dfd98a522c",
-      "note": "原共享目录已升级到 v3.2.0 的固定 Git 子树。doctor 和紧凑时序图的 finalize 及浏览器检查通过。包内异步时序图示例在六种视口/主题组合下纵向溢出。",
+      "observed_version": "3.3.0",
+      "evidence_date": "2026-11-24",
+      "skill_folder_hash": "d3e9c89dd9510a64c1114d685b68ebf1887f135e",
+      "note": "原共享安装已升级到 v3.3.0，完整 Git tree 匹配。doctor、包内 drilldown-api 时序图的 standard finalize 和浏览器检查通过。其他图型与此前失败的示例未在此版本重测。",
       "source_path": "archify",
-      "license": "MIT"
+      "license": "Apache-2.0"
     },
     {
       "name": "diagram-design",
       "source": "https://github.com/cathrynlavery/diagram-design",
-      "revision": "f2496acbde9f45ccb55c24d4f75210c8a1355df8",
+      "revision": "0eeda75a708f419560d5e032693618bb9954f17b",
       "verified": false,
       "clients": [],
-      "observed_version": "2.6.153",
-      "evidence_date": "2026-11-12",
-      "note": "本地保留的完整包已核对上游子树并附根 LICENSE，使用包内示例通过结构自检和 SVG 导出。2.6.91 的项目客户端发现属于历史结果，当前版本的项目激活及新会话尚未验证。",
+      "observed_version": "2.6.174",
+      "evidence_date": "2026-11-24",
+      "note": "本地保留包已升级，完整上游子树与附带的根 LICENSE 均已核对。包内 Git graph 与 schedule network 通过结构自检，Git graph 通过系统字体 SVG 导出。2.6.91 的项目客户端发现属于历史结果，当前版本尚未验证新会话。",
       "source_path": "skills/diagram-design",
-      "tree_digest": "7c64ced4ca34f0e77fd4f3c5f77421cf59de3762",
+      "tree_digest": "c3459c1167a9e09c5e983d255d5a28928b4983d0",
       "license": "MIT"
     },
     {
@@ -278,13 +305,13 @@
       "name": "memorynexus-task-memory",
       "source": "https://github.com/blackfaced/MemoryNexus",
       "source_path": "integrations/task-memory/memorynexus-task-memory",
-      "revision": "e3a6e863ed650f42bf05c8af2b633bbaee9a8efa",
+      "revision": "588105469069b0cfb735515beb5b2cb05eb6e536",
       "verified": false,
       "clients": [],
       "license": "MIT",
-      "evidence_date": "2026-11-12",
-      "note": "固定 main 上的 Skill 来源。用上游安装器在原包旁安装并验证新版，复用已核验的二进制，既有绑定仍按原版本运行。2026-10-29 的客户端往返对应旧包；当前包的客户端接入需按项目验证。",
-      "tree_digest": "efd89a73951e4382c1b82a14c2d4bcec711ff069"
+      "evidence_date": "2026-11-24",
+      "note": "上游安装器在原版本旁安装新版，配套 CLI 从同一提交构建。独立 verify 与上游 161 项隔离 workflow 测试通过。既有任务继续使用原绑定。2026-10-29 的客户端往返对应旧包，新版客户端接入需按项目验证。",
+      "tree_digest": "41bbe506c339fe74d9fd74d1962dd4374164744a"
     },
     {
       "name": "memorynexus-task-entry",

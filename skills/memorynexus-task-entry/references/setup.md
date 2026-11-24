@@ -48,8 +48,7 @@ AIWB 只接线，Lens 规则仍由 MemoryNexus 维护。可选规则依赖的仓
 ## 运行合同和验证
 
 使用 owner 提供且验证过的 MemoryNexus 版本包及 pinned Python/binary/package 身份。
-已验证兼容的 helper 合同见固定上游源
-[日常接口](https://github.com/blackfaced/MemoryNexus/blob/e3a6e863ed650f42bf05c8af2b633bbaee9a8efa/integrations/task-memory/memorynexus-task-memory/references/daily-interface.md)。
+按绑定里的运行包版本查阅其随附的 `references/daily-interface.md`。新准备的运行包可查阅 [固定上游日常接口](https://github.com/blackfaced/MemoryNexus/blob/588105469069b0cfb735515beb5b2cb05eb6e536/integrations/task-memory/memorynexus-task-memory/references/daily-interface.md)。
 该上游运行包保留 MIT 许可证，AIWB 不重分发其实现；它的版本身份与本适配层源身份分别记录。
 `read`（含 record_ids）以及 `stage --action record|correct|retract` / `apply` 的 schema、授权、幂等和 pending 语义由原合同负责，本 Skill 仅映射用户意图。
 
