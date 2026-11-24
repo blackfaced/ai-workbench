@@ -24,13 +24,22 @@ class InstallationTests(unittest.TestCase):
         # rather than requiring an unrelated historical object or fetching it.
         cls.source_tmp = tempfile.TemporaryDirectory()
         cls.addClassCleanup(cls.source_tmp.cleanup)
-        cls.source = Path(cls.source_tmp.name).resolve() / 'source'
+        root = Path(cls.source_tmp.name).resolve()
+        cls.bin_dir = root / 'bin'
+        cls.bin_dir.mkdir()
+        # Expose only fixture dependencies, never a host Claude CLI or config.
+        for name, executable in (('git', shutil.which('git')), ('python3', sys.executable)):
+            (cls.bin_dir / name).symlink_to(executable)
+        cls.base_env = {'HOME': str(root), 'PATH': str(cls.bin_dir),
+                        'TMPDIR': str(root), 'PYTHONDONTWRITEBYTECODE': '1',
+                        'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': os.devnull}
+        cls.source = root / 'source'
         cls.source.mkdir()
         for name in SOURCE_FILES:
             target = cls.source / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(REPO / name, target)
-        env = dict(os.environ, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
+        env = dict(cls.base_env, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
                    GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.com',
                    GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.com')
         for key in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_OBJECT_DIRECTORY',
@@ -50,8 +59,7 @@ class InstallationTests(unittest.TestCase):
         self.home.mkdir()
         self.cwd = Path(self.tmp.name) / 'unrelated'
         self.cwd.mkdir()
-        self.env = dict(os.environ, HOME=str(self.home))
-        self.env.pop('CC_DISPATCH_CONFIG', None)
+        self.env = dict(self.base_env, HOME=str(self.home))
         self.entry = self.home / '.local/bin/cc-dispatch'
         self.skill = self.home / '.claude/skills/cc-dispatch'
 
@@ -67,8 +75,8 @@ class InstallationTests(unittest.TestCase):
         """Exercise the CLI with an external edit at a filesystem audit boundary."""
         source = Path(self.tmp.name).resolve() / ('upgrade-source-' + event)
         subprocess.run(['git', 'clone', '--quiet', '--no-hardlinks', '--no-checkout',
-                        str(self.source), str(source)], check=True)
-        tree = subprocess.check_output(['git', '-C', str(source), 'rev-parse', self.pin + '^{tree}'], text=True).strip()
+                        str(self.source), str(source)], env=self.env, check=True)
+        tree = subprocess.check_output(['git', '-C', str(source), 'rev-parse', self.pin + '^{tree}'], env=self.env, text=True).strip()
         env = dict(self.env, GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.com',
                    GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.com')
         pin = subprocess.check_output(['git', '-C', str(source), 'commit-tree', tree, '-p', self.pin],
@@ -221,14 +229,31 @@ class InstallationTests(unittest.TestCase):
         self.assertNotEqual(self.cli('apply').returncode, 0)
         self.assertEqual(self.entry.read_text(), '#!/bin/sh\nexit 42\n')
 
+    def use_fake_cli(self):
+        fake_bin = Path(self.tmp.name).resolve() / 'fake-bin'
+        fake_bin.mkdir()
+        fake = fake_bin / 'claude'
+        fake.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+        fake.chmod(0o755)
+        self.env['PATH'] = str(fake_bin) + os.pathsep + self.env['PATH']
+        return fake
+
     def test_external_configuration_is_preserved_and_used_from_unrelated_cwd(self):
         config = self.home / '.claude/dispatch/config.json'
         config.parent.mkdir(parents=True)
         content = '{"providers":{"default":{"base_url":"https://gateway.example/api","auth_token":"test-secret-never-print","model":"test-model"}}}'
         config.write_text(content)
         self.assertEqual(self.cli('apply').returncode, 0)
+        missing = self.run_entry('check')
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn('找不到可用的 claude 二进制', missing.stderr)
+        self.assertNotIn('test-secret-never-print', missing.stdout + missing.stderr)
+        fake = self.use_fake_cli()
         checked = self.run_entry('check')
         self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertIn('binary     : ' + str(fake), checked.stdout)
+        self.assertIn('base_url   : https://gateway.example/api', checked.stdout)
+        self.assertIn('model      : test-model', checked.stdout)
         self.assertNotIn('test-secret-never-print', checked.stdout + checked.stderr)
         self.assertEqual(config.read_text(), content)
         self.assertEqual(self.cli('apply').returncode, 0)
@@ -238,12 +263,7 @@ class InstallationTests(unittest.TestCase):
         config = self.home / '.claude/dispatch/config.json'
         config.parent.mkdir(parents=True)
         config.write_text('{"providers":{"default":{"base_url":"https://gateway.example/api","auth_token":"test-secret","model":"test-model"}}}')
-        fake_bin = Path(self.tmp.name).resolve() / 'fake-bin'
-        fake_bin.mkdir()
-        fake = fake_bin / 'claude'
-        fake.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
-        fake.chmod(0o755)
-        self.env['PATH'] = str(fake_bin) + os.pathsep + self.env['PATH']
+        self.use_fake_cli()
         self.assertEqual(self.cli('apply').returncode, 0)
         result = self.run_entry('start', str(self.cwd), 'test-task', 'read only')
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -261,8 +281,8 @@ class InstallationTests(unittest.TestCase):
 
     def test_install_uses_git_objects_not_worktree_files_and_never_fetches(self):
         source = Path(self.tmp.name).resolve() / 'source'
-        subprocess.run(['git', 'clone', '--quiet', '--no-hardlinks', '--no-checkout', str(self.source), str(source)], check=True)
-        subprocess.run(['git', '-C', str(source), 'remote', 'set-url', 'origin', 'https://invalid.example/no-network'], check=True)
+        subprocess.run(['git', 'clone', '--quiet', '--no-hardlinks', '--no-checkout', str(self.source), str(source)], env=self.env, check=True)
+        subprocess.run(['git', '-C', str(source), 'remote', 'set-url', 'origin', 'https://invalid.example/no-network'], env=self.env, check=True)
         # A missing worktree payload and ignored credential must not affect export.
         ignored = source / 'tools/cc-dispatch/config.json'
         ignored.parent.mkdir(parents=True)
@@ -271,7 +291,7 @@ class InstallationTests(unittest.TestCase):
         bin_dir = Path(self.tmp.name).resolve() / 'bin'
         bin_dir.mkdir()
         audit = bin_dir / 'git-commands'
-        real_git = shutil.which('git')
+        real_git = shutil.which('git', path=self.env['PATH'])
         guard = bin_dir / 'git'
         guard.write_text('#!/bin/sh\n'
                          '[ "$GIT_NO_LAZY_FETCH" = 1 ] || exit 91\n'
