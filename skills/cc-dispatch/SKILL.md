@@ -1,13 +1,21 @@
 ---
 name: cc-dispatch
-description: 跨目录/跨仓派发 Claude Code 会话：把任务交给另一个仓库的后台会话执行，或续跑、查看、追问已有会话。用户说「让 X 仓的会话去做 Y」「分发给别的目录」「起个会话查一下」「那边跟进」「看看有哪些 worker」时使用。
+description: Claude Code 跨目录/跨仓会话的默认创建、恢复与查看入口；用户选择 Claude 或未指定其他 harness 时使用。已核验 live peer 的后续消息走原生工具；同仓 subagent 和简单只读任务留在当前会话。
 ---
 
 # cc-dispatch
 
 用一个 **router** 会话把任务派发到其他目录的 **worker** 会话，靠跨会话消息做多轮。
 
-工具在 ai-workbench：`tools/cc-dispatch/cc-dispatch`。
+全局入口：`cc-dispatch`（`~/.local/bin/cc-dispatch`），从任意仓库使用。
+
+## 路由选择
+
+- 用户显式选择优先于默认：选择 Codex、Trae 等 harness，或指定 Claude 原生通信 / 原生 resume 时，沿用所选流程，核验其目标身份与实际能力。
+- 未显式选择其他流程且 Claude 跨目录/跨仓需要新建或恢复会话时，默认用本工具；先确认目标目录与任务范围。
+- 已核验 live peer 的地址和实际 cwd 后，后续对话可用原生 `ListAgents` / `SendMessage`。
+- 同仓 subagent 用当前客户端的 subagent 能力；简单只读任务直接完成。跨仓本身不要求派发。
+- 默认流程需要本工具而入口不存在时，报告安装缺口；固定版本安装见 [工具 README](../../tools/cc-dispatch/README.md#固定版本本机安装)。缺少本工具不阻挡用户显式选择的原生流程；安装和权限变更仍需用户直接批准。
 
 ## 先看这条：为什么不能直接 claude --bg
 
@@ -30,7 +38,8 @@ description: 跨目录/跨仓派发 Claude Code 会话：把任务交给另一�
 ## 配置
 
 代码里不写死地址。查找顺序：`$CC_DISPATCH_CONFIG` →
-`<repo>/tools/cc-dispatch/config.json`（git-ignored）→ `~/.claude/dispatch/config.json`。
+`<repo>/tools/cc-dispatch/config.json`（仅仓内开发，git-ignored）→ `~/.claude/dispatch/config.json`。
+全局固定 release 不含本机配置；凭据保留在外置 user 配置或显式环境路径，不随安装复制。
 
 `auth_token` 可写明文，也可用 `auth_token_env` 指向环境变量名。
 `base_url` 指向本机端口会被拒绝。
@@ -38,12 +47,12 @@ description: 跨目录/跨仓派发 Claude Code 会话：把任务交给另一�
 ## 派发
 
 ```bash
-tools/cc-dispatch/cc-dispatch start <目录> <名字> <任务>
+cc-dispatch start <目录> <名字> <任务>
 ```
 
 后台会话没有终端，权限弹窗没人按会永久卡在 `waiting`。工具默认传
-`--permission-mode dontAsk`：需要授权的动作直接拒绝而非卡住。要更强自主性时用
-`--permission-mode acceptEdits`（改代码）或 `bypassPermissions`（已信任的沙箱）。
+`--permission-mode dontAsk`：需要授权的动作直接拒绝而非卡住。
+用户直接批准其他权限模式后，才显式传 `--permission-mode`；派发意图不扩大授权。
 
 名字用于后续寻址，取业务语义（`fix-topic`、`release-review`），不要 `worker1`。
 返回短 id，会话立刻在会话列表里以 `bg` 标记出现。
@@ -53,7 +62,7 @@ tools/cc-dispatch/cc-dispatch start <目录> <名字> <任务>
 ## 续跑
 
 ```bash
-tools/cc-dispatch/cc-dispatch resume <session-id> <目录> <任务>
+cc-dispatch resume <session-id> <目录> <任务>
 ```
 
 一次调用完成一轮并返回结果，适合同步等答案的短任务。
@@ -63,15 +72,16 @@ tools/cc-dispatch/cc-dispatch resume <session-id> <目录> <任务>
 ## 查看与自检
 
 ```bash
-tools/cc-dispatch/cc-dispatch list    # id / 状态 / 名字 / 目录
-tools/cc-dispatch/cc-dispatch check   # 配置是否可用，不启动会话
+cc-dispatch list    # id / 状态 / 名字 / 目录
+cc-dispatch check   # 配置是否可用，不启动会话
 ```
 
 状态 `done` 的 worker 仍可被消息唤醒；`working` 的不能 `resume`。
 
 ## 多轮
 
-worker 起来后直接按名字发消息，不必再走脚本。派发时的任务算第一轮，之后每轮保持上下文。
+worker 起来后，用原生列表核验地址和实际 cwd，再向绑定的 live peer 发消息，不必再走脚本。
+派发时的任务算第一轮，之后每轮保持上下文；同名条目用返回的标识消歧。
 
 ## 边界
 
@@ -82,13 +92,14 @@ resume，它会在 B 仓静默运行、改错仓的文件，CLI 不报任何错�
 **运行中的 worker 不能 resume**。先 `claude stop <id>`，或 `claude attach <id>`
 进入它的终端继续。工具会提示该用哪条。
 
-**能否参与派发看 `entrypoint`，不看交互还是后台**。`entrypoint=cli` 的会话（终端交互
-和 `--bg` 后台都算）收发正常；`entrypoint=sdk-ts`（编辑器内嵌 agent，如 claude-agent-acp
-启动的）收不到跨会话消息，`resume` 也找不到——它们的 transcript 不在
-`~/.claude/projects/` 下。判断方式：`~/.claude/sessions/<pid>.json` 的 `entrypoint` 字段。
+**工具寻址依赖与目标能力分开核验**。已测 `entrypoint=cli` 样本（交互 / 后台）可收发；
+已测 `sdk-ts` 嵌入样本未收到消息，且 transcript 不在本工具读取的
+`~/.claude/projects/` 下，不能由本工具 resume。样本结果不代表所有 `sdk-ts` 目标。
+`~/.claude/sessions/<pid>.json` 的 `entrypoint` 仅作线索，不作为统一禁用判据。
 
-另有一处只影响寻址：`claude agents --json` 里交互会话条目没有 `id`，只有后台会话有
-8 位短 id。这是当前工具的寻址实现依赖，不是交互会话不能路由的证据。
+本工具依赖 CLI transcript 和后台 8 位短 id；已测 `claude agents --json` 交互条目
+没有该 `id`，这是工具寻址限制。原生路由逐目标核验地址、实际 cwd、版本与入站能力，
+分别记录送达、目标处理和匹配回报；列表可见或发送 ACK 不等于完成。
 
 **未信任目录不能起 worker**。`claude --bg` 直接拒绝；`resume` 走 `-p` 模式跳过信任
 弹窗可以跑。
