@@ -123,5 +123,15 @@ class PreflightTests(unittest.TestCase):
             self.source.write_text(json.dumps({'key_id':'id','token':value}))
             self.assertEqual(self.run_cli()[1]['status'],'missing')
 
+    def test_unknown_home_and_unencodable_field_are_safe_errors(self):
+        self.profile['sources'][0]['path']='~nonexistent-preflight-review-user/source.json'
+        code,result=self.run_cli()
+        self.assertEqual((code,result['status']),(2,'unverified'))
+        self.profile['sources'][0]['path']='source.json'
+        self.profile['sources'][0]['fields'][0]['keys']=['\ud800']
+        code,result=self.run_cli()
+        self.assertEqual((code,result['status']),(2,'unverified'))
+        self.assertEqual(result['question_sources'],[])
+
 
 if __name__ == '__main__': unittest.main()

@@ -59,6 +59,8 @@ def validate(profile):
             keys = field['keys']
             if not isinstance(keys, list) or not keys or not all(isinstance(k, str) and k for k in keys):
                 raise ValueError('field path invalid')
+            for key in keys:
+                key.encode('utf-8')
             if source['type'] == 'environment' and len(keys) != 1:
                 raise ValueError('environment field must name one variable')
             if type(field.get('secret', False)) is not bool:
@@ -85,7 +87,7 @@ def inspect_source(source, base, environ):
                 raise ValueError('source must be an object')
     except FileNotFoundError:
         unavailable = 'missing'
-    except (OSError, ValueError, TypeError, RecursionError):
+    except (OSError, ValueError, TypeError, RuntimeError):
         unavailable = 'unverified'
     fields = [{'name':f['name'], 'keys':f['keys'], 'secret':f.get('secret',False),
                'status':unavailable or ('present' if field_present(data,f['keys']) else 'missing')}
