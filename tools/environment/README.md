@@ -13,6 +13,13 @@ For client loading and worktree verification, use the [Kimi and MiniMax validati
 
 **当前实现未迁移**：现有 Profile 仍声明用户全局目录，未过滤的 `bootstrap.sh --apply` 会安装其中的 Skill；不要把它当成项目安装命令。只维护工具或配置时，用 `env.py plan/apply/check --only ID` 明确选择相应组件。现有全局安装、安装记录、备份和 guarded restore 保持兼容；移除旧入口是另行授权的迁移动作，不由新建议自动触发。下文描述这些既有机制，不代表新安装推荐范围。
 
+## cc-dispatch 固定版本入口
+
+需要本机跨仓 Claude 创建/恢复工具时，使用独立 `install_cc_dispatch.py` 的默认 plan、
+显式 apply 和只读 check；固定本地 Git SHA、全局 wrapper/Skill 与凭据外置边界见
+[工具安装说明](../cc-dispatch/README.md#固定版本本机安装)。它不加入 Profile 全量安装，
+也不改变其他 harness 或 Skill 的安装 owner。
+
 ## 三条命令
 
 ```sh

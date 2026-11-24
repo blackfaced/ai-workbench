@@ -30,6 +30,10 @@ For either CLI, `app-server generate-json-schema --out <temporary-dir>` can veri
 
 ## Claude Code
 
+For Claude cross-directory/repository **creation or recovery**, default to the globally installed `cc-dispatch` and read `~/.claude/skills/cc-dispatch/SKILL.md` (source: AIWB `skills/cc-dispatch/SKILL.md`). A user's explicit harness or Claude native messaging/resume choice overrides this default; missing `cc-dispatch` does not block that choice. Report the installation gap only when the selected flow needs the tool. Verified live-peer follow-ups retain native messaging below. This pointer grants no installation, trust or permission changes.
+
+Keep tool addressing limits separate from target capability: `cc-dispatch` relies on CLI transcripts and background short IDs. Tested embedded `sdk-ts` samples lacked those transcripts and did not receive messages; that is not a ban on every `sdk-ts` target. Verify each native target's address, actual cwd, version and inbound capability, then record delivery, handling and matching result evidence separately.
+
 Use native `ListAgents` (also `/list-agents`) to discover peer sessions and `SendMessage` to message the verified address. Human-set `--name` / `/rename` names support discovery; distinguish same-named peers using the identifiers returned by the native listing. A `claude agents` view, resumable session ID or agent-team teammate is not by itself proof of independent-session messaging. [Official tools reference](https://code.claude.com/docs/en/tools-reference).
 
 Claude Code 2.1.319 exposes `claude agents --json` to list active interactive/background sessions without a TTY; `--all` also includes completed background sessions. `claude logs <id-or-name>` reads a background session's recent terminal output. Prefer its bound ID over partial-name matching. These shell entrypoints can support discovery and background-result inspection from another harness; they do not establish a generic shell send command or access to every interactive transcript. An empty successful list proves no listed active sessions, not missing messaging support.

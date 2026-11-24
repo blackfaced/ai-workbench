@@ -1371,6 +1371,12 @@ def main():
     write(os.path.join(root, "claude-mcp-confirm-hook.log"), mcp_hook.stdout)
     check("Claude MCP 确认 hook：消息和提及决策", mcp_hook.returncode == 0,
           mcp_hook.stdout if mcp_hook.returncode else "")
+    for suite in ('test_cc_dispatch.py', 'test_install_cc_dispatch.py'):
+        dispatch = subprocess.run([sys.executable, os.path.join(ENV_DIR, '..', 'cc-dispatch', suite)],
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, universal_newlines=True)
+        write(os.path.join(root, suite + '.log'), dispatch.stdout)
+        check('cc-dispatch: ' + suite, dispatch.returncode == 0,
+              dispatch.stdout if dispatch.returncode else '')
     print("\n通过 %d 项，失败 %d 项" % (len(PASSES), len(FAILS)))
     if FAILS:
         for name in FAILS:
