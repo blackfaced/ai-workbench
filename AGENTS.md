@@ -59,4 +59,4 @@ Use the five configured canonical triage labels. See `docs/agents/triage-labels.
 
 ### Domain docs
 
-Use root `CONTEXT.md` for environment terminology and `decisions/` for scope decisions. See `docs/agents/domain.md`.
+Use root `GLOSSARY.md` for environment terminology and `decisions/` for scope decisions. See `docs/agents/domain.md`.

@@ -5,15 +5,15 @@
 - Source: [blackfaced/MemoryNexus](https://github.com/blackfaced/MemoryNexus)
 - Canonical path: `integrations/task-memory/memorynexus-task-memory/`
 - License: MIT (`LICENSE` in the selected source)
-- Source revision: `e3a6e863ed650f42bf05c8af2b633bbaee9a8efa` (upstream main)
-- Status: opt-in versioned package installed and verified on 2026-11-12. The isolated-project client results below apply to the earlier package.
+- Source revision: `588105469069b0cfb735515beb5b2cb05eb6e536` (upstream main)
+- Status: opt-in versioned package installed and verified on 2026-11-24. The isolated-project client results below apply to an earlier package.
 - Use when: a project owner wants Codex/Traex to read, remember, correct and close out an **existing** task through one explicit binding and a short intent.
 
 ## Source and ownership
 
-Follow the [project activation policy](README.md#installation-policy). The upstream installer created a separate versioned runtime from the [pinned main commit](https://github.com/blackfaced/MemoryNexus/commit/e3a6e863ed650f42bf05c8af2b633bbaee9a8efa), reusing the previously verified CLI binary. The installed launcher's `verify` command confirmed the source, interpreter, binary and package manifest. Existing task bindings continue to identify their original runtime. The CLI build source remains `9ceb4608fcf896bcf789e3fb26272965bbe73bbd`.
+The upstream installer prepared the updated runtime alongside the existing versions, with a CLI built from the same commit. The installed launcher's `verify` command confirmed the source, interpreter, binary and package manifest. The upstream workflow suite passed 161 tests using synthetic data. This version preserves concurrent corrections for the owner to resolve, propagates confirmed withdrawals across paired ledgers, and requires peer reconciliation before using a restored paired task. Existing task bindings continue to identify their original runtime. [Pinned source](https://github.com/blackfaced/MemoryNexus/commit/588105469069b0cfb735515beb5b2cb05eb6e536) · [Project activation policy](README.md#installation-policy)
 
-The earlier package came from commit `71f2d7e04a639fef728adb9ecbd2335179d66065` in [merged PR #348](https://github.com/blackfaced/MemoryNexus/pull/348). New client acceptance is tracked independently of those historical results in the [source records](sources.lock.json).
+Previously installed packages include `e3a6e863ed650f42bf05c8af2b633bbaee9a8efa` and the `71f2d7e04a639fef728adb9ecbd2335179d66065` version used in the original client trial. [Original upstream integration](https://github.com/blackfaced/MemoryNexus/pull/348) · [Source records](sources.lock.json)
 
 The [#155 acceptance record](https://github.com/blackfaced/ai-workbench/issues/155) covers one owner-selected isolated synthetic project on 2026-10-29. The owner confirmed the canonical source in the Codex Desktop Skill selector; actual execution was explicit and prompt-only. Traex performed the authorized correction, and the original Desktop conversation reread it on the next user turn. Observed runtimes were Desktop-bundled `codex-cli 0.165.0-alpha.1.2` and Traex `0.212.1`; the subsequently inspected installed Desktop App was `26.1023.51421` (build `22530`), not a version attestation for every earlier Attempt.
 

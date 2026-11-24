@@ -15,9 +15,9 @@ import subprocess
 
 SOURCE = {
     "repository": "https://github.com/mattpocock/skills",
-    "commit": "5c89081d4bbeb3d039a42093653f90bb698d780e",
+    "commit": "abeeaf95660ba9e8b7c753eb38f441ca707a8823",
     "path": "skills/engineering/setup-matt-pocock-skills",
-    "tree": "ec07f82df54064d01aa1648670e81da41e2cbdc2",
+    "tree": "b644b684781fd5baae57f6be000a180a4d4448d7",
 }
 ENTRY = Path(".agents/skills/setup-matt-pocock-skills")
 

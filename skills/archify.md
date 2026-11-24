@@ -8,10 +8,11 @@
 
 ## Setup and evidence
 
-For new adoption, follow the [project-scoped installation policy](README.md#installation-policy) with a fixed upstream version and a project setup record, optionally maintained by a workspace manager; AIWB does not copy or update its package.
-On 2026-11-12 the existing installation moved from 2.16.0 to v3.2.0 at commit `208acba8d412335185b2056fedf54b3405df43fb`. Its installed directory matched the upstream `archify/` Git tree and its `doctor` passed. The package identity is in the [source records](sources.lock.json).
+For new adoption, use a fixed upstream version and record it in the selected project's setup. [Project-scoped installation policy](README.md#installation-policy)
 
-The standard `finalize sequence` command passed validation, delivery, artifact and browser checks on a two-participant example. The packaged `async-job-roundtrip.sequence.json` exceeded the available height in all six tested viewport/theme combinations.
+On 2026-11-24 the existing shared installation moved from v3.2.0 to v3.3.0. The installed package matched the pinned `archify/` tree, `doctor` passed, and the packaged drilldown API sequence passed standard `finalize` with browser checks. The new release uses Apache-2.0. [Source record](sources.lock.json) · [Upstream release](https://github.com/tt-a1i/archify/releases/tag/v3.3.0)
+
+On v3.2.0, a two-participant sequence passed `finalize` and browser checks. The packaged `async-job-roundtrip.sequence.json` exceeded the available height in all six tested viewport and theme combinations. That example was last tested on v3.2.0.
 
 The local sequence trial needed one spacing repair after showcase validation
 passed but browser containment failed; the repaired diagram passed all four

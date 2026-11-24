@@ -3,12 +3,12 @@
 - Type: upstream skill
 - Domain: coding
 - Source: https://github.com/cathrynlavery/diagram-design
-- Status: opt-in. The retained local package is at 2.6.153. Project discovery was last verified on 2.6.91.
+- Status: opt-in. The retained local package is at 2.6.174. Project discovery was last verified on 2.6.91.
 - Use when: ER/schema and other additional diagram types, document-sized figures or a project style profile materially improve the explanation.
 
 ## Setup and evidence
 
-On 2026-11-12 the retained package was updated to `f2496acbde9f45ccb55c24d4f75210c8a1355df8` (plugin 2.6.153). The package preserves the upstream `skills/diagram-design/` tree plus the root license. Its architecture example passed the packaged self-check and exported to SVG with system fonts.
+On 2026-11-24 the retained package was updated to plugin version 2.6.174. It matches the pinned `skills/diagram-design/` tree and includes the root MIT license. The bundled Git graph and schedule network examples passed the packaged self-check. The Git graph exported to SVG with system fonts. [Source record](sources.lock.json) · [Upstream revision](https://github.com/cathrynlavery/diagram-design/commit/0eeda75a708f419560d5e032693618bb9954f17b)
 
 The following installation and discovery results apply to the earlier commit `0a8ea20ae69b33a5edce6018eedd3a9d26e90c1c` (plugin 2.6.91).
 
