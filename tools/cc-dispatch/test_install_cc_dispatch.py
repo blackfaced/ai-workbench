@@ -12,10 +12,37 @@ import unittest
 
 REPO = Path(__file__).resolve().parents[2]
 INSTALLER = REPO / 'tools/environment/install_cc_dispatch.py'
-PIN = '5084649831319d993500429d54e651e7e8c11c59'
+SOURCE_FILES = ('LICENSE', 'tools/cc-dispatch/cc-dispatch',
+                'tools/cc-dispatch/cc_dispatch.py', 'tools/cc-dispatch/README.md',
+                'tools/cc-dispatch/config.example.json', 'skills/cc-dispatch/SKILL.md')
 
 
 class InstallationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # CI checks out only the current commit. Build an immutable local source
+        # rather than requiring an unrelated historical object or fetching it.
+        cls.source_tmp = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls.source_tmp.cleanup)
+        cls.source = Path(cls.source_tmp.name).resolve() / 'source'
+        cls.source.mkdir()
+        for name in SOURCE_FILES:
+            target = cls.source / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(REPO / name, target)
+        env = dict(os.environ, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull,
+                   GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.com',
+                   GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.com')
+        for key in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_OBJECT_DIRECTORY',
+                    'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG_COUNT'):
+            env.pop(key, None)
+        subprocess.run(['git', 'init', '--quiet', str(cls.source)], env=env, check=True)
+        subprocess.run(['git', '-C', str(cls.source), 'add', '--', *SOURCE_FILES], env=env, check=True)
+        subprocess.run(['git', '-C', str(cls.source), '-c', 'commit.gpgsign=false',
+                        'commit', '--quiet', '-m', 'local installation fixture'], env=env, check=True)
+        cls.pin = subprocess.check_output(['git', '-C', str(cls.source), 'rev-parse', 'HEAD'],
+                                          env=env, text=True).strip()
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
@@ -28,22 +55,23 @@ class InstallationTests(unittest.TestCase):
         self.entry = self.home / '.local/bin/cc-dispatch'
         self.skill = self.home / '.claude/skills/cc-dispatch'
 
-    def cli(self, action=None, pin=PIN):
+    def cli(self, action=None, pin=None):
+        pin = self.pin if pin is None else pin
         args = [sys.executable, '-I', str(INSTALLER)]
         if action:
             args.append(action)
-        return subprocess.run(args + ['--source', str(REPO), '--commit', pin],
+        return subprocess.run(args + ['--source', str(self.source), '--commit', pin],
                               cwd=self.cwd, env=self.env, capture_output=True, text=True)
 
     def upgrade_with_filesystem_event(self, mutation, event='release'):
         """Exercise the CLI with an external edit at a filesystem audit boundary."""
         source = Path(self.tmp.name).resolve() / ('upgrade-source-' + event)
         subprocess.run(['git', 'clone', '--quiet', '--no-hardlinks', '--no-checkout',
-                        str(REPO), str(source)], check=True)
-        tree = subprocess.check_output(['git', '-C', str(source), 'rev-parse', PIN + '^{tree}'], text=True).strip()
+                        str(self.source), str(source)], check=True)
+        tree = subprocess.check_output(['git', '-C', str(source), 'rev-parse', self.pin + '^{tree}'], text=True).strip()
         env = dict(self.env, GIT_AUTHOR_NAME='Test', GIT_AUTHOR_EMAIL='test@example.com',
                    GIT_COMMITTER_NAME='Test', GIT_COMMITTER_EMAIL='test@example.com')
-        pin = subprocess.check_output(['git', '-C', str(source), 'commit-tree', tree, '-p', PIN],
+        pin = subprocess.check_output(['git', '-C', str(source), 'commit-tree', tree, '-p', self.pin],
                                       input='isolated upgrade fixture\n', text=True, env=env).strip()
         root = self.home / '.local/share/cc-dispatch/releases' / pin
         state = root.parent / 'installation.json'
@@ -128,7 +156,7 @@ class InstallationTests(unittest.TestCase):
         applied = self.cli('apply')
         self.assertEqual(applied.returncode, 0, applied.stderr)
         release = Path(json.loads(applied.stdout)['root'])
-        self.assertEqual(release.name, PIN)
+        self.assertEqual(release.name, self.pin)
         self.assertTrue(self.skill.is_symlink())
         self.assertEqual(self.skill.resolve(), release / 'skills/cc-dispatch')
         help_result = self.run_entry('--help')
@@ -226,14 +254,14 @@ class InstallationTests(unittest.TestCase):
         self.assertNotIn('test-secret', result.stdout + result.stderr)
 
     def test_mutable_ref_and_missing_local_object_are_rejected_without_writes(self):
-        for pin in ('main', PIN[:7], '0' * 40):
+        for pin in ('main', self.pin[:7], '0' * 40):
             result = self.cli('apply', pin=pin)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(list(self.home.iterdir()), [])
 
     def test_install_uses_git_objects_not_worktree_files_and_never_fetches(self):
         source = Path(self.tmp.name).resolve() / 'source'
-        subprocess.run(['git', 'clone', '--quiet', '--no-hardlinks', '--no-checkout', str(REPO), str(source)], check=True)
+        subprocess.run(['git', 'clone', '--quiet', '--no-hardlinks', '--no-checkout', str(self.source), str(source)], check=True)
         subprocess.run(['git', '-C', str(source), 'remote', 'set-url', 'origin', 'https://invalid.example/no-network'], check=True)
         # A missing worktree payload and ignored credential must not affect export.
         ignored = source / 'tools/cc-dispatch/config.json'
@@ -254,7 +282,7 @@ class InstallationTests(unittest.TestCase):
                          'exec ' + shlex.quote(real_git) + ' "$@"\n')
         guard.chmod(0o755)
         env = dict(self.env, PATH=str(bin_dir) + os.pathsep + self.env['PATH'])
-        args = [sys.executable, '-I', str(INSTALLER), 'apply', '--source', str(source), '--commit', PIN]
+        args = [sys.executable, '-I', str(INSTALLER), 'apply', '--source', str(source), '--commit', self.pin]
         result = subprocess.run(args, cwd=self.cwd, env=env, capture_output=True, text=True)
         self.assertTrue(audit.exists())
         self.assertEqual(result.returncode, 0, result.stderr)
