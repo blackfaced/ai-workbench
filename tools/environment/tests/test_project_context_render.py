@@ -139,6 +139,24 @@ def test_profiles():
             "profile=none leaves no managed block (absence is the output)")
 
 
+def test_legacy_only_instructions_contain_full_rule_pin():
+    parser = tomllib
+    if parser is None:
+        import tomli as parser
+
+    pin = "0123456789abcdef0123456789abcdef01234567"
+    rules = "Legacy project instructions for a scoped checkout."
+    with tempfile.TemporaryDirectory(prefix="pc-legacy-pin-") as repo:
+        write(os.path.join(repo, ".aiwb", "project-context.json"),
+              json.dumps({"profiles": {"legacy-only": rules}}))
+        rc, out = run(["--repo", repo, "--profile", "legacy-only",
+                       "--client", "trae", "--pin", pin, "--apply"])
+        require(rc == 0, "legacy-only apply with an explicit pin" + (": " + out if rc else ""))
+        instructions = parser.loads(read(trae(repo)))["developer_instructions"]
+        require(rules in instructions, "Trae developer instructions retain the project rules")
+        require(pin in instructions, "Trae developer instructions include the complete rule pin")
+
+
 def test_preservation_and_idempotency():
     print("\n-- outside-block preservation + idempotency --")
     repo = make_repo()
@@ -454,6 +472,7 @@ def test_trust_realpath_cleanup():
 
 def main():
     test_profiles()
+    test_legacy_only_instructions_contain_full_rule_pin()
     test_preservation_and_idempotency()
     test_foreign_edit_rejected()
     test_restore_and_post_restore_protection()

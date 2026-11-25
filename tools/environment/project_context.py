@@ -88,7 +88,7 @@ def validate_toml(text, what):
 def _provenance_lines(pin, workenv):
     return [
         "# --- managed by setup-aiwb (do not edit by hand; use project_context.py) ---",
-        "# source: aiwb@%s workenv=%s" % (pin[:12] if re.fullmatch(r'[0-9a-f]{40}', pin) else pin, workenv),
+        "# source: aiwb@%s workenv=%s" % (pin, workenv),
     ]
 
 
