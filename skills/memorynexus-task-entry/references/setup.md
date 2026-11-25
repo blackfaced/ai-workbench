@@ -10,7 +10,7 @@
 
 AIWB 只维护触发词、名称/别名定位与客户端接线；`lookup.py` 不读取绑定或账本。
 MemoryNexus 的 `daily.py`、CLI、私有 binding 和 ledger 仍由其原安装 owner 管理。
-本入口不加入默认 Profile，也不管理模型、调度或跨机同步。
+本入口不加入默认 Profile。显式 [按任务同步](sync.md) 复用 MemoryNexus 的单次刷新；配对、传输配置和后台刷新由原入口管理。
 
 ## 安装与升级
 
@@ -22,7 +22,7 @@ Traex 按所选项目启用完整资源，例如 `<项目>/.trae/skills/memoryne
 交接仓库地址、完整源 SHA 或不可变包加内容摘要、下面的资源清单、仓根 Apache-2.0 LICENSE 与验证范围。
 未提交的工作树不是已发布版本，不能以基线 SHA 冒充本次新增字节。
 
-本 Skill 的完整资源为 `SKILL.md`、`scripts/lookup.py`、`references/setup.md`、`references/task-index.example.json`、`references/understanding-lens-source.json`、`references/record-commands.md`。
+本 Skill 的完整资源为 `SKILL.md`、`scripts/lookup.py`、`scripts/sync.py`、`references/setup.md`、`references/task-index.example.json`、`references/understanding-lens-source.json`、`references/record-commands.md`、`references/sync.md`。
 本页的 AIWB 安装约定是源仓导航，安装后按记录的固定源查阅；日常运行只需要本 Skill、名称目录和既有 MemoryNexus 绑定/运行包。
 升级前比较目标的已登记摘要；无归属或有用户编辑时停止。备份原文件与清单，验证新资源完整后切换，保留备份用于恢复。
 不复制个人目录进 Git，不修改 binding 或自动替换仍有 pending 请求的运行包。
@@ -57,3 +57,4 @@ AIWB 只接线，Lens 规则仍由 MemoryNexus 维护。可选规则依赖的仓
 新增命令用私有隔离 index/binding/ledger 验证：列任务不打开 binding，读/接上/记保持原语义；列记录与单条读取保留状态和遗漏；改生成新修订，撤回整链后正文不再可用；看理解只显示，记忆帮助不读写账本。测试 index 显式用 `--index`，不注册到个人目录；被引用的中文命令正文不授权执行。成功路径与失败/冲突分别记录，helper 验收不冒充新客户端的自然语言路由验收。
 同名查找测试只证明定位器返回选择，真实用户选择回合另记。
 CLI 新会话不等于 Desktop 原会话下一轮或其他客户端已验收；本机、其他机器与新安装覆盖分别报告。
+同步验收使用两端各自的隔离账本和未订阅对照任务。检查中文触发、两端原 ID、回执、断线和重试。公开结果记在对应 GitHub issue。

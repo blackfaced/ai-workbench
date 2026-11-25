@@ -15,7 +15,7 @@ def normalized(value):
     return ' '.join(unicodedata.normalize('NFKC', value).casefold().split())
 
 
-def lookup(path, name=None):
+def lookup(path, name=None, *, include_relay=False):
     if not path.is_absolute() or '..' in path.parts:
         raise ValueError('invalid_index')
     info = path.lstat()
@@ -51,8 +51,11 @@ def lookup(path, name=None):
             raise ValueError('invalid_index')
         known.append(title)
         if target is None or target in keys:
-            matches.append({'task_id': task_id, 'name': title,
-                            'description': detail, 'binding': str(binding)})
+            match = {'task_id': task_id, 'name': title,
+                     'description': detail, 'binding': str(binding)}
+            if include_relay and 'relay' in item:
+                match['relay'] = item['relay']
+            matches.append(match)
     if target is None:
         return {'schema_version': 1, 'status': 'listed',
                 'tasks': [{k: v for k, v in item.items() if k != 'binding'} for item in matches]}
