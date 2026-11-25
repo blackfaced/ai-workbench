@@ -4,7 +4,7 @@ Use with the [repository thread procedure](threads.md). `codex`, `trae` and `cla
 
 ## Codex
 
-Prefer the selected surface's existing tools. Codex Desktop exposes:
+For explicitly selected Codex Desktop cross-repository work, follow the [Desktop entry and resume procedure](codex-desktop-coordination.md). Use the current native tool schemas. Codex Desktop exposes:
 
 | Need | Operation | Binding/check |
 | --- | --- | --- |
