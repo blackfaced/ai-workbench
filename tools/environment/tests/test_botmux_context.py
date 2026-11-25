@@ -219,6 +219,63 @@ class Startup(unittest.TestCase):
         native=self.root/name;native.write_text('#!'+sys.executable+'\n'+body);native.chmod(0o755)
         data=json.loads(self.registry.read_text());data['clients']={'codex':str(native),'trae':str(native)};self.registry.write_text(json.dumps(data))
         return native
+
+    def use_trae_project_context(self, *, short_pin=False):
+        pin = '0123456789abcdef0123456789abcdef01234567'
+        native = self.root / 'native-trae'
+        native.write_text('#!' + sys.executable + '\n' + """
+from pathlib import Path
+import json
+import tomllib
+
+project = Path.cwd()
+developer = tomllib.loads((project / '.trae/traecli.toml').read_text())['developer_instructions']
+""" + (f"developer = developer.replace({pin!r}, {pin[:12]!r})\n" if short_pin else "") + """
+print(json.dumps([
+    {'role': 'developer', 'content': developer},
+    {'role': 'user', 'content': (project / 'AGENTS.md').read_text()},
+]))
+""")
+        native.chmod(0o755)
+        registry = json.loads(self.registry.read_text())
+        entry = next(iter(registry['projects'].values()))
+        entry['pin'] = pin
+        registry['clients'] = {'trae': str(native), 'codex': str(self.native)}
+        self.registry.write_text(json.dumps(registry))
+
+    def test_gate_rejects_trae_project_context_with_only_short_pin(self):
+        self.use_trae_project_context(short_pin=True)
+        result = self.run_gate('--check-cwd', str(self.wt))
+        self.assertEqual(result.returncode, 78, result.stderr)
+        self.assertIn('native context loading failed: trae (rule_pin)', result.stderr)
+
+    def test_gate_accepts_rule_pin_from_rendered_project_context(self):
+        self.use_trae_project_context()
+        for with_rule_source in (False, True):
+            with self.subTest(rules_source_and_pack=with_rule_source):
+                if with_rule_source:
+                    declaration = json.loads(self.decl.read_text())
+                    declaration['rulesSource'] = {
+                        'path': 'conventions.md',
+                        'sha256': hashlib.sha256(self.doc.read_bytes()).hexdigest(),
+                    }
+                    declaration['pack'] = {'source': 'example-pack', 'revision': 'example-revision'}
+                    self.decl.write_text(json.dumps(declaration))
+                    registry = json.loads(self.registry.read_text())
+                    entry = next(iter(registry['projects'].values()))
+                    entry['declaration_sha256'] = hashlib.sha256(self.decl.read_bytes()).hexdigest()
+                    self.registry.write_text(json.dumps(registry))
+                result = self.run_gate('--check-cwd', str(self.wt))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                receipt = json.loads(result.stdout)
+                self.assertEqual(receipt['status'], 'PASS')
+                self.assertTrue(receipt['checks']['trae']['project_instructions'])
+                self.assertTrue(receipt['checks']['trae']['rule_pin'])
+                if with_rule_source:
+                    config = (self.wt / '.trae/traecli.toml').read_text()
+                    self.assertIn(self.doc.read_text(), config)
+                    self.assertIn('Selected instruction pack: example-pack @ example-revision.', config)
+
     def test_team_guidance_truncated_warns_without_blocking(self):
         # Oversized AGENTS.md can be truncated by the client during prompt
         # assembly; a missing full-text team match warns instead of blocking.
