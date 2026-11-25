@@ -273,7 +273,8 @@
             "references/staged-review.md": "skills/deliver-spec/references/staged-review.md",
             "references/botmux.md": "skills/deliver-spec/references/botmux.md",
             "references/threads.md": "skills/deliver-spec/references/threads.md",
-            "references/thread-harnesses.md": "skills/deliver-spec/references/thread-harnesses.md"
+            "references/thread-harnesses.md": "skills/deliver-spec/references/thread-harnesses.md",
+            "references/codex-desktop-coordination.md": "skills/deliver-spec/references/codex-desktop-coordination.md"
           }
         }
       },

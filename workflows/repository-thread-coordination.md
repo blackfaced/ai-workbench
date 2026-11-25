@@ -19,6 +19,18 @@ For example:
 
 This selects a communication pattern. It does not require decomposing a small consultation into a spec delivery. For work already using `deliver-spec`, select native threads as its transport while keeping the existing plan and acceptance policy. Retain the original coordinator across the task; the hub configuration repository is not automatically the runtime coordinator.
 
+## Codex Desktop entry
+
+In the original coordinator chat, explicitly select [Codex Desktop repository coordination](../skills/deliver-spec/references/codex-desktop-coordination.md). Give the client access to the workspace matrix and its existing run checkpoint. For example:
+
+> 用 Codex Desktop 的 repository thread coordination 处理这个跨仓任务。从当前工作区的矩阵和任务检查点开始，绑定已有实现线程。后续 MR 评论、CI 失败和补修也走同一份 assignment，由我所在的协调线程独立核查候选和证据。
+
+For project activation, put an opt-in pointer in the coordinator project's existing Codex startup guidance. Fill in the guide and matrix paths and the workspace's existing checkpoint lookup:
+
+> When Codex Desktop cross-repository threads are selected, or when continuing a run that selected them, read `<installed-guide-path>` and `<workspace-matrix-path>`. Load the task checkpoint through `<existing-checkpoint-lookup>` before dispatch or resumed work.
+
+Use the [offline follow-up drill](repository-thread-coordination-example.md) to rehearse the entry and recovery paths. Live verification still uses the first-use procedure below.
+
 ## Adoption
 
 Review the matrix and discover existing threads first. Create or rename chats only within explicit user intent. Record messaging authority, including whether recipients may send back or the coordinator will read their results. Keep unbound, ambiguous or unreachable entries visible and continue independent work.

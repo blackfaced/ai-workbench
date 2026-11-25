@@ -4,6 +4,8 @@ Domain: coding, ops
 
 Use when the user selects named repository threads for cross-repository coordination, including on one machine. The client owns discovery, messaging, execution and waiting. This guide supplies a transport contract; lightweight consultation can use it without invoking the full `deliver-spec` workflow. When `deliver-spec` is selected, retain its roles, review policy and acceptance gates.
 
+For Codex Desktop coordination, load the [Desktop entry and resume procedure](codex-desktop-coordination.md) at startup and when continuing a recorded assignment, including MR and CI follow-ups.
+
 Reuse the botmux pattern of one coordinator, scoped assignments and evidence-bearing returns. Native threads use their own verified addresses and capabilities; botmux dispatch roots and `report` commands belong only to the [botmux transport](botmux.md).
 
 ## Discover and bind
