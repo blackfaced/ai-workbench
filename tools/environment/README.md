@@ -7,6 +7,11 @@
 
 ## Skill installation scope
 
+Before asking for credentials or identifiers, use the opt-in
+[managed configuration preflight](managed-preflight.md) in the actual task environment.
+It reports only selected field presence and question/recovery decisions; it does
+not authenticate, install anything or prove native session loading.
+
 For client loading and worktree verification, use the [Kimi and MiniMax validation procedure](harness-validation.md). Active follow-up status lives in [issue #153](https://github.com/blackfaced/ai-workbench/issues/153).
 
 新 Skill 默认按[项目激活策略](../../skills/README.md#installation-policy)接入：AIWB 维护可复用正文、资源和固定来源版本；项目所有者可以直接准备项目包，也可以使用已有工作区管理器，后者不是前置依赖。`setup-aiwb` 的[独立准备与只读校验](../../skills/setup-aiwb/references/matt-project-baseline.md)不依赖管理器登记。本工具不新增项目激活管理器。
